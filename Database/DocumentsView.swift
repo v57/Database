@@ -13,21 +13,21 @@ struct DocumentsView: View {
 
     var body: some View {
         @Bindable var model = model
-        Group {
-            if model.selectedCollection == nil {
-                ContentUnavailableView(
-                    "No Collection Selected",
-                    systemImage: "shippingbox",
-                    description: Text("Select a collection to browse its documents.")
-                )
-            } else if model.documents.isEmpty {
-                ContentUnavailableView(
-                    "No Documents",
-                    systemImage: "doc.text.magnifyingglass",
-                    description: Text("No documents in this collection — try Find with a filter.")
-                )
-            } else {
-                HSplitView {
+        VStack(spacing: 0) {
+            Group {
+                if model.selectedCollection == nil {
+                    ContentUnavailableView(
+                        "No Collection Selected",
+                        systemImage: "shippingbox",
+                        description: Text("Select a collection in the sidebar.")
+                    )
+                } else if model.documents.isEmpty {
+                    ContentUnavailableView(
+                        "No Documents",
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text("No documents in this collection — try Find with a filter.")
+                    )
+                } else {
                     List(model.documents, id: \.self, selection: $model.selectedDocument) { doc in
                         Text(BSONSupport.json(doc))
                             .font(.system(.body, design: .monospaced))
@@ -35,24 +35,16 @@ struct DocumentsView: View {
                             .truncationMode(.tail)
                     }
                     .listStyle(.inset)
-
-                    if let doc = model.selectedDocument {
-                        ScrollView {
-                            Text(BSONSupport.json(doc))
-                                .font(.system(.body, design: .monospaced))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding()
-                        }
-                    } else {
-                        ContentUnavailableView(
-                            "Select a Document",
-                            systemImage: "doc.text",
-                            description: Text("Click a document to view its full JSON.")
-                        )
-                        .frame(minWidth: 280)
-                    }
                 }
+            }
+            if !model.statusMessage.isEmpty {
+                Text(model.statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(6)
+                    .background(.bar)
             }
         }
         .toolbar {

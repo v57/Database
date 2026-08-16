@@ -21,9 +21,9 @@ struct ContentView: View {
         NavigationSplitView {
             ConnectionsSidebarView()
         } content: {
-            CollectionsView()
-        } detail: {
             DocumentsView()
+        } detail: {
+            DocumentDetailView()
         }
         .navigationTitle(model.session?.config.name ?? "Database Client")
     }

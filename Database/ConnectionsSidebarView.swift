@@ -2,53 +2,86 @@ import SwiftUI
 import SwiftData
 import MongoDB
 
-/// Sidebar column: saved connections with Connect / Disconnect / Edit / Delete.
-/// Selecting a row connects to it; the context menu has the full action set.
+/// Sidebar column: saved connections; under the active connection, its
+/// databases with collections nested inside (folded by default). Selecting a
+/// connection connects; expanding a database lazily loads its collections;
+/// selecting a collection loads its documents into the middle column.
 struct ConnectionsSidebarView: View {
     @Environment(DatabaseModel.self) private var model
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \ConnectionRecord.name) private var records: [ConnectionRecord]
 
     @State private var selectedRecordID: ConnectionRecord.ID?
+    /// Databases the user has expanded; collections stay folded until then.
+    @State private var expandedDatabases: Set<String> = []
     @State private var showAddSheet = false
     @State private var editingRecord: ConnectionRecord?
 
     var body: some View {
-        List(records, selection: $selectedRecordID) { record in
-            ConnectionRow(record: record, isActive: isActive(record))
-                .contextMenu {
-                    Button("Connect") {
-                        connect(record)
+        @Bindable var model = model
+        VStack(spacing: 0) {
+            if model.session != nil {
+                TextField("Filter collections…", text: $model.collectionSearch)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                    .onChange(of: model.collectionSearch) { _, _ in
+                        Task { await model.loadAllCollections() }
                     }
-                    Button("Disconnect") {
-                        Task { await model.disconnect() }
+            }
+            List {
+                Section("Connections") {
+                    if records.isEmpty {
+                        Text("No saved connections — use + to add one.")
+                            .foregroundStyle(.secondary)
                     }
-                    .disabled(model.session == nil)
-                    Divider()
-                    Button("Edit…") {
-                        editingRecord = record
-                    }
-                    Button("Delete", role: .destructive) {
-                        delete(record)
+                    ForEach(records) { record in
+                        ConnectionRow(record: record, isActive: isActive(record))
+                            .contentShape(Rectangle())
+                            .onTapGesture { selectConnection(record) }
+                            .listRowBackground(
+                                selectedRecordID == record.id
+                                    ? Color.accentColor.opacity(0.12) : nil
+                            )
+                            .contextMenu {
+                                Button("Connect") { selectConnection(record) }
+                                Button("Disconnect") {
+                                    Task { await model.disconnect() }
+                                }
+                                .disabled(model.session == nil)
+                                Divider()
+                                Button("Edit…") { editingRecord = record }
+                                Button("Delete", role: .destructive) { delete(record) }
+                            }
                     }
                 }
-        }
-        .onChange(of: selectedRecordID) { _, newID in
-            guard let newID else { return }
-            if let record = records.first(where: { $0.id == newID }) {
-                connect(record)
+
+                if model.session != nil {
+                    Section("Databases") {
+                        if model.databases.isEmpty {
+                            Text("No databases on server")
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(model.databases, id: \.self) { db in
+                            DisclosureGroup(isExpanded: expandedBinding(for: db)) {
+                                let colls = model.collections(for: db)
+                                if colls.isEmpty {
+                                    Text("No collections")
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    ForEach(colls, id: \.self) { coll in
+                                        collectionRow(coll, in: db)
+                                    }
+                                }
+                            } label: {
+                                Label(db, systemImage: "cylinder")
+                            }
+                        }
+                    }
+                }
             }
         }
-        .overlay {
-            if records.isEmpty {
-                ContentUnavailableView(
-                    "No Saved Connections",
-                    systemImage: "cable.connector",
-                    description: Text("Click + to add a MongoDB connection.")
-                )
-            }
-        }
-        .navigationSplitViewColumnWidth(min: 200, ideal: 240)
+        .navigationSplitViewColumnWidth(min: 200, ideal: 250)
         .toolbar {
             ToolbarItem {
                 Button {
@@ -67,8 +100,35 @@ struct ConnectionsSidebarView: View {
         }
     }
 
-    private func connect(_ record: ConnectionRecord) {
+    // MARK: - Sidebar actions
+
+    private func expandedBinding(for db: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedDatabases.contains(db) },
+            set: { expanded in
+                if expanded {
+                    expandedDatabases.insert(db)
+                    Task { await model.loadCollections(for: db) }
+                } else {
+                    expandedDatabases.remove(db)
+                }
+            }
+        )
+    }
+
+    private func collectionRow(_ coll: String, in db: String) -> some View {
+        let isSelected = model.selectedCollection == coll && model.selectedDatabase == db
+        return Label(coll, systemImage: "shippingbox")
+            .contentShape(Rectangle())
+            .onTapGesture {
+                Task { await model.select(collection: coll, in: db) }
+            }
+            .listRowBackground(isSelected ? Color.accentColor.opacity(0.12) : nil)
+    }
+
+    private func selectConnection(_ record: ConnectionRecord) {
         guard !model.isConnecting else { return }
+        selectedRecordID = record.id
         Task { await model.connect(record.toConfig()) }
     }
 

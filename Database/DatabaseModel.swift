@@ -17,6 +17,10 @@ final class DatabaseModel {
     var collectionSearch = ""
     var selectedCollection: String?
 
+    /// Per-database collection names, fetched lazily as databases are expanded
+    /// in the sidebar; also drives sidebar search filtering.
+    private(set) var collectionsByDatabase: [String: [String]] = [:]
+
     var documents: [Document] = []
     var selectedDocument: Document?
 
@@ -50,6 +54,7 @@ final class DatabaseModel {
         databases = []
         selectedDatabase = nil
         collections = []
+        collectionsByDatabase = [:]
         selectedCollection = nil
         documents = []
         selectedDocument = nil
@@ -64,6 +69,7 @@ final class DatabaseModel {
             selectedDatabase = database
             collectionSearch = ""
             collections = try await session.listCollections()
+            collectionsByDatabase[database] = collections
             selectedCollection = nil
             documents = []
             selectedDocument = nil
@@ -72,26 +78,62 @@ final class DatabaseModel {
         }
     }
 
-    /// Reloads collections for the current database, applying `collectionSearch`.
-    func refreshCollections() async {
-        guard let session else { return }
+    /// Loads (once) and caches collections for a database; called when the
+    /// sidebar expands a database row.
+    func loadCollections(for database: String) async {
+        guard let session, collectionsByDatabase[database] == nil else { return }
         do {
-            collections = try await session.listCollections(matching: collectionSearch)
+            try await session.use(database: database)
+            let names = try await session.listCollections()
+            collectionsByDatabase[database] = names
+            if database == selectedDatabase {
+                collections = names
+            }
         } catch {
             statusMessage = error.localizedDescription
         }
     }
 
-    /// Selects a collection and runs the default find (limit 100).
-    func select(collection: String) async {
+    /// Loads collections for every database (cached), so the sidebar search
+    /// can filter across all of them. No-op for already-loaded databases.
+    func loadAllCollections() async {
+        for db in databases {
+            await loadCollections(for: db)
+        }
+    }
+
+    /// Cached collections of `database`, filtered by `collectionSearch`.
+    func collections(for database: String) -> [String] {
+        let names = collectionsByDatabase[database] ?? []
+        guard !collectionSearch.isEmpty else { return names }
+        return names.filter { $0.localizedCaseInsensitiveContains(collectionSearch) }
+    }
+
+    /// Selects a collection in an explicit database (sidebar path), switching
+    /// the active database first when needed.
+    func select(collection: String, in database: String) async {
         guard let session else { return }
         do {
+            if selectedDatabase != database {
+                try await session.use(database: database)
+                selectedDatabase = database
+                collections = collectionsByDatabase[database] ?? []
+                if collections.isEmpty {
+                    collections = try await session.listCollections()
+                    collectionsByDatabase[database] = collections
+                }
+            }
             selectedCollection = collection
             documents = try await session.find(in: collection, limit: 100)
             statusMessage = "\(documents.count) document(s) in \(collection)"
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+
+    /// Selects a collection in the current database (documents refresh path).
+    func select(collection: String) async {
+        await select(collection: collection, in: selectedDatabase ?? "")
     }
 
     /// Runs a find against the selected collection. `filter` is JSON text
