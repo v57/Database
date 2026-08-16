@@ -13,7 +13,6 @@
 
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* Database.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Database.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MongoDB; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -285,9 +284,10 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.v57.db;
+				PRODUCT_MODULE_NAME = DatabaseApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
+				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = macosx;
 				SUPPORTS_MACCATALYST = NO;
@@ -322,9 +322,10 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.v57.db;
+				PRODUCT_MODULE_NAME = DatabaseApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
+				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = macosx;
 				SUPPORTS_MACCATALYST = NO;
@@ -365,10 +366,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		2669A0EE3031C45000C52779 /* Database */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Database;
-		};
+	2669A0EE3031C45000C52779 /* Database */ = {
+		isa = XCSwiftPackageProductDependency;
+		productName = Database;
+	};
+	B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */ = {
+		isa = XCSwiftPackageProductDependency;
+		productName = MongoDB;
+	};
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 000000000000000000000000 /* Project object */;

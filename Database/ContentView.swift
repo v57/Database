@@ -1,16 +1,30 @@
 import SwiftUI
+import SwiftData
+import MongoDB
 
-@main struct MyApp: App {
+@main struct DatabaseApp: App {
+    @State private var model = DatabaseModel()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(model)
         }
+        .modelContainer(for: ConnectionRecord.self)
     }
 }
 
 struct ContentView: View {
+    @Environment(DatabaseModel.self) private var model
+
     var body: some View {
-        Text("Hello, world!")
-            .padding()
+        NavigationSplitView {
+            ConnectionsSidebarView()
+        } content: {
+            CollectionsView()
+        } detail: {
+            DocumentsView()
+        }
+        .navigationTitle(model.session?.config.name ?? "Database Client")
     }
 }
