@@ -366,14 +366,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-	2669A0EE3031C45000C52779 /* Database */ = {
-		isa = XCSwiftPackageProductDependency;
-		productName = Database;
-	};
-	B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */ = {
-		isa = XCSwiftPackageProductDependency;
-		productName = MongoDB;
-	};
+		2669A0EE3031C45000C52779 /* Database */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Database;
+		};
+		B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MongoDB;
+		};
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 000000000000000000000000 /* Project object */;
