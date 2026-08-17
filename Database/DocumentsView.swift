@@ -1,10 +1,11 @@
 import SwiftUI
 import MongoDB
 
-/// Merged item-list + preview screen: documents render as expanded
-/// $key/$value cell rows (nested values flattened with depth indentation).
-/// Double-clicking a value cell turns it into an inline editor with a type
-/// picker. Values are color-coded: .primary for strings, .blue otherwise.
+/// Merged item-list + preview screen: documents render as $key/$value cell
+/// rows. Strings are one line and objects/arrays collapse by default; a click
+/// expands a value across every entry with the same key. Double-clicking a
+/// value cell turns it into an inline editor with a type picker. Values are
+/// color-coded: .primary for strings, .blue otherwise.
 struct DocumentsView: View {
     @Environment(DatabaseModel.self) private var model
 
@@ -13,6 +14,8 @@ struct DocumentsView: View {
     @State private var showDeleteSheet = false
     @State private var errorMessage: String?
     @State private var editor: ValueEditorState?
+    /// Field keys currently expanded (applies to every entry with that key).
+    @State private var expandedKeys: Set<String> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -100,10 +103,12 @@ struct DocumentsView: View {
         List {
             ForEach(model.documents.indices, id: \.self) { index in
                 Section {
-                    ForEach(FieldTree.rows(for: model.documents[index], docIndex: index)) { row in
+                    ForEach(FieldTree.rows(for: model.documents[index], docIndex: index, expandedKeys: expandedKeys)) { row in
                         KeyValueRow(
                             row: row,
                             editor: editor,
+                            expandedKeys: expandedKeys,
+                            onToggle: toggleExpansion,
                             onStartEdit: { startEditing(row) },
                             onCommit: commitEditor,
                             onCancel: { editor = nil }
@@ -124,6 +129,14 @@ struct DocumentsView: View {
             return "\(BSONSupport.displayString(id)) · #\(index + 1)"
         }
         return "Document \(index + 1)"
+    }
+
+    private func toggleExpansion(_ key: String) {
+        if expandedKeys.contains(key) {
+            expandedKeys.remove(key)
+        } else {
+            expandedKeys.insert(key)
+        }
     }
 
     private func startEditing(_ row: FieldRow) {

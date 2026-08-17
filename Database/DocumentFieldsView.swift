@@ -16,10 +16,12 @@ struct FieldRow: Identifiable {
     let bson: BSON
 }
 
-/// Flattens a document into display rows: every field becomes a row, and
-/// nested documents/arrays are expanded into indented child rows.
+/// Flattens a document into display rows: every field becomes a row.
+/// Nested documents/arrays are rendered collapsed by default — a container's
+/// child rows are only included when its key is in `expandedKeys`, so an
+/// expansion applies to every entry sharing that key across the whole list.
 enum FieldTree {
-    static func rows(for doc: BSONDocument, docIndex: Int) -> [FieldRow] {
+    static func rows(for doc: BSONDocument, docIndex: Int, expandedKeys: Set<String>) -> [FieldRow] {
         var rows: [FieldRow] = []
         func walk(_ bson: BSON, path: [BSONPathSegment], depth: Int) {
             switch bson {
@@ -37,7 +39,9 @@ enum FieldTree {
                             bson: value
                         )
                     )
-                    walk(value, path: p, depth: depth + 1)
+                    if expandedKeys.contains(key) {
+                        walk(value, path: p, depth: depth + 1)
+                    }
                 }
             case let .array(items):
                 for (i, value) in items.enumerated() {
@@ -52,7 +56,9 @@ enum FieldTree {
                             bson: value
                         )
                     )
-                    walk(value, path: p, depth: depth + 1)
+                    if expandedKeys.contains("[\(i)]") {
+                        walk(value, path: p, depth: depth + 1)
+                    }
                 }
             default:
                 break
@@ -157,12 +163,18 @@ final class ValueEditorState {
 struct KeyValueRow: View {
     let row: FieldRow
     let editor: ValueEditorState?
+    let expandedKeys: Set<String>
+    let onToggle: (String) -> Void
     let onStartEdit: () -> Void
     let onCommit: () -> Void
     let onCancel: () -> Void
 
     private var isEditing: Bool {
         editor?.docIndex == row.docIndex && editor?.path == row.path
+    }
+
+    private var isExpanded: Bool {
+        expandedKeys.contains(row.key)
     }
 
     var body: some View {
@@ -183,16 +195,33 @@ struct KeyValueRow: View {
     @ViewBuilder private var valueContent: some View {
         if isEditing, let editor {
             ValueEditor(state: editor, onCommit: onCommit, onCancel: onCancel)
-        } else if row.bson.isContainer {
-            Image(systemName: row.bson.isDocument ? "curlybraces.square" : "list.number")
-                .foregroundStyle(.blue)
-            Text(row.bson.containerSummary)
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.blue)
-        } else {
+        } else if row.bson.isString {
+            // Strings are one line by default; click to expand to full text.
             Text(BSONSupport.displayString(row.bson))
                 .font(.system(.body, design: .monospaced))
-                .foregroundStyle(row.bson.isString ? Color.primary : Color.blue)
+                .foregroundStyle(.primary)
+                .lineLimit(isExpanded ? nil : 1)
+                .truncationMode(.tail)
+                .textSelection(.enabled)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { onStartEdit() }
+                .onTapGesture { onToggle(row.key) }
+        } else if row.bson.isContainer {
+            // Containers collapse by default; click toggles their children.
+            HStack(spacing: 4) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                Image(systemName: row.bson.isDocument ? "curlybraces.square" : "list.number")
+                Text(row.bson.containerSummary)
+            }
+            .font(.system(.body, design: .monospaced))
+            .foregroundStyle(.blue)
+            .contentShape(Rectangle())
+            .onTapGesture { onToggle(row.key) }
+        } else {
+            // Non-string leaf: color-coded, selectable, double-click editable.
+            Text(BSONSupport.displayString(row.bson))
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(.blue)
                 .textSelection(.enabled)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { onStartEdit() }
