@@ -102,12 +102,19 @@ final class DatabaseModel {
         }
     }
 
-    /// Cached collections of `database`, filtered by `collectionSearch`.
+    /// Cached collections of `database`, filtered by the plain (non-$) search
+    /// terms — every term must match (AND).
     func collections(for database: String) -> [String] {
         let names = collectionsByDatabase[database] ?? []
-        guard !collectionSearch.isEmpty else { return names }
-        return names.filter { $0.localizedCaseInsensitiveContains(collectionSearch) }
+        let terms = searchTerms.collectionTerms
+        guard !terms.isEmpty else { return names }
+        return names.filter { name in
+            terms.allSatisfy { name.localizedCaseInsensitiveContains($0) }
+        }
     }
+
+    /// Parsed view of the sidebar search field for the current state.
+    var searchTerms: SearchTerms { SearchTerms(collectionSearch) }
 
     /// Selects a collection in an explicit database (sidebar path), switching
     /// the active database first when needed.
@@ -172,5 +179,26 @@ final class DatabaseModel {
         if let docs = try? await session.find(in: collection, limit: 100) {
             documents = docs
         }
+    }
+}
+
+/// Parsed sidebar search: tokens starting with `$` filter database names,
+/// plain tokens filter collection names. Order-independent; all terms of a
+/// kind must match (AND). Example: `$maindb users` == `users $maindb` shows
+/// databases whose name contains "maindb" with collections containing "users".
+struct SearchTerms {
+    let databaseTerms: [String]
+    let collectionTerms: [String]
+
+    var isSearching: Bool { !databaseTerms.isEmpty || !collectionTerms.isEmpty }
+    var hasDatabaseTerms: Bool { !databaseTerms.isEmpty }
+
+    init(_ raw: String) {
+        let tokens = raw.split(whereSeparator: \.isWhitespace).map(String.init)
+        databaseTerms = tokens
+            .filter { $0.hasPrefix("$") }
+            .map { String($0.dropFirst()) }
+            .filter { !$0.isEmpty }
+        collectionTerms = tokens.filter { !$0.hasPrefix("$") }
     }
 }

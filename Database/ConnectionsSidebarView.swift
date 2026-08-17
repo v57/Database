@@ -21,7 +21,7 @@ struct ConnectionsSidebarView: View {
         @Bindable var model = model
         VStack(spacing: 0) {
             if model.session != nil {
-                TextField("Filter collections…", text: $model.collectionSearch)
+                TextField("Filter collections… ($name searches databases)", text: $model.collectionSearch)
                     .textFieldStyle(.roundedBorder)
                     .padding(.horizontal)
                     .padding(.vertical, 6)
@@ -59,8 +59,7 @@ struct ConnectionsSidebarView: View {
                 if model.session != nil {
                     Section("Databases") {
                         if visibleDatabases.isEmpty {
-                            Text(isSearching ? "No matching collections" : "No databases on server")
-                                .foregroundStyle(.secondary)
+                            emptyDatabasesText.foregroundStyle(.secondary)
                         }
                         ForEach(visibleDatabases, id: \.self) { db in
                             // While searching: force-expand every database that
@@ -97,19 +96,34 @@ struct ConnectionsSidebarView: View {
 
     // MARK: - Sidebar actions
 
-    /// True while the collection filter is active: databases are force-expanded
-    /// and databases without matches are hidden.
-    private var isSearching: Bool {
-        !model.collectionSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    /// True while the search field is active: databases are force-expanded
+    /// and non-matching databases are hidden.
+    private var isSearching: Bool { model.searchTerms.isSearching }
+
+    /// Databases shown in the sidebar:
+    /// - `$name` terms filter by database name (AND).
+    /// - plain terms keep only databases with at least one matching
+    ///   collection (all databases are loaded on search).
+    private var visibleDatabases: [String] {
+        let terms = model.searchTerms
+        return model.databases.filter { db in
+            let dbMatches = terms.hasDatabaseTerms
+                ? terms.databaseTerms.allSatisfy { db.localizedCaseInsensitiveContains($0) }
+                : true
+            guard dbMatches else { return false }
+            if terms.collectionTerms.isEmpty { return true }
+            return !model.collections(for: db).isEmpty
+        }
     }
 
-    /// Databases shown in the sidebar: while searching, only those with at
-    /// least one matching collection (all databases are loaded on search).
-    private var visibleDatabases: [String] {
-        if isSearching {
-            return model.databases.filter { !model.collections(for: $0).isEmpty }
+    private var emptyDatabasesText: Text {
+        let terms = model.searchTerms
+        if terms.hasDatabaseTerms {
+            return Text("No matching databases")
+        } else if model.databases.isEmpty {
+            return Text("No databases on server")
         }
-        return model.databases
+        return Text("No matching collections")
     }
 
     @ViewBuilder
