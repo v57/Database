@@ -277,6 +277,76 @@ struct ValueEditor: View {
     }
 }
 
+// MARK: - Add-field row
+
+/// Edit-mode row that inserts a new key/value field into a document. Shown at
+/// the end of each document section when Edit mode is on.
+struct AddFieldRow: View {
+    let onAdd: (String, BSON) -> Void
+    @State private var key = ""
+    @State private var type: EditableType = .string
+    @State private var text = ""
+    @State private var date = Date()
+    @State private var bool = false
+    @FocusState private var keyFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            TextField("New field", text: $key, prompt: Text("New field"))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 190)
+                .focused($keyFocused)
+            Picker("Type", selection: $type) {
+                ForEach(EditableType.allCases) { t in
+                    Text(t.label).tag(t)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .fixedSize()
+            valueControl
+            Button("Add") { add() }
+                .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .onAppear { keyFocused = true }
+    }
+
+    @ViewBuilder private var valueControl: some View {
+        switch type {
+        case .string, .integer, .number, .objectId:
+            TextField("Value", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 140)
+        case .boolean:
+            Toggle("", isOn: $bool).labelsHidden()
+        case .date:
+            DatePicker("", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                .labelsHidden()
+                .datePickerStyle(.field)
+        case .null:
+            Text("null").foregroundStyle(.secondary)
+        }
+    }
+
+    private func add() {
+        let k = key.trimmingCharacters(in: .whitespaces)
+        guard !k.isEmpty else { return }
+        let value: BSON? = switch type {
+        case .string: .string(text)
+        case .integer: Int64(text).map(BSON.int64)
+        case .number: Double(text).map(BSON.double)
+        case .boolean: .bool(bool)
+        case .date: .datetime(date)
+        case .null: .null
+        case .objectId: (try? BSONObjectID(text)).map(BSON.objectID)
+        }
+        guard let value else { return }
+        onAdd(k, value)
+        key = ""
+        text = ""
+    }
+}
+
 // MARK: - BSON display helpers (UI-facing)
 
 extension BSON {

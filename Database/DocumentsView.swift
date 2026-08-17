@@ -6,10 +6,12 @@ import MongoDB
 /// expands a value across every entry with the same key. Double-clicking a
 /// value cell turns it into an inline editor with a type picker. Values are
 /// color-coded: .primary for strings, .blue otherwise.
+///
+/// A persistent query bar (search/sort/project) sits above the list; the Edit
+/// button toggles add-field rows; Delete previews matches and confirms.
 struct DocumentsView: View {
     @Environment(DatabaseModel.self) private var model
 
-    @State private var showFindSheet = false
     @State private var showUpdateSheet = false
     @State private var showDeleteSheet = false
     @State private var errorMessage: String?
@@ -17,8 +19,16 @@ struct DocumentsView: View {
     /// Field keys currently expanded (applies to every entry with that key).
     @State private var expandedKeys: Set<String> = []
 
+    /// Persistent query bar contents.
+    @State private var filterText = ""
+    @State private var sortText = ""
+    @State private var projectText = ""
+    @State private var editMode = false
+    @State private var debounceTask: Task<Void, Never>?
+
     var body: some View {
         VStack(spacing: 0) {
+            queryBar
             Group {
                 if model.selectedCollection == nil {
                     ContentUnavailableView(
@@ -30,7 +40,7 @@ struct DocumentsView: View {
                     ContentUnavailableView(
                         "No Documents",
                         systemImage: "doc.text.magnifyingglass",
-                        description: Text("No documents in this collection — try Find with a filter.")
+                        description: Text("No documents match. Clear or edit the filter.")
                     )
                 } else {
                     documentList
@@ -49,9 +59,16 @@ struct DocumentsView: View {
         .toolbar {
             ToolbarItemGroup {
                 Button {
-                    showFindSheet = true
+                    editMode.toggle()
                 } label: {
-                    Label("Find…", systemImage: "magnifyingglass")
+                    Label(editMode ? "Done" : "Edit", systemImage: editMode ? "checkmark.square" : "square.and.pencil")
+                }
+                .disabled(model.selectedCollection == nil)
+
+                Button {
+                    showDeleteSheet = true
+                } label: {
+                    Label("Delete…", systemImage: "trash")
                 }
                 .disabled(model.selectedCollection == nil)
 
@@ -63,13 +80,6 @@ struct DocumentsView: View {
                 .disabled(model.selectedCollection == nil)
 
                 Button {
-                    showDeleteSheet = true
-                } label: {
-                    Label("Delete Many…", systemImage: "trash")
-                }
-                .disabled(model.selectedCollection == nil)
-
-                Button {
                     refresh()
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
@@ -77,14 +87,11 @@ struct DocumentsView: View {
                 .disabled(model.selectedCollection == nil)
             }
         }
-        .sheet(isPresented: $showFindSheet) {
-            FindSheet(errorMessage: $errorMessage)
-        }
         .sheet(isPresented: $showUpdateSheet) {
             UpdateSheet(errorMessage: $errorMessage)
         }
         .sheet(isPresented: $showDeleteSheet) {
-            DeleteSheet(errorMessage: $errorMessage)
+            DeleteSheet(filter: filterText, errorMessage: $errorMessage)
         }
         .alert(
             "Query Failed",
@@ -97,7 +104,41 @@ struct DocumentsView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .onAppear {
+            filterText = model.currentQuery.filter ?? ""
+            sortText = model.currentQuery.sort ?? ""
+            projectText = model.currentQuery.projection ?? ""
+        }
     }
+
+    // MARK: - Query bar
+
+    private var queryBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Filter", text: $filterText, prompt: Text("Filter — e.g. { user: \"ann\" }"))
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { apply() }
+                .onChange(of: filterText) { _, _ in debounceApply() }
+            Divider()
+                .frame(height: 20)
+            TextField("Sort", text: $sortText, prompt: Text("Sort — age: -1"))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 150)
+                .onSubmit { apply() }
+                .onChange(of: sortText) { _, _ in debounceApply() }
+            TextField("Project", text: $projectText, prompt: Text("Project — name: 1"))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 150)
+                .onSubmit { apply() }
+                .onChange(of: projectText) { _, _ in debounceApply() }
+        }
+        .padding(8)
+        .background(.bar)
+    }
+
+    // MARK: - Document list
 
     private var documentList: some View {
         List {
@@ -113,6 +154,13 @@ struct DocumentsView: View {
                             onCommit: commitEditor,
                             onCancel: { editor = nil }
                         )
+                    }
+                    if editMode {
+                        AddFieldRow(onAdd: { key, value in
+                            model.addField(to: index, key: key, value: value)
+                        })
+                        .padding(.leading, 16)
+                        .padding(.vertical, 2)
                     }
                 } header: {
                     Text(documentHeader(for: model.documents[index], index: index))
@@ -130,6 +178,8 @@ struct DocumentsView: View {
         }
         return "Document \(index + 1)"
     }
+
+    // MARK: - Expansion / editing
 
     private func toggleExpansion(_ key: String) {
         if expandedKeys.contains(key) {
@@ -152,70 +202,40 @@ struct DocumentsView: View {
         self.editor = nil
     }
 
-    private func refresh() {
-        guard let coll = model.selectedCollection else { return }
-        Task { await model.select(collection: coll) }
-    }
-}
+    // MARK: - Query execution
 
-/// Find sheet: optional filter query + limit. Empty filter = match everything.
-private struct FindSheet: View {
-    @Environment(DatabaseModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    @Binding var errorMessage: String?
-
-    @State private var filter = ""
-    @State private var limit = "100"
-    @State private var isRunning = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Find Documents").font(.headline)
-            Text("Filter (query; empty matches everything)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text("Accepted: { \"user\": \"some\" } · { user: \"some\" } · user: \"some\"")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextField("Filter query", text: $filter, axis: .vertical)
-                .font(.system(.body, design: .monospaced))
-                .lineLimit(3...6)
-            HStack {
-                Text("Limit").frame(width: 44, alignment: .leading)
-                TextField("Limit (empty = no limit)", text: $limit)
-                    .textFieldStyle(.roundedBorder)
-            }
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Run") { run() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isRunning)
-            }
-        }
-        .padding()
-        .frame(width: 460)
-    }
-
-    private func run() {
-        guard !isRunning else { return }
-        isRunning = true
-        let trimmed = filter.trimmingCharacters(in: .whitespacesAndNewlines)
-        let limitValue = Int(limit.trimmingCharacters(in: .whitespacesAndNewlines))
+    private func apply() {
+        debounceTask?.cancel()
+        model.currentQuery = QuerySpec(
+            filter: trimmed(filterText),
+            sort: trimmed(sortText),
+            projection: trimmed(projectText)
+        )
         Task {
-            defer { isRunning = false }
             do {
-                _ = try await model.runFind(
-                    filter: trimmed.isEmpty ? nil : trimmed,
-                    limit: limitValue
-                )
-                dismiss()
+                _ = try await model.applyQuery()
             } catch {
                 errorMessage = error.localizedDescription
-                dismiss()
             }
         }
+    }
+
+    private func debounceApply() {
+        debounceTask?.cancel()
+        debounceTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            apply()
+        }
+    }
+
+    private func trimmed(_ string: String) -> String? {
+        let t = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
+    private func refresh() {
+        apply()
     }
 }
 
@@ -235,18 +255,15 @@ private struct UpdateSheet: View {
             Text("Filter (query)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text("Accepted: { \"user\": \"some\" } · { user: \"some\" } · user: \"some\"")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             TextField("Filter query", text: $filter, axis: .vertical)
                 .font(.system(.body, design: .monospaced))
-                .lineLimit(3...6)
+                .lineLimit(1...4)
             Text("Update operators (JSON, e.g. {\"$set\": {\"bucket\": \"young\"}})")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             TextField("Update JSON", text: $update, axis: .vertical)
                 .font(.system(.body, design: .monospaced))
-                .lineLimit(3...6)
+                .lineLimit(1...4)
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
@@ -257,7 +274,7 @@ private struct UpdateSheet: View {
             }
         }
         .padding()
-        .frame(width: 460)
+        .frame(width: 480)
     }
 
     private func run() {
@@ -278,50 +295,102 @@ private struct UpdateSheet: View {
     }
 }
 
-/// Delete Many sheet: filter query + destructive confirm.
+/// Delete sheet: previews the entries the current filter would delete, then
+/// requires explicit confirmation before deleting.
 private struct DeleteSheet: View {
     @Environment(DatabaseModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    let filter: String
     @Binding var errorMessage: String?
 
-    @State private var filter = ""
-    @State private var isRunning = false
+    @State private var preview: [BSONDocument]?
+    @State private var previewError: String?
+    @State private var isDeleting = false
+    @State private var confirmDelete = false
+
+    private var trimmedFilter: String {
+        filter.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Delete Many").font(.headline)
-            Text("Deletes every document matching this filter (query).")
+            Text("Delete Documents").font(.headline)
+            Text(trimmedFilter.isEmpty
+                 ? "Filter: (none — ALL documents match)"
+                 : "Filter: \(trimmedFilter)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TextField("Filter query", text: $filter, axis: .vertical)
-                .font(.system(.body, design: .monospaced))
-                .lineLimit(3...6)
+                .textSelection(.enabled)
+
+            Group {
+                if let error = previewError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                } else if let preview {
+                    if preview.isEmpty {
+                        Text("No documents match this filter.").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("\(preview.count) document(s) will be deleted:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 2) {
+                                ForEach(preview.indices, id: \.self) { i in
+                                    Text(BSONSupport.json(preview[i]))
+                                        .font(.system(.caption, design: .monospaced))
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                            .padding(4)
+                        }
+                        .frame(maxHeight: 220)
+                        .border(.quaternary)
+                    }
+                } else {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: 80)
+                }
+            }
+
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Delete", role: .destructive) { run() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isRunning)
+                Button("Delete \(preview?.count ?? 0)", role: .destructive) { confirmDelete = true }
+                    .disabled(isDeleting || preview == nil || preview!.isEmpty)
             }
         }
         .padding()
-        .frame(width: 460)
+        .frame(width: 540)
+        .task { await loadPreview() }
+        .alert(
+            "Delete \(preview?.count ?? 0) document(s)?",
+            isPresented: $confirmDelete
+        ) {
+            Button("Delete", role: .destructive) { Task { await delete() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone.")
+        }
     }
 
-    private func run() {
-        guard !isRunning else { return }
-        isRunning = true
-        let f = filter.trimmingCharacters(in: .whitespacesAndNewlines)
-        Task {
-            defer { isRunning = false }
-            do {
-                _ = try await model.runDelete(filter: f)
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                dismiss()
-            }
+    private func loadPreview() async {
+        do {
+            preview = try await model.previewDelete(filter: trimmedFilter, limit: 500)
+        } catch {
+            previewError = error.localizedDescription
+        }
+    }
+
+    private func delete() async {
+        isDeleting = true
+        defer { isDeleting = false }
+        do {
+            _ = try await model.runDelete(filter: trimmedFilter)
+            dismiss()
+        } catch {
+            previewError = error.localizedDescription
         }
     }
 }

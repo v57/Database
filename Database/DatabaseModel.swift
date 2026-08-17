@@ -38,6 +38,8 @@ final class DatabaseModel {
 
     var documents: [Document] = []
     var selectedDocument: Document?
+    /// The active query (filter/sort/projection) driving the document list.
+    var currentQuery = QuerySpec(filter: nil, sort: nil, projection: nil)
 
     /// Connects to the server, loads the database list, and selects the
     /// default database (config.defaultDatabase ?? first ?? "admin").
@@ -237,17 +239,6 @@ final class DatabaseModel {
         await select(collection: collection, in: selectedDatabase ?? "")
     }
 
-    /// Runs a find against the selected collection. `filter` is query text
-    /// parsed with `BSONSupport` (JSON, JS-style, or bare `key: value`);
-    /// `nil` matches everything.
-    func runFind(filter: String?, limit: Int?) async throws -> [Document] {
-        guard let session, let selectedCollection else { throw MongoDBError.notConnected }
-        let docFilter = try filter.flatMap { try BSONSupport.document(fromQuery: $0) }
-        let docs = try await session.find(in: selectedCollection, filter: docFilter, limit: limit)
-        documents = docs
-        return docs
-    }
-
     /// Runs updateMany against the selected collection and refreshes the list.
     func runUpdate(filter: String, update: String) async throws -> MongoWriteResult {
         guard let session, let selectedCollection else { throw MongoDBError.notConnected }
@@ -280,11 +271,56 @@ final class DatabaseModel {
         selectedDocument = docs[index]
     }
 
-    /// Re-runs the current (default) find so the list reflects a mutation.
+    /// Adds a new key/value field to the in-memory document at `index`.
+    func addField(to index: Int, key: String, value: BSON) {
+        guard documents.indices.contains(index), !key.isEmpty else { return }
+        updateDocument(index, at: [.key(key)], to: value)
+    }
+
+    /// Applies the current query (filter/sort/projection) to the selected
+    /// collection and stores the results in `documents`.
+    func applyQuery() async throws -> [Document] {
+        guard let session, let selectedCollection else { throw MongoDBError.notConnected }
+        let docs = try await findCurrent(in: selectedCollection, session: session)
+        documents = docs
+        return docs
+    }
+
+    /// Documents matching `filter` (capped at `limit`), for the delete preview.
+    func previewDelete(filter: String, limit: Int? = 500) async throws -> [Document] {
+        guard let session, let selectedCollection else { throw MongoDBError.notConnected }
+        let f = try BSONSupport.document(fromQuery: filter)
+        return try await session.find(in: selectedCollection, filter: f, limit: limit)
+    }
+
+    /// Runs the current query against `collection` without touching the
+    /// display list — shared by `applyQuery` and post-mutation refresh.
+    private func findCurrent(in collection: String, session: MongoConnection) async throws -> [Document] {
+        let docFilter = try currentQuery.filter.flatMap { try BSONSupport.document(fromQuery: $0) }
+        let docSort = try currentQuery.sort.flatMap { try BSONSupport.document(fromQuery: $0) }
+        let docProj = try currentQuery.projection.flatMap { try BSONSupport.document(fromQuery: $0) }
+        return try await session.find(in: collection, filter: docFilter, sort: docSort, projection: docProj)
+    }
+
+    /// Re-runs the current query so the list reflects a mutation.
     private func refreshAfterMutation(_ session: MongoConnection, _ collection: String) async {
-        if let docs = try? await session.find(in: collection, limit: 100) {
+        if let docs = try? await findCurrent(in: collection, session: session) {
             documents = docs
         }
+    }
+}
+
+/// The active query driving the document list: raw filter/sort/projection
+/// text, parsed with `QueryParser` (JSON, JS-style, or bare `key: value`).
+struct QuerySpec {
+    var filter: String?
+    var sort: String?
+    var projection: String?
+
+    var isEmpty: Bool {
+        filter?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+            && sort?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+            && projection?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
     }
 }
 

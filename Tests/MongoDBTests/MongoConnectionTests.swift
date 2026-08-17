@@ -68,6 +68,32 @@ import MongoSwift
         #expect(missing.isEmpty)
     }
 
+    @Test func findWithSortAndProjection() async throws {
+        let db = TestEnv.freshDBName("sortproj")
+        let docs: [Document] = [
+            ["name": "ann", "age": 20],
+            ["name": "bob", "age": 30],
+            ["name": "cat", "age": 40],
+        ]
+        try await TestEnv.seed(database: db, collection: "people", docs: docs)
+        defer { try? await TestEnv.drop(database: db) }
+
+        let conn = MongoConnection(config: TestEnv.config())
+        defer { try? await conn.disconnect() }
+        try await conn.connect()
+        try await conn.use(database: db)
+
+        let descending = try await conn.find(
+            in: "people",
+            sort: ["age": -1],
+            projection: ["name": 1]
+        )
+        #expect(descending.map { $0["name"] } == [.string("cat"), .string("bob"), .string("ann")])
+        // Projection keeps only `name` (+ _id); `age` is dropped.
+        #expect(descending.allSatisfy { $0["age"] == nil })
+        #expect(descending.first?["name"] == .string("cat"))
+    }
+
     @Test func updateManyUpdatesMatchingDocuments() async throws {
         let db = TestEnv.freshDBName("upd")
         let docs: [Document] = [

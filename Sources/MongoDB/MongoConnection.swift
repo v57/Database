@@ -82,12 +82,22 @@ public final class MongoConnection {
     }
 
     /// Runs a find on `collection` in the current database. `filter` defaults
-    /// to "match everything". Returns ALL matches (small local datasets); use
-    /// `limit` to cap.
-    public func find(in collection: String, filter: Document? = nil, limit: Int? = nil) async throws -> [Document] {
+    /// to "match everything"; `sort`/`projection` are optional BSON documents
+    /// (e.g. `["age": -1]`, `["name": 1]`). Returns ALL matches (small local
+    /// datasets); use `limit` to cap.
+    public func find(
+        in collection: String,
+        filter: Document? = nil,
+        sort: Document? = nil,
+        projection: Document? = nil,
+        limit: Int? = nil
+    ) async throws -> [Document] {
         let coll = try requireCollection(collection)
         do {
-            let options = limit.map { FindOptions(limit: $0) }
+            var options = FindOptions()
+            options.sort = sort
+            options.projection = projection
+            options.limit = limit
             let cursor = try await coll.find(filter ?? [:], options: options)
             return try await cursor.toArray()
         } catch {
