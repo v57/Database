@@ -1,11 +1,26 @@
 import Foundation
 import Observation
+import SwiftData
 import MongoDB
 
 /// Observable app state: the active session and the three-column navigation state.
 @Observable
 @MainActor
 final class DatabaseModel {
+    /// SwiftData context shared with the app container; persists last-opened
+    /// history used for sidebar sorting.
+    private let modelContext: ModelContext
+
+    /// db name -> last opened date
+    private var databaseLastOpened: [String: Date] = [:]
+    /// db name -> (collection name -> last opened date)
+    private var collectionLastOpened: [String: [String: Date]] = [:]
+
+    init(modelContext: ModelContext) {
+        self.modelContext = modelContext
+        loadOpenHistory()
+    }
+
     var session: MongoConnection?
     var isConnecting = false
     var statusMessage = ""
@@ -73,6 +88,7 @@ final class DatabaseModel {
             selectedCollection = nil
             documents = []
             selectedDocument = nil
+            markDatabaseOpened(database)
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -103,18 +119,94 @@ final class DatabaseModel {
     }
 
     /// Cached collections of `database`, filtered by the plain (non-$) search
-    /// terms — every term must match (AND).
+    /// terms — every term must match (AND) — then sorted most-recently-opened
+    /// first; never-opened last (alphabetical).
     func collections(for database: String) -> [String] {
         let names = collectionsByDatabase[database] ?? []
         let terms = searchTerms.collectionTerms
-        guard !terms.isEmpty else { return names }
-        return names.filter { name in
-            terms.allSatisfy { name.localizedCaseInsensitiveContains($0) }
-        }
+        let filtered = terms.isEmpty
+            ? names
+            : names.filter { name in
+                terms.allSatisfy { name.localizedCaseInsensitiveContains($0) }
+            }
+        let opened = collectionLastOpened[database] ?? [:]
+        return filtered.sorted(by: openedFirstComparator(opened))
     }
 
     /// Parsed view of the sidebar search field for the current state.
     var searchTerms: SearchTerms { SearchTerms(collectionSearch) }
+
+    // MARK: - Last-opened history (SwiftData)
+
+    private func loadOpenHistory() {
+        var dbs: [String: Date] = [:]
+        if let records = try? modelContext.fetch(FetchDescriptor<DatabaseOpenRecord>()) {
+            for r in records { dbs[r.databaseName] = r.lastOpened }
+        }
+        databaseLastOpened = dbs
+
+        var colls: [String: [String: Date]] = [:]
+        if let records = try? modelContext.fetch(FetchDescriptor<CollectionOpenRecord>()) {
+            for r in records { colls[r.databaseName, default: [:]][r.collectionName] = r.lastOpened }
+        }
+        collectionLastOpened = colls
+    }
+
+    private func markDatabaseOpened(_ database: String) {
+        let now = Date.now
+        databaseLastOpened[database] = now
+        let record: DatabaseOpenRecord
+        if let existing = try? modelContext.fetch(
+            FetchDescriptor<DatabaseOpenRecord>(
+                predicate: #Predicate { $0.databaseName == database }
+            )
+        ).first {
+            record = existing
+        } else {
+            record = DatabaseOpenRecord(databaseName: database)
+            modelContext.insert(record)
+        }
+        record.lastOpened = now
+        try? modelContext.save()
+    }
+
+    private func markCollectionOpened(_ database: String, _ collection: String) {
+        let now = Date.now
+        collectionLastOpened[database, default: [:]][collection] = now
+        let record: CollectionOpenRecord
+        if let existing = try? modelContext.fetch(
+            FetchDescriptor<CollectionOpenRecord>(
+                predicate: #Predicate {
+                    $0.databaseName == database && $0.collectionName == collection
+                }
+            )
+        ).first {
+            record = existing
+        } else {
+            record = CollectionOpenRecord(databaseName: database, collectionName: collection)
+            modelContext.insert(record)
+        }
+        record.lastOpened = now
+        try? modelContext.save()
+    }
+
+    /// Sort closure: most-recently-opened first, never-opened last (alphabetical).
+    private func openedFirstComparator(_ opened: [String: Date]) -> (String, String) -> Bool {
+        { a, b in
+            switch (opened[a], opened[b]) {
+            case let (x?, y?): return x > y
+            case (nil, _?): return false
+            case (_?, nil): return true
+            case (nil, nil):
+                return a.localizedCaseInsensitiveCompare(b) == .orderedAscending
+            }
+        }
+    }
+
+    /// Databases sorted most-recently-opened first; never-opened last.
+    var sortedDatabases: [String] {
+        databases.sorted(by: openedFirstComparator(databaseLastOpened))
+    }
 
     /// Selects a collection in an explicit database (sidebar path), switching
     /// the active database first when needed.
@@ -133,6 +225,8 @@ final class DatabaseModel {
             selectedCollection = collection
             documents = try await session.find(in: collection, limit: 100)
             statusMessage = "\(documents.count) document(s) in \(collection)"
+            markDatabaseOpened(database)
+            markCollectionOpened(database, collection)
         } catch {
             statusMessage = error.localizedDescription
         }

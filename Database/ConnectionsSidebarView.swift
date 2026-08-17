@@ -106,7 +106,7 @@ struct ConnectionsSidebarView: View {
     ///   collection (all databases are loaded on search).
     private var visibleDatabases: [String] {
         let terms = model.searchTerms
-        return model.databases.filter { db in
+        return model.sortedDatabases.filter { db in
             let dbMatches = terms.hasDatabaseTerms
                 ? terms.databaseTerms.allSatisfy { db.localizedCaseInsensitiveContains($0) }
                 : true
