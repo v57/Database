@@ -237,11 +237,12 @@ final class DatabaseModel {
         await select(collection: collection, in: selectedDatabase ?? "")
     }
 
-    /// Runs a find against the selected collection. `filter` is JSON text
-    /// parsed with `BSONSupport`; `nil` matches everything.
+    /// Runs a find against the selected collection. `filter` is query text
+    /// parsed with `BSONSupport` (JSON, JS-style, or bare `key: value`);
+    /// `nil` matches everything.
     func runFind(filter: String?, limit: Int?) async throws -> [Document] {
         guard let session, let selectedCollection else { throw MongoDBError.notConnected }
-        let docFilter = try filter.flatMap { try BSONSupport.document(fromJSON: $0) }
+        let docFilter = try filter.flatMap { try BSONSupport.document(fromQuery: $0) }
         let docs = try await session.find(in: selectedCollection, filter: docFilter, limit: limit)
         documents = docs
         return docs
@@ -250,7 +251,8 @@ final class DatabaseModel {
     /// Runs updateMany against the selected collection and refreshes the list.
     func runUpdate(filter: String, update: String) async throws -> MongoWriteResult {
         guard let session, let selectedCollection else { throw MongoDBError.notConnected }
-        let f = try BSONSupport.document(fromJSON: filter)
+        let f = try BSONSupport.document(fromQuery: filter)
+        // Update operators ($set, $inc, ...) must stay strict JSON.
         let u = try BSONSupport.document(fromJSON: update)
         let result = try await session.updateMany(in: selectedCollection, filter: f, update: u)
         statusMessage = "Updated \(result.matchedCount) matched, \(result.modifiedCount) modified"
@@ -261,7 +263,7 @@ final class DatabaseModel {
     /// Runs deleteMany against the selected collection and refreshes the list.
     func runDelete(filter: String) async throws -> MongoDeleteResult {
         guard let session, let selectedCollection else { throw MongoDBError.notConnected }
-        let f = try BSONSupport.document(fromJSON: filter)
+        let f = try BSONSupport.document(fromQuery: filter)
         let result = try await session.deleteMany(from: selectedCollection, filter: f)
         statusMessage = "Deleted \(result.deletedCount) document(s)"
         await refreshAfterMutation(session, selectedCollection)

@@ -119,10 +119,13 @@ private struct FindSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Find Documents").font(.headline)
-            Text("Filter (JSON; empty matches everything)")
+            Text("Filter (query; empty matches everything)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TextField("Filter JSON", text: $filter, axis: .vertical)
+            Text("Accepted: { \"user\": \"some\" } · { user: \"some\" } · user: \"some\"")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("Filter query", text: $filter, axis: .vertical)
                 .font(.system(.body, design: .monospaced))
                 .lineLimit(3...6)
             HStack {
@@ -177,10 +180,13 @@ private struct UpdateSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Update Many").font(.headline)
-            Text("Filter (JSON)")
+            Text("Filter (query)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TextField("Filter JSON", text: $filter, axis: .vertical)
+            Text("Accepted: { \"user\": \"some\" } · { user: \"some\" } · user: \"some\"")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("Filter query", text: $filter, axis: .vertical)
                 .font(.system(.body, design: .monospaced))
                 .lineLimit(3...6)
             Text("Update operators (JSON, e.g. {\"$set\": {\"bucket\": \"young\"}})")
@@ -232,10 +238,10 @@ private struct DeleteSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Delete Many").font(.headline)
-            Text("Deletes every document matching this filter (JSON).")
+            Text("Deletes every document matching this filter (query).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TextField("Filter JSON", text: $filter, axis: .vertical)
+            TextField("Filter query", text: $filter, axis: .vertical)
                 .font(.system(.body, design: .monospaced))
                 .lineLimit(3...6)
             HStack {
