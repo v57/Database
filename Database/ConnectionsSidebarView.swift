@@ -58,21 +58,16 @@ struct ConnectionsSidebarView: View {
 
                 if model.session != nil {
                     Section("Databases") {
-                        if model.databases.isEmpty {
-                            Text("No databases on server")
+                        if visibleDatabases.isEmpty {
+                            Text(isSearching ? "No matching collections" : "No databases on server")
                                 .foregroundStyle(.secondary)
                         }
-                        ForEach(model.databases, id: \.self) { db in
-                            DisclosureGroup(isExpanded: expandedBinding(for: db)) {
-                                let colls = model.collections(for: db)
-                                if colls.isEmpty {
-                                    Text("No collections")
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    ForEach(colls, id: \.self) { coll in
-                                        collectionRow(coll, in: db)
-                                    }
-                                }
+                        ForEach(visibleDatabases, id: \.self) { db in
+                            // While searching: force-expand every database that
+                            // has matches (the search field already triggered
+                            // loading collections for all databases).
+                            DisclosureGroup(isExpanded: isSearching ? .constant(true) : expandedBinding(for: db)) {
+                                collectionChildren(for: db)
                             } label: {
                                 Label(db, systemImage: "cylinder")
                             }
@@ -101,6 +96,34 @@ struct ConnectionsSidebarView: View {
     }
 
     // MARK: - Sidebar actions
+
+    /// True while the collection filter is active: databases are force-expanded
+    /// and databases without matches are hidden.
+    private var isSearching: Bool {
+        !model.collectionSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Databases shown in the sidebar: while searching, only those with at
+    /// least one matching collection (all databases are loaded on search).
+    private var visibleDatabases: [String] {
+        if isSearching {
+            return model.databases.filter { !model.collections(for: $0).isEmpty }
+        }
+        return model.databases
+    }
+
+    @ViewBuilder
+    private func collectionChildren(for db: String) -> some View {
+        let colls = model.collections(for: db)
+        if colls.isEmpty {
+            Text(isSearching ? "No matching collections" : "No collections")
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(colls, id: \.self) { coll in
+                collectionRow(coll, in: db)
+            }
+        }
+    }
 
     private func expandedBinding(for db: String) -> Binding<Bool> {
         Binding(
