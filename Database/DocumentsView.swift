@@ -61,7 +61,7 @@ struct DocumentsView: View {
                 Button {
                     editMode.toggle()
                 } label: {
-                    Label(editMode ? "Done" : "Edit", systemImage: editMode ? "checkmark.square" : "square.and.pencil")
+                    Label(editMode ? "Done" : "Edit", systemImage: editMode ? "checkmark.square" : "pencil")
                 }
                 .disabled(model.selectedCollection == nil)
 
@@ -114,23 +114,21 @@ struct DocumentsView: View {
     // MARK: - Query bar
 
     private var queryBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Filter", text: $filterText, prompt: Text("Filter — e.g. { user: \"ann\" }"))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Filter", text: $filterText)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { apply() }
+                    .onChange(of: filterText) { _, _ in debounceApply() }
+            }
+            TextField("Sort", text: $sortText)
                 .textFieldStyle(.roundedBorder)
-                .onSubmit { apply() }
-                .onChange(of: filterText) { _, _ in debounceApply() }
-            Divider()
-                .frame(height: 20)
-            TextField("Sort", text: $sortText, prompt: Text("Sort — age: -1"))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 150)
                 .onSubmit { apply() }
                 .onChange(of: sortText) { _, _ in debounceApply() }
-            TextField("Project", text: $projectText, prompt: Text("Project — name: 1"))
+            TextField("Project", text: $projectText)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 150)
                 .onSubmit { apply() }
                 .onChange(of: projectText) { _, _ in debounceApply() }
         }
