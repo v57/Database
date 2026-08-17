@@ -32,12 +32,12 @@ struct ContentView: View {
     @Environment(DatabaseModel.self) private var model
 
     var body: some View {
+        // Two-pane layout: sidebar (connections) + merged item-list/preview.
+        // `detail:` is the main pane in a 2-column NavigationSplitView.
         NavigationSplitView {
             ConnectionsSidebarView()
-        } content: {
-            DocumentsView()
         } detail: {
-            DocumentDetailView()
+            DocumentsView()
         }
         .navigationTitle(model.session?.config.name ?? "Database Client")
     }

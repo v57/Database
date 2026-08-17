@@ -1,8 +1,10 @@
 import SwiftUI
 import MongoDB
 
-/// Detail column: document list, full-JSON detail pane, and the
-/// Find / Update Many / Delete Many query sheets.
+/// Merged item-list + preview screen: documents render as expanded
+/// $key/$value cell rows (nested values flattened with depth indentation).
+/// Double-clicking a value cell turns it into an inline editor with a type
+/// picker. Values are color-coded: .primary for strings, .blue otherwise.
 struct DocumentsView: View {
     @Environment(DatabaseModel.self) private var model
 
@@ -10,9 +12,9 @@ struct DocumentsView: View {
     @State private var showUpdateSheet = false
     @State private var showDeleteSheet = false
     @State private var errorMessage: String?
+    @State private var editor: ValueEditorState?
 
     var body: some View {
-        @Bindable var model = model
         VStack(spacing: 0) {
             Group {
                 if model.selectedCollection == nil {
@@ -28,13 +30,7 @@ struct DocumentsView: View {
                         description: Text("No documents in this collection — try Find with a filter.")
                     )
                 } else {
-                    List(model.documents, id: \.self, selection: $model.selectedDocument) { doc in
-                        Text(BSONSupport.json(doc))
-                            .font(.system(.body, design: .monospaced))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                    .listStyle(.inset)
+                    documentList
                 }
             }
             if !model.statusMessage.isEmpty {
@@ -100,13 +96,56 @@ struct DocumentsView: View {
         }
     }
 
+    private var documentList: some View {
+        List {
+            ForEach(model.documents.indices, id: \.self) { index in
+                Section {
+                    ForEach(FieldTree.rows(for: model.documents[index], docIndex: index)) { row in
+                        KeyValueRow(
+                            row: row,
+                            editor: editor,
+                            onStartEdit: { startEditing(row) },
+                            onCommit: commitEditor,
+                            onCancel: { editor = nil }
+                        )
+                    }
+                } header: {
+                    Text(documentHeader(for: model.documents[index], index: index))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .listStyle(.inset)
+    }
+
+    private func documentHeader(for doc: BSONDocument, index: Int) -> String {
+        if let id = doc["_id"], !BSONSupport.displayString(id).isEmpty {
+            return "\(BSONSupport.displayString(id)) · #\(index + 1)"
+        }
+        return "Document \(index + 1)"
+    }
+
+    private func startEditing(_ row: FieldRow) {
+        commitEditor() // commit any in-flight edit before switching targets
+        guard !row.bson.isContainer else { return } // containers expand, not edit
+        editor = ValueEditorState(docIndex: row.docIndex, path: row.path, bson: row.bson)
+    }
+
+    private func commitEditor() {
+        guard let editor,
+              let value = editor.committedValue() else { return } // keep open on parse failure
+        model.updateDocument(editor.docIndex, at: editor.path, to: value)
+        self.editor = nil
+    }
+
     private func refresh() {
         guard let coll = model.selectedCollection else { return }
         Task { await model.select(collection: coll) }
     }
 }
 
-/// Find sheet: optional filter JSON + limit. Empty filter = match everything.
+/// Find sheet: optional filter query + limit. Empty filter = match everything.
 private struct FindSheet: View {
     @Environment(DatabaseModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -167,7 +206,7 @@ private struct FindSheet: View {
     }
 }
 
-/// Update Many sheet: filter JSON + update-operators JSON.
+/// Update Many sheet: filter query + update-operators JSON.
 private struct UpdateSheet: View {
     @Environment(DatabaseModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -226,7 +265,7 @@ private struct UpdateSheet: View {
     }
 }
 
-/// Delete Many sheet: filter JSON + destructive confirm.
+/// Delete Many sheet: filter query + destructive confirm.
 private struct DeleteSheet: View {
     @Environment(DatabaseModel.self) private var model
     @Environment(\.dismiss) private var dismiss

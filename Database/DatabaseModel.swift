@@ -270,6 +270,16 @@ final class DatabaseModel {
         return result
     }
 
+    /// Replaces one value in the in-memory document at `index` (local edit
+    /// only — not persisted to the server until write-back is added).
+    func updateDocument(_ index: Int, at path: [BSONPathSegment], to value: BSON) {
+        guard documents.indices.contains(index) else { return }
+        var docs = documents
+        docs[index] = BSONPath.setting(value, at: path, in: docs[index])
+        documents = docs
+        selectedDocument = docs[index]
+    }
+
     /// Re-runs the current (default) find so the list reflects a mutation.
     private func refreshAfterMutation(_ session: MongoConnection, _ collection: String) async {
         if let docs = try? await session.find(in: collection, limit: 100) {
