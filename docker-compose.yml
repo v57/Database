@@ -1,0 +1,57 @@
+# Local development databases for the Database app.
+# Usage:
+#   docker compose up -d --wait     # start and wait until healthy
+#   docker compose down             # stop (data persists in named volumes)
+#   docker compose down -v          # stop and DELETE data
+name: database
+
+services:
+  mongodb:
+    image: mongo:8
+    container_name: database-mongodb
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping: 1})"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  postgres:
+    image: postgres:18
+    container_name: database-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # postgres:18+ layout: single mount at PGDATA's parent so pg_upgrade works
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:8
+    container_name: database-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  mongodb-data:
+  postgres-data:
+  redis-data:
