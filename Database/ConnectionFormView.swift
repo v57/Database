@@ -22,6 +22,7 @@ struct ConnectionFormView: View {
     @State private var password: String
     @State private var authSource: String
     @State private var defaultDatabase: String
+    @State private var directConnection: Bool
     @State private var errorMessage: String?
 
     init(config: ConnectionConfig? = nil, record: ConnectionRecord? = nil) {
@@ -36,6 +37,7 @@ struct ConnectionFormView: View {
         _password = State(initialValue: "")
         _authSource = State(initialValue: c?.authSource ?? "")
         _defaultDatabase = State(initialValue: c?.defaultDatabase ?? "")
+        _directConnection = State(initialValue: c?.directConnection ?? false)
     }
 
     private var isEditing: Bool { record != nil }
@@ -53,7 +55,7 @@ struct ConnectionFormView: View {
             Section("Connection") {
                 TextField("Name", text: $name)
                 TextField("Host", text: $host)
-                TextField("Port", value: $port, format: .number)
+                TextField("Port", value: $port, format: .number.grouping(.never))
             }
             Section("Authentication (optional)") {
                 TextField("Username", text: $username)
@@ -62,6 +64,8 @@ struct ConnectionFormView: View {
             }
             Section("Startup") {
                 TextField("Default Database", text: $defaultDatabase)
+                Toggle("Direct connect", isOn: $directConnection)
+                    .help("Connect directly to this server, bypassing topology discovery.")
             }
             if let errorMessage {
                 Text(errorMessage)
@@ -92,7 +96,8 @@ struct ConnectionFormView: View {
             username: emptyToNil(username),
             password: emptyToNil(password),
             authSource: emptyToNil(authSource),
-            defaultDatabase: emptyToNil(defaultDatabase)
+            defaultDatabase: emptyToNil(defaultDatabase),
+            directConnection: directConnection
         )
 
         let saved: ConnectionRecord
@@ -111,6 +116,7 @@ struct ConnectionFormView: View {
                 }
                 saved.authSource = newConfig.authSource
                 saved.defaultDatabase = newConfig.defaultDatabase
+                saved.directConnection = newConfig.directConnection
             } else {
                 // Create: new @Model objects are NOT registered by init —
                 // insert is required or save() silently persists nothing.

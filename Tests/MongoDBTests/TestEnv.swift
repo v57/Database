@@ -10,7 +10,12 @@ enum TestEnv {
     static let port: UInt16 = 27017
 
     static func config() -> ConnectionConfig {
-        ConnectionConfig(name: "test", host: host, port: port)
+        // directConnection: the local server is a replica set advertising
+        // docker-compose hostnames (mongo/mongo2/mongo3) that don't resolve
+        // on the host. Bypass topology discovery and talk to 127.0.0.1
+        // directly, otherwise every operation hits a 30s server-selection
+        // timeout trying to resolve those names.
+        ConnectionConfig(name: "test", host: host, port: port, directConnection: true)
     }
 
     static func freshDBName(_ label: String) -> String {
@@ -20,7 +25,7 @@ enum TestEnv {
     /// v1.3.1 requires an explicit NIO EventLoopGroup.
     static func makeClient() throws -> (MongoClient, MultiThreadedEventLoopGroup) {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        let client = try MongoClient("mongodb://\(host):\(port)", using: group)
+        let client = try MongoClient("mongodb://\(host):\(port)/?directConnection=true", using: group)
         return (client, group)
     }
 

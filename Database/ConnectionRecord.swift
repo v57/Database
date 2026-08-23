@@ -13,9 +13,11 @@ final class ConnectionRecord {
     var password: String?
     var authSource: String?
     var defaultDatabase: String?
+    var directConnection: Bool = false
 
     init(name: String, host: String, port: Int, username: String? = nil,
-         password: String? = nil, authSource: String? = nil, defaultDatabase: String? = nil) {
+         password: String? = nil, authSource: String? = nil, defaultDatabase: String? = nil,
+         directConnection: Bool = false) {
         self.name = name
         self.host = host
         self.port = port
@@ -23,6 +25,7 @@ final class ConnectionRecord {
         self.password = password
         self.authSource = authSource
         self.defaultDatabase = defaultDatabase
+        self.directConnection = directConnection
     }
 
     /// Maps the persisted record to the driver-facing connection configuration.
@@ -34,7 +37,8 @@ final class ConnectionRecord {
             username: username,
             password: password,
             authSource: authSource,
-            defaultDatabase: defaultDatabase
+            defaultDatabase: defaultDatabase,
+            directConnection: directConnection
         )
     }
 
@@ -47,7 +51,8 @@ final class ConnectionRecord {
             username: config.username,
             password: config.password,
             authSource: config.authSource,
-            defaultDatabase: config.defaultDatabase
+            defaultDatabase: config.defaultDatabase,
+            directConnection: config.directConnection
         )
     }
 }

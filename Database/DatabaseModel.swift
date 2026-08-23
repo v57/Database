@@ -13,8 +13,8 @@ final class DatabaseModel {
 
     /// db name -> last opened date
     private var databaseLastOpened: [String: Date] = [:]
-    /// db name -> (collection name -> last opened date)
-    private var collectionLastOpened: [String: [String: Date]] = [:]
+    /// db name -> (collection name -> last query-execution date)
+    private var collectionLastUsed: [String: [String: Date]] = [:]
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -121,8 +121,8 @@ final class DatabaseModel {
     }
 
     /// Cached collections of `database`, filtered by the plain (non-$) search
-    /// terms — every term must match (AND) — then sorted most-recently-opened
-    /// first; never-opened last (alphabetical).
+    /// terms — every term must match (AND) — then sorted by last query
+    /// execution, most-recent first; never-used last (alphabetical).
     func collections(for database: String) -> [String] {
         let names = collectionsByDatabase[database] ?? []
         let terms = searchTerms.collectionTerms
@@ -131,14 +131,14 @@ final class DatabaseModel {
             : names.filter { name in
                 terms.allSatisfy { name.localizedCaseInsensitiveContains($0) }
             }
-        let opened = collectionLastOpened[database] ?? [:]
-        return filtered.sorted(by: openedFirstComparator(opened))
+        let used = collectionLastUsed[database] ?? [:]
+        return filtered.sorted(by: recentFirstComparator(used))
     }
 
     /// Parsed view of the sidebar search field for the current state.
     var searchTerms: SearchTerms { SearchTerms(collectionSearch) }
 
-    // MARK: - Last-opened history (SwiftData)
+    // MARK: - Open/usage history (SwiftData)
 
     private func loadOpenHistory() {
         var dbs: [String: Date] = [:]
@@ -149,9 +149,9 @@ final class DatabaseModel {
 
         var colls: [String: [String: Date]] = [:]
         if let records = try? modelContext.fetch(FetchDescriptor<CollectionOpenRecord>()) {
-            for r in records { colls[r.databaseName, default: [:]][r.collectionName] = r.lastOpened }
+            for r in records { colls[r.databaseName, default: [:]][r.collectionName] = r.lastUsed }
         }
-        collectionLastOpened = colls
+        collectionLastUsed = colls
     }
 
     private func markDatabaseOpened(_ database: String) {
@@ -172,9 +172,10 @@ final class DatabaseModel {
         try? modelContext.save()
     }
 
-    private func markCollectionOpened(_ database: String, _ collection: String) {
+    /// Records a query execution against `collection` for sidebar sorting.
+    private func markCollectionUsed(_ database: String, _ collection: String) {
         let now = Date.now
-        collectionLastOpened[database, default: [:]][collection] = now
+        collectionLastUsed[database, default: [:]][collection] = now
         let record: CollectionOpenRecord
         if let existing = try? modelContext.fetch(
             FetchDescriptor<CollectionOpenRecord>(
@@ -188,14 +189,14 @@ final class DatabaseModel {
             record = CollectionOpenRecord(databaseName: database, collectionName: collection)
             modelContext.insert(record)
         }
-        record.lastOpened = now
+        record.lastUsed = now
         try? modelContext.save()
     }
 
-    /// Sort closure: most-recently-opened first, never-opened last (alphabetical).
-    private func openedFirstComparator(_ opened: [String: Date]) -> (String, String) -> Bool {
+    /// Sort closure: most-recent date first, never-seen last (alphabetical).
+    private func recentFirstComparator(_ dates: [String: Date]) -> (String, String) -> Bool {
         { a, b in
-            switch (opened[a], opened[b]) {
+            switch (dates[a], dates[b]) {
             case let (x?, y?): return x > y
             case (nil, _?): return false
             case (_?, nil): return true
@@ -207,7 +208,7 @@ final class DatabaseModel {
 
     /// Databases sorted most-recently-opened first; never-opened last.
     var sortedDatabases: [String] {
-        databases.sorted(by: openedFirstComparator(databaseLastOpened))
+        databases.sorted(by: recentFirstComparator(databaseLastOpened))
     }
 
     /// Selects a collection in an explicit database (sidebar path), switching
@@ -227,8 +228,9 @@ final class DatabaseModel {
             selectedCollection = collection
             documents = try await session.find(in: collection, limit: 100)
             statusMessage = "\(documents.count) document(s) in \(collection)"
+            // Selecting is "opening", not usage — only query execution
+            // (applyQuery) bumps the sidebar sort timestamp.
             markDatabaseOpened(database)
-            markCollectionOpened(database, collection)
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -283,6 +285,8 @@ final class DatabaseModel {
         guard let session, let selectedCollection else { throw MongoDBError.notConnected }
         let docs = try await findCurrent(in: selectedCollection, session: session)
         documents = docs
+        // A successful query execution counts as collection usage.
+        markCollectionUsed(selectedDatabase ?? "", selectedCollection)
         return docs
     }
 

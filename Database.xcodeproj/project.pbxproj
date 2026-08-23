@@ -8,13 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		2669A0EF3031C45000C52779 /* Database in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0EE3031C45000C52779 /* Database */; };
-		26A4A6AB303375AF00D4437D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 26A4A6AA303375AF00D4437D /* AppIcon.icon */; };
+		267577B9303733DC00FB9989 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 267577B8303733DC00FB9989 /* AppIcon.icon */; };
 		A1A1A1A1A1A1A1A1A1A1A1A1 /* MongoDB in Frameworks */ = {isa = PBXBuildFile; productRef = B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* Database.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Database.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		26A4A6AA303375AF00D4437D /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		267577B8303733DC00FB9989 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -39,8 +39,8 @@
 		000000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
+				267577B8303733DC00FB9989 /* AppIcon.icon */,
 				000000000000000000000010 /* Database */,
-				26A4A6AA303375AF00D4437D /* AppIcon.icon */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -119,7 +119,7 @@
 		000000000000000140000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
-				26A4A6AB303375AF00D4437D /* AppIcon.icon in Resources */,
+				267577B9303733DC00FB9989 /* AppIcon.icon in Resources */,
 			);
 		};
 /* End PBXResourcesBuildPhase section */

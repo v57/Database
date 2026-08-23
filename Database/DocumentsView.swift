@@ -28,7 +28,9 @@ struct DocumentsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            queryBar
+            if model.selectedCollection != nil {
+                queryBar
+            }
             Group {
                 if model.selectedCollection == nil {
                     ContentUnavailableView(
@@ -139,10 +141,18 @@ struct DocumentsView: View {
     // MARK: - Document list
 
     private var documentList: some View {
-        List {
-            ForEach(model.documents.indices, id: \.self) { index in
+        // Snapshot (index, document) pairs once per body evaluation. Re-indexing
+        // the live `model.documents` array inside the ForEach builder crashes
+        // (index out of range) when the array is replaced with a shorter one
+        // mid-diff — debounced query apply, collection switch, or post-mutation
+        // refresh all replace the array while the List is still diffing.
+        let sections = model.documents.enumerated().map {
+            DocumentSection(index: $0.offset, document: $0.element)
+        }
+        return List {
+            ForEach(sections) { section in
                 Section {
-                    ForEach(FieldTree.rows(for: model.documents[index], docIndex: index, expandedKeys: expandedKeys)) { row in
+                    ForEach(FieldTree.rows(for: section.document, docIndex: section.index, expandedKeys: expandedKeys)) { row in
                         KeyValueRow(
                             row: row,
                             editor: editor,
@@ -155,13 +165,13 @@ struct DocumentsView: View {
                     }
                     if editMode {
                         AddFieldRow(onAdd: { key, value in
-                            model.addField(to: index, key: key, value: value)
+                            model.addField(to: section.index, key: key, value: value)
                         })
                         .padding(.leading, 16)
                         .padding(.vertical, 2)
                     }
                 } header: {
-                    Text(documentHeader(for: model.documents[index], index: index))
+                    Text(documentHeader(for: section.document, index: section.index))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -234,6 +244,21 @@ struct DocumentsView: View {
 
     private func refresh() {
         apply()
+    }
+}
+
+/// One document section in the list: a snapshot of (index, document) captured
+/// once per body evaluation. Identified by `id` so rows/headers never re-index
+/// the live `model.documents` array (which crashes when it shrinks mid-diff).
+private struct DocumentSection: Identifiable {
+    let id: Int
+    let index: Int
+    let document: BSONDocument
+
+    init(index: Int, document: BSONDocument) {
+        self.id = index
+        self.index = index
+        self.document = document
     }
 }
 

@@ -14,10 +14,15 @@ public struct ConnectionConfig: Codable, Hashable, Identifiable, Sendable {
     public var authSource: String?
     /// Database preselected after connect (UI convenience, NOT encoded in the URI).
     public var defaultDatabase: String?
+    /// When true, connects directly to the single server, bypassing topology
+    /// discovery (SRV lookups / replica-set discovery). Encoded as
+    /// `?directConnection=true` in the URI.
+    public var directConnection: Bool
 
     public init(id: UUID = UUID(), name: String, host: String, port: UInt16 = 27017,
                 username: String? = nil, password: String? = nil,
-                authSource: String? = nil, defaultDatabase: String? = nil) {
+                authSource: String? = nil, defaultDatabase: String? = nil,
+                directConnection: Bool = false) {
         self.id = id
         self.name = name
         self.host = host
@@ -26,6 +31,7 @@ public struct ConnectionConfig: Codable, Hashable, Identifiable, Sendable {
         self.password = password
         self.authSource = authSource
         self.defaultDatabase = defaultDatabase
+        self.directConnection = directConnection
     }
 
     /// mongodb:// URI. Path is intentionally omitted (defaultDatabase is a UI prefill,
@@ -40,9 +46,16 @@ public struct ConnectionConfig: Codable, Hashable, Identifiable, Sendable {
             s += "@"
         }
         s += "\(host):\(port)"
+        var query: [String] = []
         if let a = authSource, !a.isEmpty {
             let enc = a.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? a
-            s += "/?authSource=\(enc)"
+            query.append("authSource=\(enc)")
+        }
+        if directConnection {
+            query.append("directConnection=true")
+        }
+        if !query.isEmpty {
+            s += "/?" + query.joined(separator: "&")
         }
         return s
     }

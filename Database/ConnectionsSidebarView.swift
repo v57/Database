@@ -19,60 +19,58 @@ struct ConnectionsSidebarView: View {
 
     var body: some View {
         @Bindable var model = model
-        VStack(spacing: 0) {
+        List {
+            Section {
+                if records.isEmpty {
+                    Text("No saved connections — use + to add one.").foregroundStyle(.secondary)
+                }
+                ForEach(records) { record in
+                    ConnectionRow(record: record, isActive: isActive(record))
+                        .contentShape(Rectangle())
+                        .onTapGesture { selectConnection(record) }
+                        .listRowBackground(
+                            selectedRecordID == record.id
+                            ? Color.accentColor.opacity(0.12) : nil
+                        )
+                        .contextMenu {
+                            Button("Connect") { selectConnection(record) }
+                            Button("Disconnect") {
+                                Task { await model.disconnect() }
+                            }
+                            .disabled(model.session == nil)
+                            Divider()
+                            Button("Edit…") { editingRecord = record }
+                            Button("Delete", role: .destructive) { delete(record) }
+                        }
+                }
+            }
+            
             if model.session != nil {
-                TextField("Filter collections… ($name searches databases)", text: $model.collectionSearch)
+                Section("Databases") {
+                    if visibleDatabases.isEmpty {
+                        emptyDatabasesText.foregroundStyle(.secondary)
+                    }
+                    ForEach(visibleDatabases, id: \.self) { db in
+                        // While searching: force-expand every database that
+                        // has matches (the search field already triggered
+                        // loading collections for all databases).
+                        DisclosureGroup(isExpanded: isSearching ? .constant(true) : expandedBinding(for: db)) {
+                            collectionChildren(for: db)
+                        } label: {
+                            Label(db, systemImage: "cylinder")
+                        }
+                    }
+                }
+            }
+        }.safeAreaBar(edge: .top) {
+            if model.session != nil {
+                TextField("Search", text: $model.collectionSearch)
                     .textFieldStyle(.roundedBorder)
                     .padding(.horizontal)
                     .padding(.vertical, 6)
                     .onChange(of: model.collectionSearch) { _, _ in
                         Task { await model.loadAllCollections() }
                     }
-            }
-            List {
-                Section("Connections") {
-                    if records.isEmpty {
-                        Text("No saved connections — use + to add one.")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(records) { record in
-                        ConnectionRow(record: record, isActive: isActive(record))
-                            .contentShape(Rectangle())
-                            .onTapGesture { selectConnection(record) }
-                            .listRowBackground(
-                                selectedRecordID == record.id
-                                    ? Color.accentColor.opacity(0.12) : nil
-                            )
-                            .contextMenu {
-                                Button("Connect") { selectConnection(record) }
-                                Button("Disconnect") {
-                                    Task { await model.disconnect() }
-                                }
-                                .disabled(model.session == nil)
-                                Divider()
-                                Button("Edit…") { editingRecord = record }
-                                Button("Delete", role: .destructive) { delete(record) }
-                            }
-                    }
-                }
-
-                if model.session != nil {
-                    Section("Databases") {
-                        if visibleDatabases.isEmpty {
-                            emptyDatabasesText.foregroundStyle(.secondary)
-                        }
-                        ForEach(visibleDatabases, id: \.self) { db in
-                            // While searching: force-expand every database that
-                            // has matches (the search field already triggered
-                            // loading collections for all databases).
-                            DisclosureGroup(isExpanded: isSearching ? .constant(true) : expandedBinding(for: db)) {
-                                collectionChildren(for: db)
-                            } label: {
-                                Label(db, systemImage: "cylinder")
-                            }
-                        }
-                    }
-                }
             }
         }
         .navigationSplitViewColumnWidth(min: 200, ideal: 250)
@@ -197,15 +195,8 @@ private struct ConnectionRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(isActive ? Color.green : Color.secondary.opacity(0.35))
-                .frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(record.name)
-                Text("\(record.host):\(record.port)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Circle().fill(isActive ? Color.green : Color.secondary.opacity(0.35)).frame(width: isActive ? 7 : 5, height: isActive ? 7 : 5)
+            Text(record.name)
         }
     }
 }

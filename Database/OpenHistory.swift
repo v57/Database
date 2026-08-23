@@ -1,8 +1,9 @@
 import Foundation
 import SwiftData
 
-/// Last-opened timestamps for sidebar sorting. Keyed by database/collection
-/// names (global across connections — a dev tool for a local server).
+/// Last-opened/last-used timestamps for sidebar sorting. Keyed by
+/// database/collection names (global across connections — a dev tool for a
+/// local server).
 @Model
 final class DatabaseOpenRecord {
     var databaseName: String
@@ -18,11 +19,14 @@ final class DatabaseOpenRecord {
 final class CollectionOpenRecord {
     var databaseName: String
     var collectionName: String
-    var lastOpened: Date
+    /// When a query was last executed against this collection. The
+    /// original name (`lastOpened`) lets existing stores migrate.
+    @Attribute(originalName: "lastOpened")
+    var lastUsed: Date
 
-    init(databaseName: String, collectionName: String, lastOpened: Date = .now) {
+    init(databaseName: String, collectionName: String, lastUsed: Date = .now) {
         self.databaseName = databaseName
         self.collectionName = collectionName
-        self.lastOpened = lastOpened
+        self.lastUsed = lastUsed
     }
 }
