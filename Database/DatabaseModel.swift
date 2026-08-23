@@ -43,7 +43,6 @@ import SwiftData
   /// default database (config.defaultDatabase ?? first ?? "admin").
   func connect(_ config: ConnectionConfig) async {
     await disconnect()
-
     let conn = MongoConnection(config: config)
     isConnecting = true
     statusMessage = "Connecting to \(config.host):\(config.port)…"

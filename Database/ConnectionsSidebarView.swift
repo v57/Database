@@ -19,16 +19,20 @@ struct ConnectionsSidebarView: View {
 
   var body: some View {
     @Bindable var model = model
-    List {
-      Section {
-        if records.isEmpty {
-          Text("No saved connections — use + to add one.").foregroundStyle(.secondary)
-        }
-        ForEach(records) { record in
-          ConnectionRow(record: record, isActive: isActive(record)).contentShape(Rectangle())
-            .onTapGesture { selectConnection(record) }.listRowBackground(
-              selectedRecordID == record.id ? Color.accentColor.opacity(0.12) : nil
-            ).contextMenu {
+    ScrollView {
+      LazyVStack {
+        Section {
+          if records.isEmpty {
+            Text("No saved connections — use + to add one.").foregroundStyle(.secondary)
+          }
+          ForEach(records) { record in
+            Button {
+              selectConnection(record)
+            } label: {
+              ConnectionRow(record: record, isActive: isActive(record)).frame(
+                maxWidth: .infinity, alignment: .leading
+              ).background(.black.opacity(0.001))
+            }.buttonStyle(.plain).contextMenu {
               Button("Connect") { selectConnection(record) }
               Button("Disconnect") { Task { await model.disconnect() } }.disabled(
                 model.session == nil)
@@ -36,43 +40,60 @@ struct ConnectionsSidebarView: View {
               Button("Edit…") { editingRecord = record }
               Button("Delete", role: .destructive) { delete(record) }
             }
-        }
-      }
-
-      if model.session != nil {
-        Section("Databases") {
-          if visibleDatabases.isEmpty { emptyDatabasesText.foregroundStyle(.secondary) }
-          ForEach(visibleDatabases, id: \.self) { db in
-            // While searching: force-expand every database that
-            // has matches (the search field already triggered
-            // loading collections for all databases).
-            DisclosureGroup(isExpanded: isSearching ? .constant(true) : expandedBinding(for: db)) {
-              collectionChildren(for: db)
-            } label: {
-              Label(db, systemImage: "cylinder")
-            }
           }
+        } header: {
+          HStack {
+            Text("Connections")
+              .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Add", systemImage: "plus") {
+              showAddSheet = true
+            }.buttonStyle(.plain).labelStyle(.iconOnly)
+              .help("Add Connection")
+          }.foregroundStyle(.secondary).font(.caption)
+            .padding(.horizontal, 8)
+        }
+        
+        if model.session != nil {
+          Section {
+            if visibleDatabases.isEmpty { emptyDatabasesText.foregroundStyle(.secondary) }
+            ForEach(visibleDatabases, id: \.self) { db in
+              // While searching: force-expand every database that
+              // has matches (the search field already triggered
+              // loading collections for all databases).
+              let isExpanded = isSearching ? .constant(true) : expandedBinding(for: db)
+              Button {
+                withAnimation(.smooth(duration: 0.25)) {
+                  isExpanded.wrappedValue.toggle()
+                }
+              } label: {
+                Label(db, systemImage: "cylinder.split.1x2.fill")
+                  .tint(isExpanded.wrappedValue ? .blue : .secondary)
+              }.buttonStyle(.plain)
+              if isExpanded.wrappedValue {
+                collectionChildren(for: db)
+                  .transition(.blurReplace)
+              }
+            }
+          } header: {
+            Text("Databases")
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .foregroundStyle(.secondary).font(.caption)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+          }.transition(.blurReplace)
         }
       }
-    }.safeAreaBar(edge: .top) {
-      if model.session != nil {
-        TextField("Search", text: $model.collectionSearch).textFieldStyle(.roundedBorder).padding(
-          .horizontal
-        ).padding(.vertical, 6).onChange(of: model.collectionSearch) { _, _ in
-          Task { await model.loadAllCollections() }
-        }
-      }
-    }.navigationSplitViewColumnWidth(min: 200, ideal: 250).toolbar {
-      ToolbarItem {
-        Button {
-          showAddSheet = true
-        } label: {
-          Label("Add Connection", systemImage: "plus")
-        }.help("Add Connection")
-      }
-    }.sheet(isPresented: $showAddSheet) { ConnectionFormView() }.sheet(item: $editingRecord) {
+    }.safeAreaPadding(.horizontal, 10).searchable(text: $model.collectionSearch, placement: .sidebar)
+      .navigationSplitViewColumnWidth(min: 200, ideal: 250).sheet(isPresented: $showAddSheet) { ConnectionFormView() }.sheet(item: $editingRecord) {
       record in ConnectionFormView(record: record)
-    }
+    }.animation(.smooth(duration: 0.25), value: model.session != nil).animation(
+      .smooth(duration: 0.25), value: model.databases.count)
+    .task(id: model.collectionSearch) {
+      do {
+        try await Task.sleep(for: .milliseconds(100))
+        await model.loadAllCollections()
+      } catch { }
+    }.labelStyle(SidebarLabelStyle())
   }
 
   // MARK: - Sidebar actions
@@ -131,9 +152,11 @@ struct ConnectionsSidebarView: View {
 
   private func collectionRow(_ coll: String, in db: String) -> some View {
     let isSelected = model.selectedCollection == coll && model.selectedDatabase == db
-    return Label(coll, systemImage: "shippingbox").contentShape(Rectangle()).onTapGesture {
+    return Label(coll, systemImage: "tablecells.fill")
+      .tint(isSelected ? .blue : .secondary)
+      .onTapGesture {
       Task { await model.select(collection: coll, in: db) }
-    }.listRowBackground(isSelected ? Color.accentColor.opacity(0.12) : nil)
+    }
   }
 
   private func selectConnection(_ record: ConnectionRecord) {
@@ -163,12 +186,30 @@ struct ConnectionsSidebarView: View {
 private struct ConnectionRow: View {
   let record: ConnectionRecord
   let isActive: Bool
-
+  
   var body: some View {
     HStack(spacing: 8) {
-      Circle().fill(isActive ? Color.green : Color.secondary.opacity(0.35)).frame(
-        width: isActive ? 7 : 5, height: isActive ? 7 : 5)
-      Text(record.name)
+      Label(record.name, systemImage: isActive ? "wifi" : "wifi.slash")
+        .tint(isActive ? .blue : .secondary)
     }
   }
+}
+
+struct SidebarLabelStyle: LabelStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    HStack(alignment: .firstTextBaseline) {
+      configuration.icon.foregroundStyle(.tint)
+        .contentTransition(.symbolEffect)
+        .frame(width: 16)
+      configuration.title
+        .contentTransition(.numericText())
+    }.padding(.horizontal, 8)
+      .padding(.vertical, 4)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(RoundedRectangle(cornerRadius: 8).fill(.primary.opacity(0.05)))
+  }
+}
+
+#Preview {
+  ContentView()
 }
