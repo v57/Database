@@ -1,4 +1,6 @@
 import MongoDB
+import PostgreSQL
+import Redis
 import SwiftData
 import SwiftUI
 
@@ -23,6 +25,17 @@ struct ContentView: View {
     _model = State(initialValue: DatabaseModel(modelContext: container.mainContext))
   }
 
+  /// Title shows the active connection name, or the engine hint when idle.
+  private var title: String {
+    if let alternateSession = model.alternateSession {
+      switch alternateSession {
+      case .postgresql(let c): return c.config.name
+      case .redis(let c): return c.config.name
+      }
+    }
+    return model.session?.config.name ?? "Database Client"
+  }
+
   var body: some View {
     // Two-pane layout: sidebar (connections) + merged item-list/preview.
     // `detail:` is the main pane in a 2-column NavigationSplitView.
@@ -30,7 +43,7 @@ struct ContentView: View {
       ConnectionsSidebarView()
     } detail: {
       DocumentsView()
-    }.navigationTitle(model.session?.config.name ?? "Database Client")
+    }.navigationTitle(title)
       .environment(model).modelContainer(container)
   }
 }

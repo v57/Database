@@ -28,7 +28,8 @@ struct DocumentsView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      if model.selectedCollection != nil { queryBar }
+      // Query bar is MongoDB-only for now; SQL/Redis selections show a hint.
+      if model.selectedCollection != nil && model.session != nil { queryBar }
       Group {
         if model.selectedCollection == nil {
           ContentUnavailableView(
@@ -49,29 +50,31 @@ struct DocumentsView: View {
       }
     }.toolbar {
       ToolbarItemGroup {
-        Button {
-          editMode.toggle()
-        } label: {
-          Label(editMode ? "Done" : "Edit", systemImage: editMode ? "checkmark.square" : "pencil")
-        }.disabled(model.selectedCollection == nil)
+        if model.session != nil {
+          Button {
+            editMode.toggle()
+          } label: {
+            Label(editMode ? "Done" : "Edit", systemImage: editMode ? "checkmark.square" : "pencil")
+          }.disabled(model.selectedCollection == nil)
 
-        Button {
-          showDeleteSheet = true
-        } label: {
-          Label("Delete…", systemImage: "trash")
-        }.disabled(model.selectedCollection == nil)
+          Button {
+            showDeleteSheet = true
+          } label: {
+            Label("Delete…", systemImage: "trash")
+          }.disabled(model.selectedCollection == nil)
 
-        Button {
-          showUpdateSheet = true
-        } label: {
-          Label("Update Many…", systemImage: "wand.and.stars")
-        }.disabled(model.selectedCollection == nil)
+          Button {
+            showUpdateSheet = true
+          } label: {
+            Label("Update Many…", systemImage: "wand.and.stars")
+          }.disabled(model.selectedCollection == nil)
 
-        Button {
-          refresh()
-        } label: {
-          Label("Refresh", systemImage: "arrow.clockwise")
-        }.disabled(model.selectedCollection == nil)
+          Button {
+            refresh()
+          } label: {
+            Label("Refresh", systemImage: "arrow.clockwise")
+          }.disabled(model.selectedCollection == nil)
+        }
       }
     }.sheet(isPresented: $showUpdateSheet) { UpdateSheet(errorMessage: $errorMessage) }.sheet(
       isPresented: $showDeleteSheet

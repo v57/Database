@@ -10,6 +10,8 @@
 		2669A0EF3031C45000C52779 /* Database in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0EE3031C45000C52779 /* Database */; };
 		267577B9303733DC00FB9989 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 267577B8303733DC00FB9989 /* AppIcon.icon */; };
 		A1A1A1A1A1A1A1A1A1A1A1A1 /* MongoDB in Frameworks */ = {isa = PBXBuildFile; productRef = B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */; };
+		E1E1E1E1E1E1E1E1E1E1E1E1 /* PostgreSQL in Frameworks */ = {isa = PBXBuildFile; productRef = C1C1C1C1C1C1C1C1C1C1C1C1 /* PostgreSQL */; };
+		F1F1F1F1F1F1F1F1F1F1F1F1 /* Redis in Frameworks */ = {isa = PBXBuildFile; productRef = D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +33,8 @@
 			files = (
 				2669A0EF3031C45000C52779 /* Database in Frameworks */,
 				A1A1A1A1A1A1A1A1A1A1A1A1 /* MongoDB in Frameworks */,
+				E1E1E1E1E1E1E1E1E1E1E1E1 /* PostgreSQL in Frameworks */,
+				F1F1F1F1F1F1F1F1F1F1F1F1 /* Redis in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -73,6 +77,8 @@
 			packageProductDependencies = (
 				2669A0EE3031C45000C52779 /* Database */,
 				B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */,
+				C1C1C1C1C1C1C1C1C1C1C1C1 /* PostgreSQL */,
+				D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */,
 			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* Database.app */;
@@ -297,6 +303,7 @@
 				SUPPORTED_PLATFORMS = macosx;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -336,6 +343,7 @@
 				SUPPORTED_PLATFORMS = macosx;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -379,6 +387,14 @@
 		B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = MongoDB;
+		};
+		C1C1C1C1C1C1C1C1C1C1C1C1 /* PostgreSQL */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PostgreSQL;
+		};
+		D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Redis;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

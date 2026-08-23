@@ -1,4 +1,6 @@
 import MongoDB
+import PostgreSQL
+import Redis
 import SwiftData
 import SwiftUI
 
@@ -35,7 +37,7 @@ struct ConnectionsSidebarView: View {
             }.buttonStyle(.plain).contextMenu {
               Button("Connect") { selectConnection(record) }
               Button("Disconnect") { Task { await model.disconnect() } }.disabled(
-                model.session == nil)
+                !model.isSessionActive)
               Divider()
               Button("Edit…") { editingRecord = record }
               Button("Delete", role: .destructive) { delete(record) }
@@ -53,7 +55,7 @@ struct ConnectionsSidebarView: View {
             .padding(.horizontal, 8)
         }
         
-        if model.session != nil {
+        if model.isSessionActive {
           Section {
             if visibleDatabases.isEmpty { emptyDatabasesText.foregroundStyle(.secondary) }
             ForEach(visibleDatabases, id: \.self) { db in
@@ -75,7 +77,7 @@ struct ConnectionsSidebarView: View {
               }
             }
           } header: {
-            Text("Databases")
+            Text(model.activeEngine == .redis ? "Databases (indexes)" : "Databases")
               .frame(maxWidth: .infinity, alignment: .leading)
               .foregroundStyle(.secondary).font(.caption)
                 .padding(.horizontal, 8)
@@ -86,7 +88,7 @@ struct ConnectionsSidebarView: View {
     }.safeAreaPadding(.horizontal, 10).searchable(text: $model.collectionSearch, placement: .sidebar)
       .navigationSplitViewColumnWidth(min: 200, ideal: 250).sheet(isPresented: $showAddSheet) { ConnectionFormView() }.sheet(item: $editingRecord) {
       record in ConnectionFormView(record: record)
-    }.animation(.smooth(duration: 0.25), value: model.session != nil).animation(
+    }.animation(.smooth(duration: 0.25), value: model.isSessionActive).animation(
       .smooth(duration: 0.25), value: model.databases.count)
     .task(id: model.collectionSearch) {
       do {
@@ -152,7 +154,8 @@ struct ConnectionsSidebarView: View {
 
   private func collectionRow(_ coll: String, in db: String) -> some View {
     let isSelected = model.selectedCollection == coll && model.selectedDatabase == db
-    return Label(coll, systemImage: "tablecells.fill")
+    let icon = model.activeEngine == .redis ? "key.horizontal" : "tablecells.fill"
+    return Label(coll, systemImage: isSelected || model.activeEngine != .redis ? icon : icon)
       .tint(isSelected ? .blue : .secondary)
       .onTapGesture {
       Task { await model.select(collection: coll, in: db) }
@@ -162,7 +165,7 @@ struct ConnectionsSidebarView: View {
   private func selectConnection(_ record: ConnectionRecord) {
     guard !model.isConnecting else { return }
     selectedRecordID = record.id
-    Task { await model.connect(record.toConfig()) }
+    Task { await model.connect(record.toSettings()) }
   }
 
   private func delete(_ record: ConnectionRecord) {
@@ -173,25 +176,54 @@ struct ConnectionsSidebarView: View {
   }
 
   /// A record is "active" when the live session was started from it.
-  /// ConnectionConfig regenerates its UUID on every toConfig() call, so the
-  /// id can't be compared — match by name + host + port instead.
+  /// ConnectionConfig regenerates its UUID on every toSettings() call, so the
+  /// id can't be compared — match by engine + name + host + port instead.
   private func isActive(_ record: ConnectionRecord) -> Bool {
-    guard let session = model.session, session.isConnected else { return false }
-    let c = session.config
-    return c.name == record.name && c.host == record.host && c.port == UInt16(record.port)
+    guard model.isSessionActive,
+      let active = model.activeEngine, active == record.engineKind
+    else { return false }
+    return record.name == record.name && record.host == record.host
+      && record.port == record.port && activeEngineMatches(record)
+  }
+
+  private func activeEngineMatches(_ record: ConnectionRecord) -> Bool {
+    switch model.activeEngine {
+    case .mongodb:
+      guard let session = model.session, session.isConnected else { return false }
+      let c = session.config
+      return c.name == record.name && c.host == record.host && c.port == UInt16(record.port)
+    case .postgresql:
+      guard case .postgresql(let session) = model.alternateSession, session.isConnected
+      else { return false }
+      let c = session.config
+      return c.name == record.name && c.host == record.host && c.port == UInt16(record.port)
+    case .redis:
+      guard case .redis(let session) = model.alternateSession, session.isConnected
+      else { return false }
+      let c = session.config
+      return c.name == record.name && c.host == record.host && c.port == UInt16(record.port)
+    case nil:
+      return false
+    }
   }
 }
 
-/// One sidebar row: name + host:port subtitle + status dot (green = active session).
+/// One sidebar row: engine glyph + name + status dot (green = active session).
 private struct ConnectionRow: View {
   let record: ConnectionRecord
   let isActive: Bool
-  
+
   var body: some View {
     HStack(spacing: 8) {
-      Label(record.name, systemImage: isActive ? "wifi" : "wifi.slash")
-        .tint(isActive ? .blue : .secondary)
-    }
+      Image(systemName: record.engineKind.systemImage)
+        .foregroundStyle(isActive ? Color.blue : Color.secondary)
+        .frame(width: 16)
+      Text(record.name).lineLimit(1)
+      Spacer(minLength: 0)
+      Image(systemName: isActive ? "wifi" : "wifi.slash")
+        .foregroundStyle(isActive ? Color.blue : Color.secondary.opacity(0.5))
+        .font(.caption)
+    }.contentShape(Rectangle())
   }
 }
 

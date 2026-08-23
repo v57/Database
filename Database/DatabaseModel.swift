@@ -1,6 +1,8 @@
 import Foundation
 import MongoDB
 import Observation
+import PostgreSQL
+import Redis
 import SwiftData
 
 /// Observable app state: the active session and the three-column navigation state.
@@ -20,6 +22,9 @@ import SwiftData
   }
 
   var session: MongoConnection?
+  /// Non-Mongo sessions (Redis/PostgreSQL), tagged by engine. Only one of
+  /// `session`/`alternateSession` is live at a time.
+  var alternateSession: AlternateSession?
   var isConnecting = false
   var statusMessage = ""
 
@@ -38,29 +43,78 @@ import SwiftData
   var selectedDocument: Document?
   /// The active query (filter/sort/projection) driving the document list.
   var currentQuery = QuerySpec(filter: nil, sort: nil, projection: nil)
+  /// Redis: keys of the selected logical database (sidebar + list source).
+  var redisEntries: [RedisKeyEntry] = []
+  /// Redis: detail rows of the selected key, rendered as one document.
+  var redisSelectedEntry: RedisKeyEntry?
 
-  /// Connects to the server, loads the database list, and selects the
-  /// default database (config.defaultDatabase ?? first ?? "admin").
-  func connect(_ config: ConnectionConfig) async {
+  /// The engine of the live session, if any.
+  var activeEngine: DatabaseEngine? {
+    if session != nil { return .mongodb }
+    return alternateSession?.engine
+  }
+
+  /// True when a session of ANY engine is open (sidebar gating, status dot).
+  var isSessionActive: Bool { session != nil || alternateSession != nil }
+
+  // MARK: - Connect / disconnect
+
+  /// Connects with engine-tagged settings, loads the top-level tree, and
+  /// selects the default database.
+  func connect(_ settings: EngineSettings) async {
     await disconnect()
-    let conn = MongoConnection(config: config)
     isConnecting = true
-    statusMessage = "Connecting to \(config.host):\(config.port)…"
+    statusMessage = "Connecting to \(settings.host):\(settings.port)…"
     defer { isConnecting = false }
-
     do {
-      try await conn.connect()
-      session = conn
-      statusMessage = "Connected to \(config.name)"
-      databases = try await conn.listDatabases()
-      let initial = config.defaultDatabase ?? databases.first ?? "admin"
-      await select(database: initial)
-    } catch { statusMessage = "Connection failed: \(error.localizedDescription)" }
+      switch settings {
+      case .mongodb(let config):
+        let conn = MongoConnection(config: config)
+        try await conn.connect()
+        session = conn
+        statusMessage = "Connected to \(config.name)"
+        databases = try await conn.listDatabases()
+        let initial = config.defaultDatabase ?? databases.first ?? "admin"
+        await select(database: initial)
+
+      case .postgresql(let config):
+        let conn = PostgresConnection(config: config)
+        try await conn.connect()
+        alternateSession = .postgresql(conn)
+        statusMessage = "Connected to \(config.name)"
+        let dbs = try await conn.listDatabases().map(\.description)
+        databases = dbs
+        let initial = config.defaultDatabase ?? dbs.first ?? "postgres"
+        await select(database: initial)
+
+      case .redis(let config):
+        let conn = RedisConnection(config: config)
+        try await conn.connect()
+        alternateSession = .redis(conn)
+        statusMessage = "Connected to \(config.name)"
+        let indexes = try await conn.listDatabases().map(\.description)
+        databases = indexes
+        let initial =
+          config.databaseIndex.map(String.init)
+          ?? indexes.first
+          ?? "0"
+        await select(database: initial)
+      }
+    } catch {
+      statusMessage = "Connection failed: \(error.localizedDescription)"
+    }
+  }
+
+  /// Legacy overload so existing MongoDB-only call sites keep compiling.
+  func connect(_ config: ConnectionConfig) async {
+    await connect(EngineSettings.mongodb(config))
   }
 
   func disconnect() async {
     if let session { await session.disconnect() }
     session = nil
+    if let alternateSession { await alternateSession.close() }
+    alternateSession = nil
     databases = []
     selectedDatabase = nil
     collections = []
@@ -68,24 +122,48 @@ import SwiftData
     selectedCollection = nil
     documents = []
     selectedDocument = nil
+    redisEntries = []
     statusMessage = ""
   }
 
-  /// Switches the active database and reloads its collections.
+  // MARK: - Database selection
+
+  /// Switches the active database and reloads its children.
   func select(database: String) async {
-    guard let session else { return }
+    guard isSessionActive else { return }
     do {
-      try await session.use(database: database)
+      if let mongo = session {
+        try await mongo.use(database: database)
+      } else if case .redis(let redis) = alternateSession {
+        try await redis.use(database: database)
+      } else if case .postgresql(let pg) = alternateSession {
+        try await pg.use(database: database)
+      }
       selectedDatabase = database
       collectionSearch = ""
-      collections = try await session.listCollections()
-      collectionsByDatabase[database] = collections
-      selectedCollection = nil
-      documents = []
-      selectedDocument = nil
+      await reloadChildren(of: database)
       markDatabaseOpened(database)
     } catch { statusMessage = error.localizedDescription }
   }
+
+  /// Loads children for `database` into the caches + current selection.
+  private func reloadChildren(of database: String) async {
+    guard isSessionActive else { return }
+    if let mongo = session {
+      collections = (try? await mongo.listCollections()) ?? []
+      collectionsByDatabase[database] = collections
+    } else if case .redis(let redis) = alternateSession {
+      let keys = (try? await redis.listKeys()) ?? []
+      collectionsByDatabase[database] = keys
+      collections = keys
+      redisEntries = (try? await redis.entries(matching: "")) ?? []
+    } else if case .postgresql(let pg) = alternateSession {
+      collections = (try? await pg.listTables()) ?? []
+      collectionsByDatabase[database] = collections
+    }
+  }
+
+  // MARK: - Sidebar lazy loading
 
   /// Loads (once) and caches collections for a database; called when the
   /// sidebar expands a database row.
@@ -185,23 +263,37 @@ import SwiftData
   /// Databases sorted most-recently-opened first; never-opened last.
   var sortedDatabases: [String] { databases.sorted(by: recentFirstComparator(databaseLastOpened)) }
 
+  // MARK: - Document selection & queries
+
   /// Selects a collection in an explicit database (sidebar path), switching
   /// the active database first when needed.
   func select(collection: String, in database: String) async {
-    guard let session else { return }
+    guard isSessionActive else { return }
     do {
       if selectedDatabase != database {
-        try await session.use(database: database)
+        if let mongo = session {
+          try await mongo.use(database: database)
+        } else if case .postgresql(let pg) = alternateSession {
+          try await pg.use(database: database)
+        }
         selectedDatabase = database
         collections = collectionsByDatabase[database] ?? []
-        if collections.isEmpty {
-          collections = try await session.listCollections()
-          collectionsByDatabase[database] = collections
-        }
       }
       selectedCollection = collection
-      documents = try await session.find(in: collection, limit: 100)
-      statusMessage = "\(documents.count) document(s) in \(collection)"
+
+      if let mongo = session {
+        documents = try await mongo.find(in: collection, limit: 100)
+        statusMessage = "\(documents.count) document(s) in \(collection)"
+      } else if case .postgresql(let pg) = alternateSession {
+        let rows = try await pg.select(sql: "SELECT * FROM \(collection)", limit: 100)
+        documents = rows.map { Self.document(from: $0) }
+        statusMessage = "\(rows.count) row(s) in \(collection)"
+      } else if case .redis(let redis) = alternateSession {
+        let entry = try await redis.entry(for: collection)
+        redisSelectedEntry = entry
+        documents = [Self.document(from: entry)]
+        statusMessage = "\(entry.typeName) · TTL \(entry.ttl)s"
+      }
       // Selecting is "opening", not usage — only query execution
       // (applyQuery) bumps the sidebar sort timestamp.
       markDatabaseOpened(database)
@@ -212,6 +304,8 @@ import SwiftData
   func select(collection: String) async {
     await select(collection: collection, in: selectedDatabase ?? "")
   }
+
+  // MARK: - Mutations (MongoDB only for now; SQL/Redis get their own flows later)
 
   /// Runs updateMany against the selected collection and refreshes the list.
   func runUpdate(filter: String, update: String) async throws -> MongoWriteResult {
@@ -284,6 +378,59 @@ import SwiftData
   /// Re-runs the current query so the list reflects a mutation.
   private func refreshAfterMutation(_ session: MongoConnection, _ collection: String) async {
     if let docs = try? await findCurrent(in: collection, session: session) { documents = docs }
+  }
+
+  // MARK: - Row/key -> Document conversion (shared UI rendering)
+
+  /// PostgreSQL row as a display document: column/value pairs.
+  static func document(from row: PostgresRowData) -> Document {
+    var doc = Document()
+    for (key, value) in row.values {
+      doc[key] = bson(fromPostgres: value)
+    }
+    return doc
+  }
+
+  /// Redis key detail as a display document (type/value/ttl rows).
+  static func document(from entry: RedisKeyEntry) -> Document {
+    var doc = Document()
+    doc["type"] = .string(entry.typeName)
+    doc["value"] = .string(entry.displayValue)
+    doc["ttl"] = .int32(Int32(clamping: entry.ttl))
+    return doc
+  }
+
+  private static func bson(fromPostgres value: PostgresValue) -> BSON {
+    switch value {
+    case .null: return .null
+    case .bool(let b): return .bool(b)
+    case .int(let n): return .int64(n)
+    case .double(let d): return .double(d)
+    case .string(let s): return .string(s)
+    case .json(let s): return .string(s)
+    case .date(let date): return .datetime(date)
+    case .bytes(let bytes): return .binary(try! BSONBinary(data: Data(bytes), subtype: .generic))
+    }
+  }
+}
+
+/// Tagged union over the non-Mongo live sessions.
+@MainActor enum AlternateSession {
+  case postgresql(PostgresConnection)
+  case redis(RedisConnection)
+
+  var engine: DatabaseEngine {
+    switch self {
+    case .postgresql: .postgresql
+    case .redis: .redis
+    }
+  }
+
+  func close() async {
+    switch self {
+    case .postgresql(let c): await c.disconnect()
+    case .redis(let c): await c.disconnect()
+    }
   }
 }
 
