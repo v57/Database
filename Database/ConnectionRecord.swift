@@ -2,6 +2,7 @@ import Foundation
 import MongoDB
 import PostgreSQL
 import Redis
+import SQLite
 import SwiftData
 
 /// Which database engine a connection talks to. Raw-value enum persisted in
@@ -11,6 +12,7 @@ enum DatabaseEngine: String, Codable, CaseIterable, Identifiable {
   case mongodb
   case postgresql
   case redis
+  case sqlite
 
   var id: String { rawValue }
 
@@ -19,15 +21,18 @@ enum DatabaseEngine: String, Codable, CaseIterable, Identifiable {
     case .mongodb: "MongoDB"
     case .postgresql: "PostgreSQL"
     case .redis: "Redis"
+    case .sqlite: "SQLite"
     }
   }
 
   /// Default TCP port, used to prefill the form when the engine changes.
+  /// SQLite is file-based and has no port (the form hides the field).
   var defaultPort: UInt16 {
     switch self {
     case .mongodb: 27017
     case .postgresql: 5432
     case .redis: 6379
+    case .sqlite: 0
     }
   }
 
@@ -37,6 +42,7 @@ enum DatabaseEngine: String, Codable, CaseIterable, Identifiable {
     case .mongodb: "leaf.fill"
     case .postgresql: "elephant"  // falls back gracefully if unavailable
     case .redis: "bolt.horizontal.fill"
+    case .sqlite: "internaldrive"
     }
   }
 }
@@ -48,12 +54,14 @@ enum EngineSettings {
   case mongodb(ConnectionConfig)
   case postgresql(PostgresConnectionConfig)
   case redis(RedisConnectionConfig)
+  case sqlite(SQLiteConnectionConfig)
 
   var engine: DatabaseEngine {
     switch self {
     case .mongodb: .mongodb
     case .postgresql: .postgresql
     case .redis: .redis
+    case .sqlite: .sqlite
     }
   }
 
@@ -62,14 +70,18 @@ enum EngineSettings {
     case .mongodb(let c): c.name
     case .postgresql(let c): c.name
     case .redis(let c): c.name
+    case .sqlite(let c): c.name
     }
   }
 
+  /// Host for server engines; the FILE PATH for SQLite (the record reuses
+  /// the host column as the path — a file database has no server).
   var host: String {
     switch self {
     case .mongodb(let c): c.host
     case .postgresql(let c): c.host
     case .redis(let c): c.host
+    case .sqlite(let c): c.filePath
     }
   }
 
@@ -78,6 +90,7 @@ enum EngineSettings {
     case .mongodb(let c): c.port
     case .postgresql(let c): c.port
     case .redis(let c): c.port
+    case .sqlite: 0
     }
   }
 }
@@ -137,6 +150,8 @@ enum EngineSettings {
         RedisConnectionConfig(
           name: name, host: host, port: UInt16(port), username: username, password: password,
           databaseIndex: index))
+    case .sqlite:
+      return .sqlite(SQLiteConnectionConfig(name: name, filePath: host))
     }
   }
 

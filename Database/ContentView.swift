@@ -1,19 +1,14 @@
 import MongoDB
 import PostgreSQL
 import Redis
+import SQLite
 import SwiftData
 import SwiftUI
 
 @main struct DatabaseApp: App {
-
-  var body: some Scene {
-    WindowGroup { ContentView() }
-  }
-}
-
-struct ContentView: View {
+  @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   private let container: ModelContainer
-  @State private var model: DatabaseModel
+  private let model: DatabaseModel
 
   init() {
     do {
@@ -22,7 +17,24 @@ struct ContentView: View {
     } catch { fatalError("Failed to create SwiftData container: \(error)") }
     // The model shares the container's main context so last-opened
     // history persists and stays in sync with the views' @Query fetches.
-    _model = State(initialValue: DatabaseModel(modelContext: container.mainContext))
+    let appModel = DatabaseModel(modelContext: container.mainContext)
+    model = appModel
+    // Finder "Open With…" / dock drops route through the app delegate.
+    appDelegate.model = appModel
+  }
+
+  var body: some Scene {
+    WindowGroup { ContentView(model: model, container: container) }
+  }
+}
+
+struct ContentView: View {
+  private let container: ModelContainer
+  private let model: DatabaseModel
+
+  init(model: DatabaseModel, container: ModelContainer) {
+    self.container = container
+    self.model = model
   }
 
   /// Title shows the active connection name, or the engine hint when idle.
@@ -31,6 +43,7 @@ struct ContentView: View {
       switch alternateSession {
       case .postgresql(let c): return c.config.name
       case .redis(let c): return c.config.name
+      case .sqlite(let c): return c.config.name
       }
     }
     return model.session?.config.name ?? "Database Client"

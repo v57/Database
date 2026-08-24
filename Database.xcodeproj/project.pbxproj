@@ -12,6 +12,7 @@
 		A1A1A1A1A1A1A1A1A1A1A1A1 /* MongoDB in Frameworks */ = {isa = PBXBuildFile; productRef = B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */; };
 		E1E1E1E1E1E1E1E1E1E1E1E1 /* PostgreSQL in Frameworks */ = {isa = PBXBuildFile; productRef = C1C1C1C1C1C1C1C1C1C1C1C1 /* PostgreSQL */; };
 		F1F1F1F1F1F1F1F1F1F1F1F1 /* Redis in Frameworks */ = {isa = PBXBuildFile; productRef = D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */; };
+		884D4B024EB8075F6DE519D6 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E0DBE02A193510FD325EAD7C /* SQLite */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -19,9 +20,22 @@
 		267577B8303733DC00FB9989 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		000000000000000000000030 /* Exceptions for "Database" folder in "Database" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 000000000000000100000000 /* Database */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000010 /* Database */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				000000000000000000000030 /* Exceptions for "Database" folder in "Database" target */,
+			);
 			path = Database;
 			sourceTree = "<group>";
 		};
@@ -35,6 +49,7 @@
 				A1A1A1A1A1A1A1A1A1A1A1A1 /* MongoDB in Frameworks */,
 				E1E1E1E1E1E1E1E1E1E1E1E1 /* PostgreSQL in Frameworks */,
 				F1F1F1F1F1F1F1F1F1F1F1F1 /* Redis in Frameworks */,
+				884D4B024EB8075F6DE519D6 /* SQLite in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -79,6 +94,7 @@
 				B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */,
 				C1C1C1C1C1C1C1C1C1C1C1C1 /* PostgreSQL */,
 				D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */,
+				E0DBE02A193510FD325EAD7C /* SQLite */,
 			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* Database.app */;
@@ -281,6 +297,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Database/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -321,6 +338,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Database/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -395,6 +413,10 @@
 		D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Redis;
+		};
+		E0DBE02A193510FD325EAD7C /* SQLite */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SQLite;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

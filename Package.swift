@@ -9,6 +9,7 @@ let package = Package(
     .library(name: "MongoDB", targets: ["MongoDB"]),
     .library(name: "PostgreSQL", targets: ["PostgreSQL"]),
     .library(name: "Redis", targets: ["Redis"]),
+    .library(name: "SQLite", targets: ["SQLite"]),
   ],
   dependencies: [
     .package(url: "https://github.com/mongodb/mongo-swift-driver.git", from: "1.3.1"),
@@ -34,6 +35,11 @@ let package = Package(
       name: "Redis",
       dependencies: [.product(name: "RediStack", package: "RediStack")],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+    // SQLite needs no remote dependency: the macOS SDK ships the SQLite3
+    // module (system libsqlite3), which IS the official driver.
+    .target(
+      name: "SQLite",
+      swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
       name: "DatabaseTests", dependencies: ["Database"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
@@ -48,5 +54,8 @@ let package = Package(
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
       name: "RedisTests", dependencies: ["Redis"],
+      swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+    .testTarget(
+      name: "SQLiteTests", dependencies: ["SQLite"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
   ])

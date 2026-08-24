@@ -41,3 +41,25 @@ Follow-ups (not started):
 - MongoSwift 1.3.1: MongoClient needs explicit NIO EventLoopGroup (using:), find/deleteMany take unlabeled non-optional filters, updateMany/deleteMany return Optionals, FindOptions.limit is Int
 - swift-bson 3.x renamed Document -> BSONDocument (typealias shim added); extendedJSON -> description
 - Swift 6 region isolation: @preconcurrency import alone not enough; retroactive @unchecked Sendable conformances for MongoClient/MongoDatabase/MongoCollection/MongoCursor/BSONDocument in DriverSendable.swift
+
+SQLite wave (2026-08-24, direct request: "Add sqlite support. Add Open With... support, drag and drop and file picker on connection creation"):
+- [x] W1: Sources/SQLite wrapper over SYSTEM libsqlite3 (SQLite3 module, NO remote dep):
+      config/error/values + facade (connect requires EXISTING file -> fileNotFound; notADatabase
+      probe via sqlite_master; READWRITE with silent internal read-only fallback detected via
+      access(W_OK); select/execute(sqlite3_exec, multi-statement)/count/listTables incl views;
+      single 'main' database; PRAGMA busy_timeout=5000). 12 tests pass, temp files, no server.
+- [x] W2: App integration: DatabaseEngine/EngineSettings/ConnectionRecord (.sqlite; record reuses
+      host column as filePath, port 0) + DatabaseModel (connect/select/reloadChildren, row->Document
+      via bson(fromSQLite:), openSQLiteFile(at:) for Open With) + AlternateSession + sidebar active check.
+- [x] W3: ConnectionFormView: SQLite shows file-path field + Browse… (NSOpenPanel, dBr3) +
+      drag-and-drop zone (.dropDestination(for: URL.self) with isTargeted highlight); Auth/Startup
+      sections and port field hidden for SQLite.
+- [x] W4: Open With…: Database/Info.plist (CFBundleDocumentTypes + UTImportedTypeDeclarations
+      com.sqlite.database, extensions sqlite/sqlite3/db/db3, LSHandlerRank=Alternate) merged via
+      INFOPLIST_FILE (GENERATE_INFOPLIST_FILE=YES merge verified in built bundle);
+      AppDelegate (NSApplicationDelegateAdaptor) application(_:open:)/openFiles -> openSQLiteFile;
+      model handed to delegate from DatabaseApp.init (ContentView takes model+container params now).
+- [x] W5: pbxproj SQLite product link (python byte-level edit; plutil OK) +
+      PBXFileSystemSynchronizedBuildFileExceptionSet membershipExceptions=(Info.plist) so the
+      synced group does NOT copy Info.plist into Resources; xcodebuild SUCCEEDED; launch smoke OK.
+- [x] W6: full swift test — all engines green (SQLite 12/12; no cross-engine drift, zero new deps).

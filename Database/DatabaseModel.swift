@@ -3,6 +3,7 @@ import MongoDB
 import Observation
 import PostgreSQL
 import Redis
+import SQLite
 import SwiftData
 
 /// Observable app state: the active session and the three-column navigation state.
@@ -99,6 +100,16 @@ import SwiftData
           ?? indexes.first
           ?? "0"
         await select(database: initial)
+
+      case .sqlite(let config):
+        let conn = SQLiteConnection(config: config)
+        try await conn.connect()
+        alternateSession = .sqlite(conn)
+        statusMessage =
+          "Connected to \(config.name)" + (conn.isReadOnly ? " (read-only)" : "")
+        let dbs = try await conn.listDatabases()
+        databases = dbs
+        await select(database: dbs.first ?? "main")
       }
     } catch {
       statusMessage = "Connection failed: \(error.localizedDescription)"
@@ -108,6 +119,27 @@ import SwiftData
   /// Legacy overload so existing MongoDB-only call sites keep compiling.
   func connect(_ config: ConnectionConfig) async {
     await connect(EngineSettings.mongodb(config))
+  }
+
+  /// Opens a SQLite file delivered by the system (Finder "Open With…", dock
+  /// drop): reuses a saved record for the same path or saves a new one, then
+  /// connects. Mirrors what the create form would do for that file.
+  func openSQLiteFile(at path: String) async {
+    let records = (try? modelContext.fetch(FetchDescriptor<ConnectionRecord>())) ?? []
+    let standardized = (path as NSString).standardizingPath
+    if let existing = records.first(where: {
+      $0.engineKind == .sqlite && ($0.host as NSString).standardizingPath == standardized
+    }) {
+      await connect(existing.toSettings())
+      return
+    }
+    let filename = (path as NSString).lastPathComponent
+    let name = (filename as NSString).deletingPathExtension
+    let record = ConnectionRecord(
+      name: name.isEmpty ? filename : name, host: standardized, port: 0, engine: .sqlite)
+    modelContext.insert(record)
+    try? modelContext.save()
+    await connect(record.toSettings())
   }
 
   func disconnect() async {
@@ -138,6 +170,8 @@ import SwiftData
         try await redis.use(database: database)
       } else if case .postgresql(let pg) = alternateSession {
         try await pg.use(database: database)
+      } else if case .sqlite(let sqlite) = alternateSession {
+        try await sqlite.use(database: database)
       }
       selectedDatabase = database
       collectionSearch = ""
@@ -159,6 +193,9 @@ import SwiftData
       redisEntries = (try? await redis.entries(matching: "")) ?? []
     } else if case .postgresql(let pg) = alternateSession {
       collections = (try? await pg.listTables()) ?? []
+      collectionsByDatabase[database] = collections
+    } else if case .sqlite(let sqlite) = alternateSession {
+      collections = (try? await sqlite.listTables()) ?? []
       collectionsByDatabase[database] = collections
     }
   }
@@ -275,6 +312,8 @@ import SwiftData
           try await mongo.use(database: database)
         } else if case .postgresql(let pg) = alternateSession {
           try await pg.use(database: database)
+        } else if case .sqlite(let sqlite) = alternateSession {
+          try await sqlite.use(database: database)
         }
         selectedDatabase = database
         collections = collectionsByDatabase[database] ?? []
@@ -286,6 +325,12 @@ import SwiftData
         statusMessage = "\(documents.count) document(s) in \(collection)"
       } else if case .postgresql(let pg) = alternateSession {
         let rows = try await pg.select(sql: "SELECT * FROM \(collection)", limit: 100)
+        documents = rows.map { Self.document(from: $0) }
+        statusMessage = "\(rows.count) row(s) in \(collection)"
+      } else if case .sqlite(let sqlite) = alternateSession {
+        // Table names come from sqlite_master; quote as identifier so names
+        // with dots/spaces/quotes survive.
+        let rows = try await sqlite.select(sql: "SELECT * FROM \(Self.quotedIdentifier(collection)) LIMIT 100")
         documents = rows.map { Self.document(from: $0) }
         statusMessage = "\(rows.count) row(s) in \(collection)"
       } else if case .redis(let redis) = alternateSession {
@@ -400,6 +445,15 @@ import SwiftData
     return doc
   }
 
+  /// SQLite row as a display document: column/value pairs.
+  static func document(from row: SQLiteRowData) -> Document {
+    var doc = Document()
+    for (key, value) in row.values {
+      doc[key] = bson(fromSQLite: value)
+    }
+    return doc
+  }
+
   private static func bson(fromPostgres value: PostgresValue) -> BSON {
     switch value {
     case .null: return .null
@@ -412,17 +466,34 @@ import SwiftData
     case .bytes(let bytes): return .binary(try! BSONBinary(data: Data(bytes), subtype: .generic))
     }
   }
+
+  private static func bson(fromSQLite value: SQLiteValue) -> BSON {
+    switch value {
+    case .null: return .null
+    case .int(let n): return .int64(n)
+    case .double(let d): return .double(d)
+    case .string(let s): return .string(s)
+    case .bytes(let bytes): return .binary(try! BSONBinary(data: Data(bytes), subtype: .generic))
+    }
+  }
+
+  /// Double-quotes a SQLite identifier, escaping embedded quotes.
+  static func quotedIdentifier(_ name: String) -> String {
+    "\"" + name.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+  }
 }
 
 /// Tagged union over the non-Mongo live sessions.
 @MainActor enum AlternateSession {
   case postgresql(PostgresConnection)
   case redis(RedisConnection)
+  case sqlite(SQLiteConnection)
 
   var engine: DatabaseEngine {
     switch self {
     case .postgresql: .postgresql
     case .redis: .redis
+    case .sqlite: .sqlite
     }
   }
 
@@ -430,6 +501,7 @@ import SwiftData
     switch self {
     case .postgresql(let c): await c.disconnect()
     case .redis(let c): await c.disconnect()
+    case .sqlite(let c): await c.disconnect()
     }
   }
 }

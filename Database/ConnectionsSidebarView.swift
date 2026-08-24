@@ -1,6 +1,7 @@
 import MongoDB
 import PostgreSQL
 import Redis
+import SQLite
 import SwiftData
 import SwiftUI
 
@@ -202,6 +203,11 @@ struct ConnectionsSidebarView: View {
       else { return false }
       let c = session.config
       return c.name == record.name && c.host == record.host && c.port == UInt16(record.port)
+    case .sqlite:
+      guard case .sqlite(let session) = model.alternateSession, session.isConnected
+      else { return false }
+      let c = session.config
+      return c.name == record.name && c.filePath == record.host
     case nil:
       return false
     }
@@ -243,5 +249,7 @@ struct SidebarLabelStyle: LabelStyle {
 }
 
 #Preview {
-  ContentView()
+  let container = try! ModelContainer(
+    for: ConnectionRecord.self, DatabaseOpenRecord.self, CollectionOpenRecord.self)
+  return ContentView(model: DatabaseModel(modelContext: container.mainContext), container: container)
 }
