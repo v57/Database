@@ -17,8 +17,8 @@ public struct RedisConnectionConfig: Codable, Hashable, Identifiable, Sendable {
   public var databaseIndex: Int?
 
   public init(
-    id: UUID = UUID(), name: String, host: String, port: UInt16 = 6379,
-    username: String? = nil, password: String? = nil, databaseIndex: Int? = nil
+    id: UUID = UUID(), name: String, host: String, port: UInt16 = 6379, username: String? = nil,
+    password: String? = nil, databaseIndex: Int? = nil
   ) {
     self.id = id
     self.name = name
@@ -40,8 +40,7 @@ public struct RedisConnectionConfig: Codable, Hashable, Identifiable, Sendable {
       s += "@"
     } else if let p = password, !p.isEmpty {
       // Redis URL convention: password-only goes in the username slot.
-      s += ":" + (p.addingPercentEncoding(withAllowedCharacters: .urlPasswordAllowed) ?? p)
-        + "@"
+      s += ":" + (p.addingPercentEncoding(withAllowedCharacters: .urlPasswordAllowed) ?? p) + "@"
     }
     s += "\(host):\(port)"
     if let db = databaseIndex { s += "/\(db)" }

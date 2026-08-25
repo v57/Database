@@ -24,9 +24,7 @@ public final class RedisConnection {
   /// Opens the TCP connection (driver performs AUTH/SELECT from the config)
   /// and verifies it with PING before reporting connected.
   public func connect() async throws {
-    guard config.isValid else {
-      throw RedisError.invalidConfig("host must not be empty")
-    }
+    guard config.isValid else { throw RedisError.invalidConfig("host must not be empty") }
     let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     do {
       // ACL users authenticate with AUTH username password (address init);
@@ -34,8 +32,8 @@ public final class RedisConnection {
       let configuration: RediStack.RedisConnection.Configuration
       if let u = config.username, !u.isEmpty {
         configuration = try RediStack.RedisConnection.Configuration(
-          address: .makeAddressResolvingHost(config.host, port: Int(config.port)),
-          username: u, password: config.password, initialDatabase: config.databaseIndex)
+          address: .makeAddressResolvingHost(config.host, port: Int(config.port)), username: u,
+          password: config.password, initialDatabase: config.databaseIndex)
       } else {
         configuration = try RediStack.RedisConnection.Configuration(
           hostname: config.host, port: Int(config.port), password: config.password,
@@ -128,11 +126,8 @@ public final class RedisConnection {
       case .unlimited: ttlSeconds = -1
       case .keyDoesNotExist: ttlSeconds = -2
       }
-      return RedisKeyEntry(
-        key: key, typeName: typeName, displayValue: valueString, ttl: ttlSeconds)
-    } catch let e as RedisError {
-      throw e
-    } catch {
+      return RedisKeyEntry(key: key, typeName: typeName, displayValue: valueString, ttl: ttlSeconds)
+    } catch let e as RedisError { throw e } catch {
       throw RedisError.server(error.localizedDescription)
     }
   }
@@ -149,8 +144,9 @@ public final class RedisConnection {
 
   public func set(_ key: String, to value: String) async throws {
     guard let c = connection else { throw RedisError.notConnected }
-    do { _ = try await c.set(RedisKey(key), to: value).get() }
-    catch { throw RedisError.server(error.localizedDescription) }
+    do { _ = try await c.set(RedisKey(key), to: value).get() } catch {
+      throw RedisError.server(error.localizedDescription)
+    }
   }
 
   public func get(_ key: String) async throws -> String? {
@@ -163,16 +159,17 @@ public final class RedisConnection {
 
   public func delete(_ keys: [String]) async throws -> Int {
     guard let c = connection else { throw RedisError.notConnected }
-    do { return try await c.delete(keys.map { RedisKey($0) }).get() }
-    catch { throw RedisError.server(error.localizedDescription) }
+    do { return try await c.delete(keys.map { RedisKey($0) }).get() } catch {
+      throw RedisError.server(error.localizedDescription)
+    }
   }
 
   /// Sets an expiry on `key`.
   public func expire(_ key: String, after seconds: Int64) async throws {
     guard let c = connection else { throw RedisError.notConnected }
-    do {
-      _ = try await c.expire(RedisKey(key), after: .seconds(seconds)).get()
-    } catch { throw RedisError.server(error.localizedDescription) }
+    do { _ = try await c.expire(RedisKey(key), after: .seconds(seconds)).get() } catch {
+      throw RedisError.server(error.localizedDescription)
+    }
   }
 
   // MARK: - Value rendering
@@ -180,8 +177,7 @@ public final class RedisConnection {
   private func displayValue(of key: RedisKey, typeName: String) async throws -> String {
     guard let c = connection else { throw RedisError.notConnected }
     switch typeName {
-    case "string":
-      return (try await c.get(key).get()).string ?? ""
+    case "string": return (try await c.get(key).get()).string ?? ""
     case "list":
       let items = try await c.lrange(from: key, indices: 0...99).get()
       return jsonish(items.compactMap(\.string))
@@ -195,8 +191,7 @@ public final class RedisConnection {
       let fields = try await c.hgetall(from: key).get()
       let pairs = fields.keys.sorted().map { "\($0): \(fields[$0]?.string ?? "")" }
       return jsonish(pairs)
-    default:
-      return "<\(typeName)>"
+    default: return "<\(typeName)>"
     }
   }
 

@@ -1,4 +1,5 @@
 import Foundation
+
 @testable import Redis
 
 /// Integration-test support: localhost Redis from docker-compose. Keys are

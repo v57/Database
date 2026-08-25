@@ -95,31 +95,23 @@ import SwiftData
         statusMessage = "Connected to \(config.name)"
         let indexes = try await conn.listDatabases().map(\.description)
         databases = indexes
-        let initial =
-          config.databaseIndex.map(String.init)
-          ?? indexes.first
-          ?? "0"
+        let initial = config.databaseIndex.map(String.init) ?? indexes.first ?? "0"
         await select(database: initial)
 
       case .sqlite(let config):
         let conn = SQLiteConnection(config: config)
         try await conn.connect()
         alternateSession = .sqlite(conn)
-        statusMessage =
-          "Connected to \(config.name)" + (conn.isReadOnly ? " (read-only)" : "")
+        statusMessage = "Connected to \(config.name)" + (conn.isReadOnly ? " (read-only)" : "")
         let dbs = try await conn.listDatabases()
         databases = dbs
         await select(database: dbs.first ?? "main")
       }
-    } catch {
-      statusMessage = "Connection failed: \(error.localizedDescription)"
-    }
+    } catch { statusMessage = "Connection failed: \(error.localizedDescription)" }
   }
 
   /// Legacy overload so existing MongoDB-only call sites keep compiling.
-  func connect(_ config: ConnectionConfig) async {
-    await connect(EngineSettings.mongodb(config))
-  }
+  func connect(_ config: ConnectionConfig) async { await connect(EngineSettings.mongodb(config)) }
 
   /// Opens a SQLite file delivered by the system (Finder "Open With…", dock
   /// drop): reuses a saved record for the same path or saves a new one, then
@@ -330,7 +322,8 @@ import SwiftData
       } else if case .sqlite(let sqlite) = alternateSession {
         // Table names come from sqlite_master; quote as identifier so names
         // with dots/spaces/quotes survive.
-        let rows = try await sqlite.select(sql: "SELECT * FROM \(Self.quotedIdentifier(collection)) LIMIT 100")
+        let rows = try await sqlite.select(
+          sql: "SELECT * FROM \(Self.quotedIdentifier(collection)) LIMIT 100")
         documents = rows.map { Self.document(from: $0) }
         statusMessage = "\(rows.count) row(s) in \(collection)"
       } else if case .redis(let redis) = alternateSession {
@@ -430,9 +423,7 @@ import SwiftData
   /// PostgreSQL row as a display document: column/value pairs.
   static func document(from row: PostgresRowData) -> Document {
     var doc = Document()
-    for (key, value) in row.values {
-      doc[key] = bson(fromPostgres: value)
-    }
+    for (key, value) in row.values { doc[key] = bson(fromPostgres: value) }
     return doc
   }
 
@@ -448,9 +439,7 @@ import SwiftData
   /// SQLite row as a display document: column/value pairs.
   static func document(from row: SQLiteRowData) -> Document {
     var doc = Document()
-    for (key, value) in row.values {
-      doc[key] = bson(fromSQLite: value)
-    }
+    for (key, value) in row.values { doc[key] = bson(fromSQLite: value) }
     return doc
   }
 

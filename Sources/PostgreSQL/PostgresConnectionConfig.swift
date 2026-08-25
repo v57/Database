@@ -15,8 +15,8 @@ public struct PostgresConnectionConfig: Codable, Hashable, Identifiable, Sendabl
   public var defaultDatabase: String?
 
   public init(
-    id: UUID = UUID(), name: String, host: String, port: UInt16 = 5432,
-    username: String? = nil, password: String? = nil, defaultDatabase: String? = nil
+    id: UUID = UUID(), name: String, host: String, port: UInt16 = 5432, username: String? = nil,
+    password: String? = nil, defaultDatabase: String? = nil
   ) {
     self.id = id
     self.name = name

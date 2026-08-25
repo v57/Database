@@ -8,9 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Set once at app init; weak — DatabaseApp owns the model.
   weak var model: DatabaseModel?
 
-  func application(_ application: NSApplication, open urls: [URL]) {
-    openFirstFile(urls)
-  }
+  func application(_ application: NSApplication, open urls: [URL]) { openFirstFile(urls) }
 
   func application(_ application: NSApplication, openFiles filenames: [String]) {
     openFirstFile(filenames.map { URL(fileURLWithPath: $0) })
@@ -18,8 +16,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private func openFirstFile(_ urls: [URL]) {
     guard let first = urls.first(where: { $0.isFileURL }) else { return }
-    Task { @MainActor in
-      await model?.openSQLiteFile(at: first.path)
-    }
+    Task { @MainActor in await model?.openSQLiteFile(at: first.path) }
   }
 }

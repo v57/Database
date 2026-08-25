@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import PostgreSQL
 
 @Suite struct PostgresConfigTests {
@@ -10,8 +11,8 @@ import Testing
 
   @Test func uriWithCredentialsAndDatabase() {
     let c = PostgresConnectionConfig(
-      name: "a", host: "db.example.com", port: 5433, username: "u ser",
-      password: "p@ss:word", defaultDatabase: "appdb")
+      name: "a", host: "db.example.com", port: 5433, username: "u ser", password: "p@ss:word",
+      defaultDatabase: "appdb")
     #expect(c.connectionString.contains("u%20ser:"))
     #expect(c.connectionString.hasSuffix("@db.example.com:5433/appdb"))
   }

@@ -1,4 +1,5 @@
 import Foundation
+
 @testable import PostgreSQL
 
 /// Integration-test support: localhost PostgreSQL from docker-compose

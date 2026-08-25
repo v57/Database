@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import SQLite
 
 @Suite struct SQLiteConfigTests {

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import PostgreSQL
 
 /// Integration tests against the localhost compose PostgreSQL. Each test

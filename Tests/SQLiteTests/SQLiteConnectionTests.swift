@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import SQLite
 
 /// Integration tests against real temp SQLite files — no server required.
@@ -113,9 +114,7 @@ import Testing
     let conn = try await TestEnv.connect(TestEnv.config(label: "limit", path: path))
     defer { await conn.disconnect() }
     try await conn.execute(sql: "CREATE TABLE nums (v INTEGER)")
-    for i in 0..<20 {
-      try await conn.execute(sql: "INSERT INTO nums VALUES (\(i))")
-    }
+    for i in 0..<20 { try await conn.execute(sql: "INSERT INTO nums VALUES (\(i))") }
     let rows = try await conn.select(sql: "SELECT v FROM nums", limit: 5)
     #expect(rows.count == 5)
   }

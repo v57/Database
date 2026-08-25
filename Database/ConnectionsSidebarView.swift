@@ -46,16 +46,11 @@ struct ConnectionsSidebarView: View {
           }
         } header: {
           HStack {
-            Text("Connections")
-              .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Add", systemImage: "plus") {
-              showAddSheet = true
-            }.buttonStyle(.plain).labelStyle(.iconOnly)
-              .help("Add Connection")
-          }.foregroundStyle(.secondary).font(.caption)
-            .padding(.horizontal, 8)
+            Text("Connections").frame(maxWidth: .infinity, alignment: .leading)
+            Button("Add", systemImage: "plus") { showAddSheet = true }.buttonStyle(.plain)
+              .labelStyle(.iconOnly).help("Add Connection")
+          }.foregroundStyle(.secondary).font(.caption).padding(.horizontal, 8)
         }
-        
         if model.isSessionActive {
           Section {
             if visibleDatabases.isEmpty { emptyDatabasesText.foregroundStyle(.secondary) }
@@ -65,37 +60,34 @@ struct ConnectionsSidebarView: View {
               // loading collections for all databases).
               let isExpanded = isSearching ? .constant(true) : expandedBinding(for: db)
               Button {
-                withAnimation(.smooth(duration: 0.25)) {
-                  isExpanded.wrappedValue.toggle()
-                }
+                withAnimation(.smooth(duration: 0.25)) { isExpanded.wrappedValue.toggle() }
               } label: {
-                Label(db, systemImage: "cylinder.split.1x2.fill")
-                  .tint(isExpanded.wrappedValue ? .blue : .secondary)
+                Label(db, systemImage: "cylinder.split.1x2.fill").tint(
+                  isExpanded.wrappedValue ? .blue : .secondary)
               }.buttonStyle(.plain)
-              if isExpanded.wrappedValue {
-                collectionChildren(for: db)
-                  .transition(.blurReplace)
-              }
+              if isExpanded.wrappedValue { collectionChildren(for: db).transition(.blurReplace) }
             }
           } header: {
-            Text(model.activeEngine == .redis ? "Databases (indexes)" : "Databases")
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .foregroundStyle(.secondary).font(.caption)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+            Text(model.activeEngine == .redis ? "Databases (indexes)" : "Databases").frame(
+              maxWidth: .infinity, alignment: .leading
+            ).foregroundStyle(.secondary).font(.caption).padding(.horizontal, 8).padding(
+              .vertical, 4)
           }.transition(.blurReplace)
         }
       }
-    }.safeAreaPadding(.horizontal, 10).searchable(text: $model.collectionSearch, placement: .sidebar)
-      .navigationSplitViewColumnWidth(min: 200, ideal: 250).sheet(isPresented: $showAddSheet) { ConnectionFormView() }.sheet(item: $editingRecord) {
-      record in ConnectionFormView(record: record)
-    }.animation(.smooth(duration: 0.25), value: model.isSessionActive).animation(
-      .smooth(duration: 0.25), value: model.databases.count)
-    .task(id: model.collectionSearch) {
+    }.safeAreaPadding(.horizontal, 10).searchable(
+      text: $model.collectionSearch, placement: .sidebar
+    ).navigationSplitViewColumnWidth(min: 200, ideal: 250).sheet(isPresented: $showAddSheet) {
+      ConnectionFormView()
+    }.sheet(item: $editingRecord) { record in ConnectionFormView(record: record) }.animation(
+      .smooth(duration: 0.25), value: model.isSessionActive
+    ).animation(.smooth(duration: 0.25), value: model.databases.count).task(
+      id: model.collectionSearch
+    ) {
       do {
         try await Task.sleep(for: .milliseconds(100))
         await model.loadAllCollections()
-      } catch { }
+      } catch {}
     }.labelStyle(SidebarLabelStyle())
   }
 
@@ -156,11 +148,9 @@ struct ConnectionsSidebarView: View {
   private func collectionRow(_ coll: String, in db: String) -> some View {
     let isSelected = model.selectedCollection == coll && model.selectedDatabase == db
     let icon = model.activeEngine == .redis ? "key.horizontal" : "tablecells.fill"
-    return Label(coll, systemImage: isSelected || model.activeEngine != .redis ? icon : icon)
-      .tint(isSelected ? .blue : .secondary)
-      .onTapGesture {
-      Task { await model.select(collection: coll, in: db) }
-    }
+    return Label(coll, systemImage: isSelected || model.activeEngine != .redis ? icon : icon).tint(
+      isSelected ? .blue : .secondary
+    ).onTapGesture { Task { await model.select(collection: coll, in: db) } }
   }
 
   private func selectConnection(_ record: ConnectionRecord) {
@@ -180,11 +170,11 @@ struct ConnectionsSidebarView: View {
   /// ConnectionConfig regenerates its UUID on every toSettings() call, so the
   /// id can't be compared — match by engine + name + host + port instead.
   private func isActive(_ record: ConnectionRecord) -> Bool {
-    guard model.isSessionActive,
-      let active = model.activeEngine, active == record.engineKind
-    else { return false }
-    return record.name == record.name && record.host == record.host
-      && record.port == record.port && activeEngineMatches(record)
+    guard model.isSessionActive, let active = model.activeEngine, active == record.engineKind else {
+      return false
+    }
+    return record.name == record.name && record.host == record.host && record.port == record.port
+      && activeEngineMatches(record)
   }
 
   private func activeEngineMatches(_ record: ConnectionRecord) -> Bool {
@@ -194,22 +184,24 @@ struct ConnectionsSidebarView: View {
       let c = session.config
       return c.name == record.name && c.host == record.host && c.port == UInt16(record.port)
     case .postgresql:
-      guard case .postgresql(let session) = model.alternateSession, session.isConnected
-      else { return false }
+      guard case .postgresql(let session) = model.alternateSession, session.isConnected else {
+        return false
+      }
       let c = session.config
       return c.name == record.name && c.host == record.host && c.port == UInt16(record.port)
     case .redis:
-      guard case .redis(let session) = model.alternateSession, session.isConnected
-      else { return false }
+      guard case .redis(let session) = model.alternateSession, session.isConnected else {
+        return false
+      }
       let c = session.config
       return c.name == record.name && c.host == record.host && c.port == UInt16(record.port)
     case .sqlite:
-      guard case .sqlite(let session) = model.alternateSession, session.isConnected
-      else { return false }
+      guard case .sqlite(let session) = model.alternateSession, session.isConnected else {
+        return false
+      }
       let c = session.config
       return c.name == record.name && c.filePath == record.host
-    case nil:
-      return false
+    case nil: return false
     }
   }
 }
@@ -221,14 +213,14 @@ private struct ConnectionRow: View {
 
   var body: some View {
     HStack(spacing: 8) {
-      Image(systemName: record.engineKind.systemImage)
-        .foregroundStyle(isActive ? Color.blue : Color.secondary)
-        .frame(width: 16)
+      Image(systemName: record.engineKind.systemImage).foregroundStyle(
+        isActive ? Color.blue : Color.secondary
+      ).frame(width: 16)
       Text(record.name).lineLimit(1)
       Spacer(minLength: 0)
-      Image(systemName: isActive ? "wifi" : "wifi.slash")
-        .foregroundStyle(isActive ? Color.blue : Color.secondary.opacity(0.5))
-        .font(.caption)
+      Image(systemName: isActive ? "wifi" : "wifi.slash").foregroundStyle(
+        isActive ? Color.blue : Color.secondary.opacity(0.5)
+      ).font(.caption)
     }.contentShape(Rectangle())
   }
 }
@@ -236,14 +228,9 @@ private struct ConnectionRow: View {
 struct SidebarLabelStyle: LabelStyle {
   func makeBody(configuration: Configuration) -> some View {
     HStack(alignment: .firstTextBaseline) {
-      configuration.icon.foregroundStyle(.tint)
-        .contentTransition(.symbolEffect)
-        .frame(width: 16)
-      configuration.title
-        .contentTransition(.numericText())
-    }.padding(.horizontal, 8)
-      .padding(.vertical, 4)
-      .frame(maxWidth: .infinity, alignment: .leading)
+      configuration.icon.foregroundStyle(.tint).contentTransition(.symbolEffect).frame(width: 16)
+      configuration.title.contentTransition(.numericText())
+    }.padding(.horizontal, 8).padding(.vertical, 4).frame(maxWidth: .infinity, alignment: .leading)
       .background(RoundedRectangle(cornerRadius: 8).fill(.primary.opacity(0.05)))
   }
 }
@@ -251,5 +238,6 @@ struct SidebarLabelStyle: LabelStyle {
 #Preview {
   let container = try! ModelContainer(
     for: ConnectionRecord.self, DatabaseOpenRecord.self, CollectionOpenRecord.self)
-  return ContentView(model: DatabaseModel(modelContext: container.mainContext), container: container)
+  return ContentView(
+    model: DatabaseModel(modelContext: container.mainContext), container: container)
 }

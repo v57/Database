@@ -1,4 +1,5 @@
 import Foundation
+
 @testable import SQLite
 
 /// Integration-test support: SQLite needs no server — each test creates its
@@ -26,7 +27,5 @@ enum TestEnv {
     FileManager.default.createFile(atPath: path, contents: nil)
   }
 
-  static func remove(_ path: String) {
-    try? FileManager.default.removeItem(atPath: path)
-  }
+  static func remove(_ path: String) { try? FileManager.default.removeItem(atPath: path) }
 }

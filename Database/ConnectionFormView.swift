@@ -41,28 +41,20 @@ struct ConnectionFormView: View {
     _host = State(initialValue: settings?.host ?? "localhost")
     _port = State(initialValue: settings.map { Int($0.port) } ?? 27017)
     // Per-engine optional fields (kept simple: empty when not applicable).
-    let mongo: ConnectionConfig? =
-      if case .mongodb(let c) = settings { c } else { nil }
-    let pg: PostgresConnectionConfig? =
-      if case .postgresql(let c) = settings { c } else { nil }
-    let redis: RedisConnectionConfig? =
-      if case .redis(let c) = settings { c } else { nil }
-    _username = State(
-      initialValue: mongo?.username ?? pg?.username ?? redis?.username ?? "")
+    let mongo: ConnectionConfig? = if case .mongodb(let c) = settings { c } else { nil }
+    let pg: PostgresConnectionConfig? = if case .postgresql(let c) = settings { c } else { nil }
+    let redis: RedisConnectionConfig? = if case .redis(let c) = settings { c } else { nil }
+    _username = State(initialValue: mongo?.username ?? pg?.username ?? redis?.username ?? "")
     // Secrets rule: prefill EMPTY so the stored secret is never read back.
     _password = State(initialValue: "")
     _authSource = State(initialValue: mongo?.authSource ?? "")
     switch settings {
-    case .mongodb(let c):
-      _defaultDatabase = State(initialValue: c.defaultDatabase ?? "")
-    case .postgresql(let c):
-      _defaultDatabase = State(initialValue: c.defaultDatabase ?? "")
+    case .mongodb(let c): _defaultDatabase = State(initialValue: c.defaultDatabase ?? "")
+    case .postgresql(let c): _defaultDatabase = State(initialValue: c.defaultDatabase ?? "")
     case .redis(let c):
       _defaultDatabase = State(initialValue: c.databaseIndex.map(String.init) ?? "0")
-    case .sqlite:
-      _defaultDatabase = State(initialValue: "")
-    case nil:
-      _defaultDatabase = State(initialValue: "")
+    case .sqlite: _defaultDatabase = State(initialValue: "")
+    case nil: _defaultDatabase = State(initialValue: "")
     }
     _directConnection = State(initialValue: mongo?.directConnection ?? false)
   }
@@ -99,11 +91,7 @@ struct ConnectionFormView: View {
           // switching to it clears a stale hostname and leaving it with an
           // empty path restores the localhost default.
           port = Int(newValue.defaultPort)
-          if newValue == .sqlite {
-            host = ""
-          } else if host.isEmpty {
-            host = "localhost"
-          }
+          if newValue == .sqlite { host = "" } else if host.isEmpty { host = "localhost" }
         }
         TextField("Name", text: $name)
         if engine == .sqlite {
@@ -115,12 +103,10 @@ struct ConnectionFormView: View {
       }
       if engine != .sqlite {
         Section("Authentication (optional)") {
-          TextField("Username", text: $username).disabled(engine == .redis)
-            .help(engine == .redis ? "Redis ACL username (rarely used locally)" : "")
+          TextField("Username", text: $username).disabled(engine == .redis).help(
+            engine == .redis ? "Redis ACL username (rarely used locally)" : "")
           SecureField("Password (kept on edit unless retyped)", text: $password)
-          if engine == .mongodb {
-            TextField("Auth Source", text: $authSource)
-          }
+          if engine == .mongodb { TextField("Auth Source", text: $authSource) }
         }
         Section("Startup") {
           TextField(defaultDatabaseLabel, text: $defaultDatabase)
@@ -149,25 +135,21 @@ struct ConnectionFormView: View {
     VStack(alignment: .leading, spacing: 6) {
       Text("Database File").font(.caption).foregroundStyle(.secondary)
       HStack(spacing: 8) {
-        TextField("Path to .sqlite or .db file", text: $host)
-          .textFieldStyle(.roundedBorder)
+        TextField("Path to .sqlite or .db file", text: $host).textFieldStyle(.roundedBorder)
         Button("Browse…") { browseForFile() }
       }
       Text("Drag a SQLite file here, or browse.").font(.caption).foregroundStyle(.secondary)
-    }
-    .padding(8)
-    .background(isDropTargeted ? Color.accentColor.opacity(0.15) : Color.clear)
-    .overlay(
-      RoundedRectangle(cornerRadius: 8)
-        .strokeBorder(
-          isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.3),
-          style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 1, dash: [5]))
-    )
-    .dropDestination(for: URL.self) { urls, _ in
+    }.padding(8).background(isDropTargeted ? Color.accentColor.opacity(0.15) : Color.clear).overlay(
+      RoundedRectangle(cornerRadius: 8).strokeBorder(
+        isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.3),
+        style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 1, dash: [5]))
+    ).dropDestination(for: URL.self) { urls, _ in
       guard let url = urls.first, url.isFileURL else { return false }
       host = url.path
       return true
-    } isTargeted: { isDropTargeted = $0 }
+    } isTargeted: {
+      isDropTargeted = $0
+    }
   }
 
   private func browseForFile() {
@@ -177,9 +159,7 @@ struct ConnectionFormView: View {
     panel.canChooseDirectories = false
     panel.allowsMultipleSelection = false
     panel.allowedContentTypes = sqliteContentTypes
-    panel.begin { response in
-      if response == .OK, let url = panel.url { host = url.path }
-    }
+    panel.begin { response in if response == .OK, let url = panel.url { host = url.path } }
   }
 
   /// sqlite/sqlite3/db/db3 — dynamic UTIs resolve for any extension.
@@ -199,22 +179,21 @@ struct ConnectionFormView: View {
     case .mongodb:
       return .mongodb(
         ConnectionConfig(
-          name: trimmedName, host: trimmedHost, port: UInt16(port), username: user,
-          password: pass, authSource: emptyToNil(authSource), defaultDatabase: db,
+          name: trimmedName, host: trimmedHost, port: UInt16(port), username: user, password: pass,
+          authSource: emptyToNil(authSource), defaultDatabase: db,
           directConnection: directConnection))
     case .postgresql:
       return .postgresql(
         PostgresConnectionConfig(
-          name: trimmedName, host: trimmedHost, port: UInt16(port), username: user,
-          password: pass, defaultDatabase: db))
+          name: trimmedName, host: trimmedHost, port: UInt16(port), username: user, password: pass,
+          defaultDatabase: db))
     case .redis:
       let index = db.flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
       return .redis(
         RedisConnectionConfig(
-          name: trimmedName, host: trimmedHost, port: UInt16(port), username: user,
-          password: pass, databaseIndex: index))
-    case .sqlite:
-      return .sqlite(SQLiteConnectionConfig(name: trimmedName, filePath: trimmedHost))
+          name: trimmedName, host: trimmedHost, port: UInt16(port), username: user, password: pass,
+          databaseIndex: index))
+    case .sqlite: return .sqlite(SQLiteConnectionConfig(name: trimmedName, filePath: trimmedHost))
     }
   }
 

@@ -150,8 +150,7 @@ enum EngineSettings {
         RedisConnectionConfig(
           name: name, host: host, port: UInt16(port), username: username, password: password,
           databaseIndex: index))
-    case .sqlite:
-      return .sqlite(SQLiteConnectionConfig(name: name, filePath: host))
+    case .sqlite: return .sqlite(SQLiteConnectionConfig(name: name, filePath: host))
     }
   }
 
@@ -159,8 +158,7 @@ enum EngineSettings {
   func toConfig() -> ConnectionConfig {
     switch toSettings() {
     case .mongodb(let c): return c
-    default:
-      return ConnectionConfig(name: name, host: host, port: UInt16(port))
+    default: return ConnectionConfig(name: name, host: host, port: UInt16(port))
     }
   }
 }

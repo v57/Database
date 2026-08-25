@@ -24,26 +24,18 @@ public final class PostgresConnection {
   /// Opens the connection. The driver authenticates during connect; a trivial
   /// `SELECT 1` verifies the session is usable before reporting connected.
   public func connect() async throws {
-    guard config.isValid else {
-      throw PostgreSQLError.invalidConfig("host must not be empty")
-    }
+    guard config.isValid else { throw PostgreSQLError.invalidConfig("host must not be empty") }
     let configuration = PostgresNIO.PostgresConnection.Configuration(
-      host: config.host, port: Int(config.port),
-      username: config.username ?? "postgres",
-      password: config.password,
-      database: connectDatabaseName,
-      tls: .disable)
+      host: config.host, port: Int(config.port), username: config.username ?? "postgres",
+      password: config.password, database: connectDatabaseName, tls: .disable)
     do {
       let eventLoop = PostgresNIO.PostgresConnection.defaultEventLoopGroup.any()
       let c = try await PostgresNIO.PostgresConnection.connect(
         on: eventLoop, configuration: configuration, id: 1,
         logger: Logger(label: "dev.database.postgres"))
-      _ = try await c.query(
-        PostgresQuery(unsafeSQL: "SELECT 1"), logger: Self.queryLogger)
+      _ = try await c.query(PostgresQuery(unsafeSQL: "SELECT 1"), logger: Self.queryLogger)
       connection = c
-    } catch {
-      throw PostgreSQLError.server(error.localizedDescription)
-    }
+    } catch { throw PostgreSQLError.server(error.localizedDescription) }
   }
 
   /// Database opened at connect time: explicit default, else "postgres".
@@ -90,17 +82,14 @@ public final class PostgresConnection {
       throw PostgreSQLError.invalidQuery("Empty SQL statement")
     }
     do {
-      let sequence = try await c.query(
-        PostgresQuery(unsafeSQL: sql), logger: Self.queryLogger)
+      let sequence = try await c.query(PostgresQuery(unsafeSQL: sql), logger: Self.queryLogger)
       var rows: [PostgresRowData] = []
       for try await row in sequence {
         rows.append(Self.rowData(index: rows.count, row: row))
         if let limit, rows.count >= limit { break }
       }
       return rows
-    } catch let e as PostgreSQLError {
-      throw e
-    } catch {
+    } catch let e as PostgreSQLError { throw e } catch {
       throw PostgreSQLError.server(error.localizedDescription)
     }
   }
@@ -115,12 +104,9 @@ public final class PostgresConnection {
     }
     do {
       // Drain the row stream so the command completes before returning.
-      let sequence = try await c.query(
-        PostgresQuery(unsafeSQL: sql), logger: Self.queryLogger)
+      let sequence = try await c.query(PostgresQuery(unsafeSQL: sql), logger: Self.queryLogger)
       for try await _ in sequence {}
-    } catch let e as PostgreSQLError {
-      throw e
-    } catch {
+    } catch let e as PostgreSQLError { throw e } catch {
       throw PostgreSQLError.server(error.localizedDescription)
     }
   }
@@ -129,9 +115,7 @@ public final class PostgresConnection {
   public func count(sql: String) async throws -> Int64 {
     let rows = try await select(sql: sql, limit: 1)
     guard let first = rows.first else { return 0 }
-    for value in first.values.values {
-      if case .int(let n) = value { return n }
-    }
+    for value in first.values.values { if case .int(let n) = value { return n } }
     return 0
   }
 
@@ -156,35 +140,27 @@ public final class PostgresConnection {
   private static func value(of cell: PostgresCell) -> PostgresValue {
     if cell.bytes == nil { return .null }
     switch cell.dataType {
-    case .bool:
-      return (try? cell.decode(Bool.self)).map { .bool($0) } ?? .string(text(cell))
+    case .bool: return (try? cell.decode(Bool.self)).map { .bool($0) } ?? .string(text(cell))
     case .int2, .int4, .int8:
       return (try? cell.decode(Int64.self)).map { .int($0) } ?? .string(text(cell))
     case .float4, .float8:
       return (try? cell.decode(Double.self)).map { .double($0) } ?? .string(text(cell))
-    case .numeric:
-      return (try? cell.decode(String.self)).map { .string($0) } ?? .string(text(cell))
+    case .numeric: return (try? cell.decode(String.self)).map { .string($0) } ?? .string(text(cell))
     case .timestamp, .timestamptz, .date:
       return (try? cell.decode(Date.self)).map { .date($0) } ?? .string(text(cell))
     case .json, .jsonb:
       return (try? cell.decode(String.self)).map { .json($0) } ?? .string(text(cell))
-    case .bytea:
-      return (try? cell.decode([UInt8].self)).map { .bytes($0) } ?? .string(text(cell))
-    default:
-      return .string(text(cell))
+    case .bytea: return (try? cell.decode([UInt8].self)).map { .bytes($0) } ?? .string(text(cell))
+    default: return .string(text(cell))
     }
   }
 
-  private static func text(_ cell: PostgresCell) -> String {
-    (try? cell.decode(String.self)) ?? ""
-  }
+  private static func text(_ cell: PostgresCell) -> String { (try? cell.decode(String.self)) ?? "" }
 
   /// Runs a single-column text query and returns all values.
   private func strings(fromSQL sql: String) async throws -> [String] {
     try await select(sql: sql).compactMap { row in
-      for value in row.values.values {
-        if case .string(let s) = value { return s }
-      }
+      for value in row.values.values { if case .string(let s) = value { return s } }
       return nil
     }
   }

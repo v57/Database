@@ -17,8 +17,8 @@ import SwiftUI
       // default.store — Player uses that file too, so the two apps clashed
       // ("The file default.store couldn't be opened", dropped tables, lost
       // records). Keep this app's store in its own dev.v57.db folder.
-      let appSupport = URL.applicationSupportDirectory
-        .appendingPathComponent("dev.v57.db", isDirectory: true)
+      let appSupport = URL.applicationSupportDirectory.appendingPathComponent(
+        "dev.v57.db", isDirectory: true)
       try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
       let storeURL = appSupport.appendingPathComponent("Database.store")
       let config = ModelConfiguration("Database", url: storeURL)
@@ -34,9 +34,7 @@ import SwiftUI
     appDelegate.model = appModel
   }
 
-  var body: some Scene {
-    WindowGroup { ContentView(model: model, container: container) }
-  }
+  var body: some Scene { WindowGroup { ContentView(model: model, container: container) } }
 }
 
 struct ContentView: View {
@@ -67,7 +65,6 @@ struct ContentView: View {
       ConnectionsSidebarView()
     } detail: {
       DocumentsView()
-    }.navigationTitle(title)
-      .environment(model).modelContainer(container)
+    }.navigationTitle(title).environment(model).modelContainer(container)
   }
 }

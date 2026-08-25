@@ -111,9 +111,7 @@ public final class SQLiteConnection {
       "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') "
       + "AND name NOT LIKE 'sqlite_%' ORDER BY name"
     let names = try await select(sql: sql).compactMap { row in
-      for value in row.values.values {
-        if case .string(let s) = value { return s }
-      }
+      for value in row.values.values { if case .string(let s) = value { return s } }
       return nil
     }
     guard !search.isEmpty else { return names }
@@ -169,9 +167,7 @@ public final class SQLiteConnection {
   public func count(sql: String) async throws -> Int64 {
     let rows = try await select(sql: sql, limit: 1)
     guard let first = rows.first else { return 0 }
-    for value in first.values.values {
-      if case .int(let n) = value { return n }
-    }
+    for value in first.values.values { if case .int(let n) = value { return n } }
     return 0
   }
 
@@ -197,19 +193,15 @@ public final class SQLiteConnection {
   /// untyped cells map to .null so nothing crashes the document list.
   private static func value(of stmt: OpaquePointer?, at index: Int32) -> SQLiteValue {
     switch sqlite3_column_type(stmt, index) {
-    case SQLITE_INTEGER:
-      return .int(sqlite3_column_int64(stmt, index))
-    case SQLITE_FLOAT:
-      return .double(sqlite3_column_double(stmt, index))
-    case SQLITE_TEXT:
-      return text(stmt: stmt, at: index).map { .string($0) } ?? .null
+    case SQLITE_INTEGER: return .int(sqlite3_column_int64(stmt, index))
+    case SQLITE_FLOAT: return .double(sqlite3_column_double(stmt, index))
+    case SQLITE_TEXT: return text(stmt: stmt, at: index).map { .string($0) } ?? .null
     case SQLITE_BLOB:
       let count = Int(sqlite3_column_bytes(stmt, index))
       guard count > 0, let raw = sqlite3_column_blob(stmt, index) else { return .bytes([]) }
       let buffer = UnsafeRawBufferPointer(start: raw, count: count)
       return .bytes(Array(buffer))
-    default:
-      return .null
+    default: return .null
     }
   }
 
