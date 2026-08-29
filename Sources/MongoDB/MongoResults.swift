@@ -18,3 +18,11 @@ public struct MongoDeleteResult: Sendable {
 
   public init(deletedCount: Int) { self.deletedCount = deletedCount }
 }
+
+/// Result of an insertOne/insertMany, surfaced for TestEnv seeding and callers
+/// that want to know how many documents were accepted.
+public struct MongoInsertResult: Sendable {
+  public let insertedCount: Int
+
+  public init(insertedCount: Int) { self.insertedCount = insertedCount }
+}

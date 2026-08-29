@@ -1,5 +1,4 @@
 import Foundation
-import MongoSwift
 import Testing
 
 @testable import MongoDB

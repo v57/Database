@@ -1,11 +1,11 @@
 import Foundation
-import MongoSwift
-import NIO
 
 @testable import MongoDB
 
 /// Integration-test support: localhost server, per-test databases so tests can
-/// run in parallel, each db dropped on the way out.
+/// run in parallel, each db dropped on the way out. Seeding and dropping go
+/// through the `MongoConnection` facade (insertMany / dropDatabase), so the test
+/// target has no MongoDB driver imports.
 enum TestEnv {
   static let host = "127.0.0.1"
   static let port: UInt16 = 27017
@@ -23,30 +23,26 @@ enum TestEnv {
     "dbclient_\(label)_\(UUID().uuidString.prefix(8))"
   }
 
-  /// v1.3.1 requires an explicit NIO EventLoopGroup.
-  static func makeClient() throws -> (MongoClient, MultiThreadedEventLoopGroup) {
-    let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-    let client = try MongoClient("mongodb://\(host):\(port)/?directConnection=true", using: group)
-    return (client, group)
+  /// Opens a connected facade for seeding/dropping.
+  static func makeConnection() async throws -> MongoConnection {
+    let conn = MongoConnection(config: config())
+    try await conn.connect()
+    return conn
   }
 
-  /// Seed a collection using the raw driver (insert is intentionally NOT part
-  /// of the public MongoDB API surface).
+  /// Seed a collection via the facade's insertMany. `use(database:)` selects the
+  /// target database so collection-scoped ops address it.
   static func seed(database: String, collection: String, docs: [Document]) async throws {
-    let (client, group) = try makeClient()
-    defer {
-      try? await client.close()
-      group.shutdownGracefully { _ in }
-    }
-    _ = try await client.db(database).collection(collection).insertMany(docs)
+    let conn = try await makeConnection()
+    defer { await conn.disconnect() }
+    try await conn.use(database: database)
+    _ = try await conn.insertMany(in: collection, documents: docs)
   }
 
+  /// Drop a per-test database via the facade's dropDatabase.
   static func drop(database: String) async throws {
-    let (client, group) = try makeClient()
-    defer {
-      try? await client.close()
-      group.shutdownGracefully { _ in }
-    }
-    try await client.db(database).drop()
+    let conn = try await makeConnection()
+    defer { await conn.disconnect() }
+    try await conn.dropDatabase(database)
   }
 }
