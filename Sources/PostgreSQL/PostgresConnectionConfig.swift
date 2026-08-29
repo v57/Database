@@ -1,5 +1,4 @@
 import Foundation
-import NIOCore
 
 /// A saved PostgreSQL connection definition. Same shape as the MongoDB
 /// `ConnectionConfig`: pure value type, Codable, no driver types involved.
