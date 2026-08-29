@@ -1,16 +1,15 @@
 import Foundation
-import MongoSwift
 
-/// swift-bson 3.x (pulled in by mongo-swift-driver 1.3.1) renamed `Document` to
-/// `BSONDocument`. This typealias keeps the module's `Document` API stable for
-/// tests, the UI layer, and the helpers below — visible wherever MongoDB is imported.
+/// The module's `Document` type — BSONDocument, an own value type (no swift-bson
+/// dependency). KEEP THIS TYPEALIAS: BSONPath/QueryParser/app/tests all use `Document`.
 public typealias Document = BSONDocument
 
 /// JSON <-> BSON Document helpers for the UI layer and tests.
 public enum BSONSupport {
   /// Parse a JSON string into a BSON `Document` (filter / update inputs from text fields).
+  /// Uses the strict-JSON decoder defined in BSONJSON.swift, then wraps errors.
   public static func document(fromJSON json: String) throws -> Document {
-    do { return try Document(fromJSON: json) } catch {
+    do { return try BSONJSONDecoder().decode(json) } catch {
       throw MongoDBError.invalidConfig("Invalid JSON: \(error.localizedDescription)")
     }
   }
@@ -33,12 +32,13 @@ public enum BSONSupport {
     case .datetime(let date): return dateFormatter.string(from: date)
     case .objectID(let oid): return oid.hex
     case .symbol(let s): return s.stringValue
+    case .binary(let b): return b.data.base64EncodedString()
+    case .regex(let r): return String(describing: r)
     case .null: return "null"
     case .undefined: return "undefined"
     case .minKey: return "MinKey"
     case .maxKey: return "MaxKey"
     case .document, .array: return ""
-    default: return String(describing: bson)
     }
   }
 
@@ -49,4 +49,12 @@ public enum BSONSupport {
     f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     return f
   }()
+}
+
+extension BSONDocument: CustomStringConvertible {
+  /// Single-line extended JSON.
+  public var description: String {
+    let items = all.map { "\($0.key): \($0.value.jsonString)" }
+    return "{ " + items.joined(separator: ", ") + " }"
+  }
 }

@@ -1,5 +1,4 @@
 import Foundation
-import MongoSwift
 
 /// One step on the path to a value inside a BSON document: a document key or
 /// an array index. Used by the UI to address fields for display and editing,

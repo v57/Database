@@ -1,5 +1,4 @@
 import Foundation
-import MongoSwift
 
 /// Tolerant MongoDB query parser for filter input.
 ///
