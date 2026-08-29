@@ -9,41 +9,32 @@ let package = Package(
     .library(name: "MongoDB", targets: ["MongoDB"]),
     .library(name: "PostgreSQL", targets: ["PostgreSQL"]),
     .library(name: "Redis", targets: ["Redis"]), .library(name: "SQLite", targets: ["SQLite"]),
-  ],
-  dependencies: [
-    .package(url: "https://github.com/mongodb/mongo-swift-driver.git", from: "1.3.1"),
-    // Explicit NIO dependency: MongoSwift 1.3.1 requires an EventLoopGroup at
-    // client creation; importing it transitively is fragile.
-    .package(url: "https://github.com/apple/swift-nio.git", from: "2.36.0"),
-    .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.28.0"),
-    .package(url: "https://github.com/Mordil/RediStack.git", from: "1.6.3"),
+    .library(name: "CPostgreSQL", targets: ["CPostgreSQL"]),
+    .library(name: "CMongoC", targets: ["CMongoC"]),
+    .library(name: "CHiredis", targets: ["CHiredis"]),
   ],
   targets: [
     .target(name: "Database", swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+    .systemLibrary(name: "CPostgreSQL", pkgConfig: "libpq", providers: [.brew(["libpq"]), .apt(["libpq-dev"])]),
+    .systemLibrary(name: "CMongoC", pkgConfig: "mongoc2", providers: [.brew(["mongo-c-driver"]), .apt(["libmongoc-dev"])]),
+    .systemLibrary(name: "CHiredis", pkgConfig: "hiredis", providers: [.brew(["hiredis"]), .apt(["libhiredis-dev"])]),
     .target(
       name: "MongoDB",
-      dependencies: [
-        .product(name: "MongoSwift", package: "mongo-swift-driver"),
-        .product(name: "NIO", package: "swift-nio"),
-      ], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+      dependencies: ["CMongoC"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .target(
-      name: "PostgreSQL", dependencies: [.product(name: "PostgresNIO", package: "postgres-nio")],
-      swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+      name: "PostgreSQL",
+      dependencies: ["CPostgreSQL"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .target(
-      name: "Redis", dependencies: [.product(name: "RediStack", package: "RediStack")],
-      swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
-    // SQLite needs no remote dependency: the macOS SDK ships the SQLite3
-    // module (system libsqlite3), which IS the official driver.
+      name: "Redis",
+      dependencies: ["CHiredis"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .target(name: "SQLite", swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
       name: "DatabaseTests", dependencies: ["Database"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
       name: "MongoDBTests",
-      dependencies: [
-        "MongoDB", .product(name: "MongoSwift", package: "mongo-swift-driver"),
-        .product(name: "NIO", package: "swift-nio"),
-      ], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+      dependencies: ["MongoDB"],
+      swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
       name: "PostgreSQLTests", dependencies: ["PostgreSQL"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
