@@ -1,65 +1,57 @@
 import Foundation
-import NIOCore
-import NIOPosix
-@preconcurrency import RediStack
+import CHiredis
 
-/// Async facade over a single Redis server connection.
-/// NOT Sendable-declared on purpose: it owns a non-Sendable `RedisConnection`
-/// and is driven from the MainActor UI or from tests. All operations are async
-/// (RediStack's EventLoopFuture surface is bridged with `.get()`).
+/// Async facade over a single Redis server connection, backed by the official
+/// hiredis C library. NOT Sendable-declared on purpose: it owns a non-Sendable
+/// connection context (a hiredis `redisContext`) that lives on a private serial
+/// DispatchQueue, and is driven from the MainActor UI or from tests. All
+/// operations are async and the only thread that ever touches the hiredis
+/// context is that background queue.
 ///
 /// "Collections" for Redis are logical database indexes (0-15); "documents"
 /// are the keys of the selected index, rendered as type/value/TTL rows.
 public final class RedisConnection {
   public let config: RedisConnectionConfig
-  private var connection: RediStack.RedisConnection?
-  private var eventLoopGroup: MultiThreadedEventLoopGroup?
+  /// The hiredis context plus the private serial queue that owns it. All
+  /// hiredis calls run on this queue; no C call ever touches the MainActor.
+  private let session: RedisSession
   /// Selected logical database index (nil = server default 0).
   public private(set) var currentDatabase: Int?
 
-  public init(config: RedisConnectionConfig) { self.config = config }
+  public init(config: RedisConnectionConfig) {
+    self.config = config
+    self.session = RedisSession()
+  }
 
-  public var isConnected: Bool { connection?.isConnected ?? false }
+  public var isConnected: Bool { session.isConnected }
 
-  /// Opens the TCP connection (driver performs AUTH/SELECT from the config)
-  /// and verifies it with PING before reporting connected.
+  /// Opens the TCP connection, performs AUTH when a password/ACL username is
+  /// present, verifies with PING, and selects the configured database index.
+  /// On failure the context is freed and a `RedisError.server` is thrown.
   public func connect() async throws {
     guard config.isValid else { throw RedisError.invalidConfig("host must not be empty") }
-    let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     do {
-      // ACL users authenticate with AUTH username password (address init);
-      // password-only setups use the classic AUTH (hostname init).
-      let configuration: RediStack.RedisConnection.Configuration
-      if let u = config.username, !u.isEmpty {
-        configuration = try RediStack.RedisConnection.Configuration(
-          address: .makeAddressResolvingHost(config.host, port: Int(config.port)), username: u,
-          password: config.password, initialDatabase: config.databaseIndex)
-      } else {
-        configuration = try RediStack.RedisConnection.Configuration(
-          hostname: config.host, port: Int(config.port), password: config.password,
-          initialDatabase: config.databaseIndex)
+      let ping = try await session.connect(
+        host: config.host, port: config.port,
+        username: config.username, password: config.password,
+        databaseIndex: config.databaseIndex)
+      guard ping == "PONG" else {
+        print("Redis connect: unexpected PING reply '\(ping)'")
+        await session.disconnect()
+        throw RedisError.server("PING did not return PONG (got '\(ping)')")
       }
-      let c = try await RediStack.RedisConnection.make(
-        configuration: configuration, boundEventLoop: group.any()
-      ).get()
-      _ = try await c.ping().get()
-      connection = c
-      eventLoopGroup = group
       currentDatabase = config.databaseIndex
     } catch {
-      group.shutdownGracefully { _ in }
+      await session.disconnect()
+      if let e = error as? RedisError { throw e }
       throw RedisError.server(error.localizedDescription)
     }
   }
 
+  /// Frees the hiredis connection, clears the session and the database index.
   public func disconnect() async {
-    if let c = connection { _ = c.close() }
-    connection = nil
+    await session.disconnect()
     currentDatabase = nil
-    if let g = eventLoopGroup {
-      g.shutdownGracefully { _ in }
-      eventLoopGroup = nil
-    }
   }
 
   /// Redis exposes fixed logical indexes, not names — the UI shows these and
@@ -67,17 +59,17 @@ public final class RedisConnection {
   public static let logicalDatabaseIndexes: [Int] = Array(0...15)
 
   public func listDatabases() async throws -> [Int] {
-    guard connection != nil else { throw RedisError.notConnected }
+    guard session.isConnected else { throw RedisError.notConnected }
     return Self.logicalDatabaseIndexes
   }
 
   /// Selects the logical database (SELECT n) for subsequent key operations.
   public func use(databaseIndex index: Int) async throws {
-    guard let c = connection else { throw RedisError.notConnected }
+    guard session.isConnected else { throw RedisError.notConnected }
     guard (0...15).contains(index) else {
       throw RedisError.invalidConfig("database index must be 0-15")
     }
-    _ = try await c.select(database: index).get()
+    _ = try await session.command(["SELECT", String(index)])
     currentDatabase = index
   }
 
@@ -93,43 +85,31 @@ public final class RedisConnection {
   /// Keys of the selected database, SCAN-based (non-blocking), optionally
   /// filtered by glob pattern; results capped at `count`.
   public func listKeys(matching search: String = "", count: Int = 1000) async throws -> [String] {
-    guard let c = connection else { throw RedisError.notConnected }
-    do {
-      var keys: [String] = []
-      var cursor = 0
-      let pattern = search.isEmpty ? nil : "*\(search)*"
-      repeat {
-        let (next, batch) = try await c.scan(startingFrom: cursor, matching: pattern).get()
-        keys.append(contentsOf: batch)
-        cursor = next
-        if keys.count >= count { break }
-      } while cursor != 0
-      return Array(keys.sorted().prefix(count))
-    } catch { throw RedisError.server(error.localizedDescription) }
+    guard session.isConnected else { throw RedisError.notConnected }
+    var keys: [String] = []
+    var cursor = "0"
+    let pattern = search.isEmpty ? nil : "*\(search)*"
+    repeat {
+      let args: [String] = pattern.map {
+        ["SCAN", cursor, "MATCH", $0, "COUNT", "1000"]
+      } ?? ["SCAN", cursor, "COUNT", "1000"]
+      let reply = try await session.command(args)
+      guard case .array(let parts) = reply, parts.count >= 2 else { break }
+      cursor = parts[0].stringValue
+      keys.append(contentsOf: parts[1].stringArray ?? [])
+      if keys.count >= count { break }
+    } while cursor != "0"
+    return Array(keys.sorted().prefix(count))
   }
 
   /// Full detail for one key: TYPE + value + TTL as UI rows.
   public func entry(for key: String) async throws -> RedisKeyEntry {
-    guard let c = connection else { throw RedisError.notConnected }
-    let k = RedisKey(key)
-    do {
-      // RediStack 1.6.x has no TYPE wrapper — raw command; reply is a simple
-      // status string (string/list/set/zset/hash/stream/none).
-      let typeReply = try await c.send(command: "TYPE", with: [.init(from: k)]).get()
-      let typeName = typeReply.string ?? "none"
-      let valueString = try await displayValue(of: k, typeName: typeName)
-      let lifetime = try await c.ttl(k).get()
-      let ttlSeconds: Int
-      switch lifetime {
-      case .limited(.seconds(let s)): ttlSeconds = Int(s)
-      case .limited(.milliseconds(let ms)): ttlSeconds = Int(ms / 1000)
-      case .unlimited: ttlSeconds = -1
-      case .keyDoesNotExist: ttlSeconds = -2
-      }
-      return RedisKeyEntry(key: key, typeName: typeName, displayValue: valueString, ttl: ttlSeconds)
-    } catch let e as RedisError { throw e } catch {
-      throw RedisError.server(error.localizedDescription)
-    }
+    guard session.isConnected else { throw RedisError.notConnected }
+    let typeReply = try await session.command(["TYPE", key])
+    let typeName = typeReply.stringValue
+    let valueString = try await displayValue(of: key, typeName: typeName)
+    let ttl = try await ttlSeconds(for: key)
+    return RedisKeyEntry(key: key, typeName: typeName, displayValue: valueString, ttl: ttl)
   }
 
   /// All keys with details (small local datasets; capped by `listKeys` count).
@@ -143,56 +123,63 @@ public final class RedisConnection {
   // MARK: - Raw command access (tests seed through these)
 
   public func set(_ key: String, to value: String) async throws {
-    guard let c = connection else { throw RedisError.notConnected }
-    do { _ = try await c.set(RedisKey(key), to: value).get() } catch {
-      throw RedisError.server(error.localizedDescription)
-    }
+    guard session.isConnected else { throw RedisError.notConnected }
+    _ = try await session.command(["SET", key, value])
   }
 
   public func get(_ key: String) async throws -> String? {
-    guard let c = connection else { throw RedisError.notConnected }
-    do {
-      let v = try await c.get(RedisKey(key)).get()
-      return v.string
-    } catch { throw RedisError.server(error.localizedDescription) }
+    guard session.isConnected else { throw RedisError.notConnected }
+    let reply = try await session.command(["GET", key])
+    switch reply {
+    case .nilReply: return nil
+    default: return reply.stringValue.isEmpty ? nil : reply.stringValue
+    }
   }
 
   public func delete(_ keys: [String]) async throws -> Int {
-    guard let c = connection else { throw RedisError.notConnected }
-    do { return try await c.delete(keys.map { RedisKey($0) }).get() } catch {
-      throw RedisError.server(error.localizedDescription)
-    }
+    guard session.isConnected else { throw RedisError.notConnected }
+    let reply = try await session.command(["DEL"] + keys)
+    return Int(reply.intValue)
   }
 
   /// Sets an expiry on `key`.
   public func expire(_ key: String, after seconds: Int64) async throws {
-    guard let c = connection else { throw RedisError.notConnected }
-    do { _ = try await c.expire(RedisKey(key), after: .seconds(seconds)).get() } catch {
-      throw RedisError.server(error.localizedDescription)
-    }
+    guard session.isConnected else { throw RedisError.notConnected }
+    _ = try await session.command(["EXPIRE", key, String(seconds)])
   }
 
   // MARK: - Value rendering
 
-  private func displayValue(of key: RedisKey, typeName: String) async throws -> String {
-    guard let c = connection else { throw RedisError.notConnected }
+  private func displayValue(of key: String, typeName: String) async throws -> String {
     switch typeName {
-    case "string": return (try await c.get(key).get()).string ?? ""
+    case "string":
+      let reply = try await session.command(["GET", key])
+      return reply.stringValue
     case "list":
-      let items = try await c.lrange(from: key, indices: 0...99).get()
-      return jsonish(items.compactMap(\.string))
+      let reply = try await session.command(["LRANGE", key, "0", "99"])
+      return jsonish(reply.stringArray ?? [])
     case "set":
-      let members = try await c.smembers(of: key).get()
-      return jsonish(members.compactMap(\.string))
+      let reply = try await session.command(["SMEMBERS", key])
+      return jsonish((reply.stringArray ?? []).sorted())
     case "zset":
-      let members = try await c.zrange(from: key, indices: 0...99).get()
-      return jsonish(members.compactMap(\.string))
+      let reply = try await session.command(["ZRANGE", key, "0", "99"])
+      return jsonish(reply.stringArray ?? [])
     case "hash":
-      let fields = try await c.hgetall(from: key).get()
-      let pairs = fields.keys.sorted().map { "\($0): \(fields[$0]?.string ?? "")" }
+      let reply = try await session.command(["HGETALL", key])
+      let str = reply.stringArray ?? []
+      var pairs: [String] = []
+      for i in stride(from: 0, to: str.count - 1, by: 2) where i + 1 < str.count {
+        pairs.append("\(str[i]): \(str[i + 1])")
+      }
       return jsonish(pairs)
     default: return "<\(typeName)>"
     }
+  }
+
+  private func ttlSeconds(for key: String) async throws -> Int {
+    let reply = try await session.command(["TTL", key])
+    // TTL returns an integer: >=0 seconds; -1 = no expiry; -2 = key missing.
+    return Int(reply.intValue)
   }
 
   /// Renders a sequence of values as a compact JSON-ish array string so the
@@ -200,5 +187,40 @@ public final class RedisConnection {
   private func jsonish(_ values: [String]) -> String {
     let encoded = values.map { $0.debugDescription }.joined(separator: ", ")
     return "[\(encoded)]"
+  }
+}
+
+/// A parsed hiredis reply, translated into a value type that is safe to pass
+/// off the background queue. Every `redisReply` is consumed and `freeReplyObject`d
+/// inside the command helper before this enum leaves the queue.
+enum RedisReply {
+  case status(String)
+  case string(String)
+  case integer(Int64)
+  case array([RedisReply])
+  case nilReply
+  case error(String)
+
+  /// Convenience: the reply's string payload (status/string/error text).
+  var stringValue: String {
+    switch self {
+    case .status(let s), .string(let s), .error(let s): return s
+    case .integer(let i): return String(i)
+    case .array, .nilReply: return ""
+    }
+  }
+
+  var intValue: Int64 {
+    switch self {
+    case .integer(let i): return i
+    case .error(let s): return Int64(s) ?? 0
+    case .status, .string, .array, .nilReply: return 0
+    }
+  }
+
+  /// Flat string array if this reply is an ARRAY of STRING/STATUS elements.
+  var stringArray: [String]? {
+    guard case .array(let parts) = self else { return nil }
+    return parts.map { $0.stringValue }
   }
 }
