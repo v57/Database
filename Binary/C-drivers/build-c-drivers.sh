@@ -250,7 +250,13 @@ build_libpq() {
 }
 
 # =====================================================================================
-# package_cdrivers — merge all three per-lib slice archives into ONE XCFramework
+# package_cdrivers — merge all per-lib slice archives into ONE XCFramework.
+# The libssh2 archive (built by the sibling Shell repo's build-ssh.sh, which produces
+# Binary/SSH-libssh2/Libssh2.xcframework) is merged in as well so the SINGLE Cdrivers
+# modulemap can declare CLibssh2 alongside CMongoC/CPostgreSQL/CHiredis. SwiftPM 6.4
+# cannot host two C-module binaryTargets in one build graph (Xcode's ProcessXCFramework
+# flattens each Headers/module.modulemap into the SAME Build/Products/<arch>/include/
+# module.modulemap -> 'Multiple commands produce'), so libssh2 rides the Cdrivers archive.
 # =====================================================================================
 package_cdrivers() {
   local out="$PREFIX_DIR/Cdrivers.xcframework"
@@ -258,24 +264,39 @@ package_cdrivers() {
   rmr "$merge" "$out"; mkdir -p "$merge"/{device,sim,macos}
   local hdr="$BUILD_DIR/headers"
 
+  # libssh2 slice archives (from the Shell repo's Binary/SSH-libssh2 build-ssh.sh).
+  local libssh2_dir="${LIBSSH2_DIR:-/Users/v57/Projects/Shell/Binary/SSH-libssh2/Libssh2.xcframework}"
+  local ls_dev="$libssh2_dir/ios-arm64/libssh2_all.a"
+  local ls_sim="$libssh2_dir/ios-arm64_x86_64-simulator/libssh2_sim.a"
+  local ls_mac="$libssh2_dir/macos-arm64/libssh2_all.a"
+  [ -f "$ls_dev" ] && [ -f "$ls_sim" ] && [ -f "$ls_mac" ] \
+    || die "libssh2 slice archives missing under $libssh2_dir (build with the Shell repo's build-ssh.sh)"
+
   info "merging archives + packaging Cdrivers.xcframework"
   for plat in device macos; do
     libtool -static -o "$merge/$plat/libcdrivers_all.a" \
       "$BUILD_DIR/slices/libmongoc/$plat/libmongoc_combined.a" \
       "$BUILD_DIR/slices/libpq/$plat/libpq.a" \
-      "$BUILD_DIR/slices/libhiredis/$plat/libhiredis.a" 2>/dev/null \
+      "$BUILD_DIR/slices/libhiredis/$plat/libhiredis.a" \
+      "$([ "$plat" = device ] && echo "$ls_dev" || echo "$ls_mac")" 2>/dev/null \
       || die "merge $plat"
   done
   libtool -static -o "$merge/sim/libcdrivers_all.a" \
     "$BUILD_DIR/slices/libmongoc/sim/libmongoc_combined.a" \
     "$BUILD_DIR/slices/libpq/sim/libpq.a" \
-    "$BUILD_DIR/slices/libhiredis/sim/libhiredis.a" 2>/dev/null \
+    "$BUILD_DIR/slices/libhiredis/sim/libhiredis.a" \
+    "$ls_sim" 2>/dev/null \
     || die "merge sim"
 
   # hiredis core headers live in the extracted source; stage them + write ONE modulemap
   local hsrc="$BUILD_DIR/hiredis-1.4.1"
   cp "$hsrc"/*.h "$hdr/" 2>/dev/null
   rm -f "$hdr/hiredis_ssl.h"
+  # libssh2 public headers (self-contained: only stddef/string/sys/stdint — no mbedTLS
+  # include needed at consume time) so the CLibssh2 module is importable by Swift.
+  cp "$libssh2_dir/macos-arm64/Headers/libssh2.h" \
+     "$libssh2_dir/macos-arm64/Headers/libssh2_publickey.h" \
+     "$libssh2_dir/macos-arm64/Headers/libssh2_sftp.h" "$hdr/" 2>/dev/null
   cat > "$hdr/module.modulemap" <<'EOF'
 module CMongoC [system] {
     header "mongoc/mongoc.h"
@@ -288,6 +309,10 @@ module CPostgreSQL [system] {
 }
 module CHiredis [system] {
     header "hiredis.h"
+    export *
+}
+module CLibssh2 [system] {
+    header "libssh2.h"
     export *
 }
 EOF

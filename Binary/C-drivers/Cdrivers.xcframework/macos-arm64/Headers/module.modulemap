@@ -11,3 +11,7 @@ module CHiredis [system] {
     header "hiredis.h"
     export *
 }
+module CLibssh2 [system] {
+    header "libssh2.h"
+    export *
+}
