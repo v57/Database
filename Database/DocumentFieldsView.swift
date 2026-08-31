@@ -212,11 +212,18 @@ struct ValueEditor: View {
     switch state.type {
     case .string, .integer, .number, .objectId:
       TextField("Value", text: $state.text).textFieldStyle(.roundedBorder).focused($focused)
-        .onSubmit { onCommit() }.onExitCommand { onCancel() }.frame(minWidth: 220)
+        .onSubmit { onCommit() }
+#if os(macOS)
+        .onExitCommand { onCancel() }
+#endif
+        .frame(minWidth: 220)
     case .boolean: Toggle("", isOn: $state.bool).labelsHidden().toggleStyle(.switch)
     case .date:
       DatePicker("", selection: $state.date, displayedComponents: [.date, .hourAndMinute])
-        .labelsHidden().datePickerStyle(.field)
+        .labelsHidden()
+#if os(macOS)
+        .datePickerStyle(.field)
+#endif
     case .null: Text("null").font(.system(.body, design: .monospaced)).foregroundStyle(.secondary)
     }
   }
@@ -254,7 +261,9 @@ struct AddFieldRow: View {
     case .boolean: Toggle("", isOn: $bool).labelsHidden()
     case .date:
       DatePicker("", selection: $date, displayedComponents: [.date, .hourAndMinute]).labelsHidden()
+#if os(macOS)
         .datePickerStyle(.field)
+#endif
     case .null: Text("null").foregroundStyle(.secondary)
     }
   }

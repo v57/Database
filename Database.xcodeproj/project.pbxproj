@@ -8,16 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		2669A0EF3031C45000C52779 /* Database in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0EE3031C45000C52779 /* Database */; };
-		267577B9303733DC00FB9989 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 267577B8303733DC00FB9989 /* AppIcon.icon */; };
+		884D4B024EB8075F6DE519D6 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E0DBE02A193510FD325EAD7C /* SQLite */; };
 		A1A1A1A1A1A1A1A1A1A1A1A1 /* MongoDB in Frameworks */ = {isa = PBXBuildFile; productRef = B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */; };
 		E1E1E1E1E1E1E1E1E1E1E1E1 /* PostgreSQL in Frameworks */ = {isa = PBXBuildFile; productRef = C1C1C1C1C1C1C1C1C1C1C1C1 /* PostgreSQL */; };
 		F1F1F1F1F1F1F1F1F1F1F1F1 /* Redis in Frameworks */ = {isa = PBXBuildFile; productRef = D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */; };
-		884D4B024EB8075F6DE519D6 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = E0DBE02A193510FD325EAD7C /* SQLite */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* Database.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Database.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		267577B8303733DC00FB9989 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -58,7 +56,6 @@
 		000000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
-				267577B8303733DC00FB9989 /* AppIcon.icon */,
 				000000000000000000000010 /* Database */,
 				000000000000000000000020 /* Products */,
 			);
@@ -141,7 +138,6 @@
 		000000000000000140000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
-				267577B9303733DC00FB9989 /* AppIcon.icon in Resources */,
 			);
 		};
 /* End PBXResourcesBuildPhase section */
@@ -317,14 +313,15 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -358,14 +355,15 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};

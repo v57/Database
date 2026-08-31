@@ -6,7 +6,9 @@ import SwiftData
 import SwiftUI
 
 @main struct DatabaseApp: App {
+#if canImport(AppKit)
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+#endif
   private let container: ModelContainer
   private let model: DatabaseModel
 
@@ -30,8 +32,10 @@ import SwiftUI
     // history persists and stays in sync with the views' @Query fetches.
     let appModel = DatabaseModel(modelContext: container.mainContext)
     model = appModel
+#if canImport(AppKit)
     // Finder "Open With…" / dock drops route through the app delegate.
     appDelegate.model = appModel
+#endif
   }
 
   var body: some Scene { WindowGroup { ContentView(model: model, container: container) } }

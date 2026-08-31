@@ -1,0 +1,13 @@
+module CMongoC [system] {
+    header "mongoc/mongoc.h"
+    header "bson/bson.h"
+    export *
+}
+module CPostgreSQL [system] {
+    header "libpq-fe.h"
+    export *
+}
+module CHiredis [system] {
+    header "hiredis.h"
+    export *
+}

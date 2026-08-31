@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 
 /// Routes Finder "Open With…" launches and dock drops of database files into
@@ -19,3 +20,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     Task { @MainActor in await model?.openSQLiteFile(at: first.path) }
   }
 }
+#endif

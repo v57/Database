@@ -1,4 +1,3 @@
-import AppKit
 import MongoDB
 import PostgreSQL
 import Redis
@@ -153,6 +152,7 @@ struct ConnectionFormView: View {
   }
 
   private func browseForFile() {
+#if os(macOS)
     let panel = NSOpenPanel()
     panel.title = "Choose a SQLite Database"
     panel.canChooseFiles = true
@@ -160,6 +160,7 @@ struct ConnectionFormView: View {
     panel.allowsMultipleSelection = false
     panel.allowedContentTypes = sqliteContentTypes
     panel.begin { response in if response == .OK, let url = panel.url { host = url.path } }
+#endif
   }
 
   /// sqlite/sqlite3/db/db3 — dynamic UTIs resolve for any extension.
