@@ -29,8 +29,6 @@ struct DocumentsView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      // Query bar is MongoDB-only for now; SQL/Redis selections show a hint.
-      if model.selectedCollection != nil && model.session != nil { queryBar }
       Group {
         if model.selectedCollection == nil {
           ContentUnavailableView(
@@ -48,6 +46,10 @@ struct DocumentsView: View {
         Text(model.statusMessage).font(.caption).foregroundStyle(.secondary).lineLimit(2).frame(
           maxWidth: .infinity, alignment: .leading
         ).padding(6).background(.bar)
+      }
+    }.frame(maxHeight: .infinity).safeAreaBar(edge: .top) {
+      if model.selectedCollection != nil && model.session != nil {
+        queryBar
       }
     }.toolbar {
       ToolbarItemGroup {
