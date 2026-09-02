@@ -95,16 +95,16 @@ struct DocumentsView: View {
   // MARK: - Query bar
 
   private var queryBar: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 8) {
-        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-        TextField("Filter", text: $filterText).textFieldStyle(.roundedBorder).onSubmit { apply() }
-          .onChange(of: filterText) { _, _ in debounceApply() }
-      }
-      TextField("Sort", text: $sortText).textFieldStyle(.roundedBorder).onSubmit { apply() }
+    VStack(alignment: .leading, spacing: 4) {
+      TextField("Filter", text: $filterText, axis: .vertical).textFieldStyle(.roundedBorder).onSubmit { apply() }
+        .onChange(of: filterText) { _, _ in debounceApply() }
+      TextField("Sort", text: $sortText, axis: .vertical).textFieldStyle(.roundedBorder).onSubmit { apply() }
         .onChange(of: sortText) { _, _ in debounceApply() }
-      TextField("Project", text: $projectText).textFieldStyle(.roundedBorder).onSubmit { apply() }
+      TextField("Project", text: $projectText, axis: .vertical).textFieldStyle(.roundedBorder).onSubmit { apply() }
         .onChange(of: projectText) { _, _ in debounceApply() }
+      if let errorMessage {
+        Text(errorMessage).foregroundStyle(.red)
+      }
     }.padding(8).background(.bar)
   }
 
