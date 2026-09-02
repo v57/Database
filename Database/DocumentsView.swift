@@ -12,7 +12,6 @@ import SwiftUI
 struct DocumentsView: View {
   @Environment(DatabaseModel.self) private var model
 
-  @State private var showUpdateSheet = false
   @State private var showDeleteSheet = false
   @State private var errorMessage: String?
   @State private var editor: ValueEditorState?
@@ -23,6 +22,8 @@ struct DocumentsView: View {
   @State private var filterText = ""
   @State private var sortText = ""
   @State private var projectText = ""
+  @State private var updateText = ""
+  @State private var isRunning = false
   @State private var editMode = false
   @State private var debounceTask: Task<Void, Never>?
 
@@ -64,19 +65,13 @@ struct DocumentsView: View {
           }.disabled(model.selectedCollection == nil)
 
           Button {
-            showUpdateSheet = true
-          } label: {
-            Label("Update Many…", systemImage: "wand.and.stars")
-          }.disabled(model.selectedCollection == nil)
-
-          Button {
             refresh()
           } label: {
             Label("Refresh", systemImage: "arrow.clockwise")
           }.disabled(model.selectedCollection == nil)
         }
       }
-    }.sheet(isPresented: $showUpdateSheet) { UpdateSheet(errorMessage: $errorMessage) }.sheet(
+    }.sheet(
       isPresented: $showDeleteSheet
     ) { DeleteSheet(filter: filterText, errorMessage: $errorMessage) }.alert(
       "Query Failed",
@@ -96,16 +91,20 @@ struct DocumentsView: View {
 
   private var queryBar: some View {
     VStack(alignment: .leading, spacing: 4) {
-      TextField("Filter", text: $filterText, axis: .vertical).textFieldStyle(.roundedBorder).onSubmit { apply() }
+      TextField("Filter", text: $filterText, axis: .vertical)
         .onChange(of: filterText) { _, _ in debounceApply() }
-      TextField("Sort", text: $sortText, axis: .vertical).textFieldStyle(.roundedBorder).onSubmit { apply() }
+      TextField("Sort", text: $sortText, axis: .vertical)
         .onChange(of: sortText) { _, _ in debounceApply() }
-      TextField("Project", text: $projectText, axis: .vertical).textFieldStyle(.roundedBorder).onSubmit { apply() }
+      TextField("Project", text: $projectText, axis: .vertical)
         .onChange(of: projectText) { _, _ in debounceApply() }
+      if editMode {
+        TextField("Update", text: $updateText, axis: .vertical)
+      }
       if let errorMessage {
         Text(errorMessage).foregroundStyle(.red)
       }
     }.padding(8).background(.bar)
+      .textFieldStyle(.roundedBorder).onSubmit { apply() }
   }
 
   // MARK: - Document list
@@ -168,6 +167,21 @@ struct DocumentsView: View {
     model.updateDocument(editor.docIndex, at: editor.path, to: value)
     self.editor = nil
   }
+  
+  private func updateMany() {
+    guard !isRunning else { return }
+    isRunning = true
+    let f = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
+    let u = updateText.trimmingCharacters(in: .whitespacesAndNewlines)
+    Task {
+      defer { isRunning = false }
+      do {
+        _ = try await model.runUpdate(filter: f, update: u)
+      } catch {
+        errorMessage = error.localizedDescription
+      }
+    }
+  }
 
   // MARK: - Query execution
 
@@ -209,54 +223,6 @@ private struct DocumentSection: Identifiable {
     self.id = index
     self.index = index
     self.document = document
-  }
-}
-
-/// Update Many sheet: filter query + update-operators JSON.
-private struct UpdateSheet: View {
-  @Environment(DatabaseModel.self) private var model
-  @Environment(\.dismiss) private var dismiss
-  @Binding var errorMessage: String?
-
-  @State private var filter = ""
-  @State private var update = ""
-  @State private var isRunning = false
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text("Update Many").font(.headline)
-      Text("Filter (query)").font(.caption).foregroundStyle(.secondary)
-      TextField("Filter query", text: $filter, axis: .vertical).font(
-        .system(.body, design: .monospaced)
-      ).lineLimit(1...4)
-      Text("Update operators (JSON, e.g. {\"$set\": {\"bucket\": \"young\"}})").font(.caption)
-        .foregroundStyle(.secondary)
-      TextField("Update JSON", text: $update, axis: .vertical).font(
-        .system(.body, design: .monospaced)
-      ).lineLimit(1...4)
-      HStack {
-        Spacer()
-        Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-        Button("Run") { run() }.keyboardShortcut(.defaultAction).disabled(isRunning)
-      }
-    }.padding().frame(width: 480)
-  }
-
-  private func run() {
-    guard !isRunning else { return }
-    isRunning = true
-    let f = filter.trimmingCharacters(in: .whitespacesAndNewlines)
-    let u = update.trimmingCharacters(in: .whitespacesAndNewlines)
-    Task {
-      defer { isRunning = false }
-      do {
-        _ = try await model.runUpdate(filter: f, update: u)
-        dismiss()
-      } catch {
-        errorMessage = error.localizedDescription
-        dismiss()
-      }
-    }
   }
 }
 
