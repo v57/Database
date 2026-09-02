@@ -51,24 +51,26 @@ struct DocumentsView: View {
       }
     }.toolbar {
       ToolbarItemGroup {
-        if model.session != nil {
+        if model.session != nil && model.selectedCollection == nil {
+          if editMode {
+            Button {
+              showDeleteSheet = true
+            } label: {
+              Label("Delete…", systemImage: "trash")
+            }
+          }
+          
           Button {
             editMode.toggle()
           } label: {
             Label(editMode ? "Done" : "Edit", systemImage: editMode ? "checkmark.square" : "pencil")
-          }.disabled(model.selectedCollection == nil)
-
-          Button {
-            showDeleteSheet = true
-          } label: {
-            Label("Delete…", systemImage: "trash")
-          }.disabled(model.selectedCollection == nil)
+          }
 
           Button {
             refresh()
           } label: {
             Label("Refresh", systemImage: "arrow.clockwise")
-          }.disabled(model.selectedCollection == nil)
+          }
         }
       }
     }.sheet(
