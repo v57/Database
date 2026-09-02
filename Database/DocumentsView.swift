@@ -42,11 +42,6 @@ struct DocumentsView: View {
           documentList
         }
       }
-      if !model.statusMessage.isEmpty {
-        Text(model.statusMessage).font(.caption).foregroundStyle(.secondary).lineLimit(2).frame(
-          maxWidth: .infinity, alignment: .leading
-        ).padding(6).background(.bar)
-      }
     }.frame(maxHeight: .infinity).safeAreaBar(edge: .top) {
       if model.selectedCollection != nil && model.session != nil {
         queryBar
@@ -75,7 +70,7 @@ struct DocumentsView: View {
           }
         }
       }
-    }.sheet(
+    }.navigationSubtitle(model.statusMessage).sheet(
       isPresented: $showDeleteSheet
     ) { DeleteSheet(filter: filterText, errorMessage: $errorMessage) }.onAppear {
       filterText = model.currentQuery.filter ?? ""
