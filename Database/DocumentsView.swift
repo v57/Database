@@ -99,6 +99,7 @@ struct DocumentsView: View {
         Text(errorMessage).foregroundStyle(.red)
       }
     }.padding(8).background(.bar)
+      .autocorrectionDisabled()
       .textFieldStyle(.roundedBorder).onSubmit { apply() }
   }
 
