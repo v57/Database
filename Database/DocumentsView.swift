@@ -75,14 +75,7 @@ struct DocumentsView: View {
       }
     }.sheet(
       isPresented: $showDeleteSheet
-    ) { DeleteSheet(filter: filterText, errorMessage: $errorMessage) }.alert(
-      "Query Failed",
-      isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
-    ) {
-      Button("OK", role: .cancel) {}
-    } message: {
-      Text(errorMessage ?? "")
-    }.onAppear {
+    ) { DeleteSheet(filter: filterText, errorMessage: $errorMessage) }.onAppear {
       filterText = model.currentQuery.filter ?? ""
       sortText = model.currentQuery.sort ?? ""
       projectText = model.currentQuery.projection ?? ""
