@@ -122,15 +122,19 @@ public final class PostgresConnection {
   }
 
   /// Runs a SELECT and returns every row as key/value pairs. `limit` stops
-  /// consuming the result set early (small local datasets).
-  public func select(sql: String, limit: Int? = nil) async throws -> [PostgresRowData] {
+  /// consuming the result set early; `offset` skips the first N rows (for
+  /// cursor-free pagination with a stable ORDER BY). Returns rows as PostgresRowData.
+  public func select(sql: String, limit: Int? = nil, offset: Int? = nil) async throws
+    -> [PostgresRowData]
+  {
     guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw PostgreSQLError.invalidQuery("Empty SQL statement")
     }
     let handle = self.handle
+    let applied = try Self.applyLimitOffset(sql: sql, limit: limit, offset: offset)
     return try await runOnQueue {
       guard let c = handle.conn else { throw PostgreSQLError.notConnected }
-      guard let res = PQexec(c, sql) else {
+      guard let res = PQexec(c, applied) else {
         throw PostgreSQLError.server("Could not execute query")
       }
       defer { PQclear(res) }
@@ -151,6 +155,17 @@ public final class PostgresConnection {
       }
       return out
     }
+  }
+
+  /// Appends LIMIT/OFFSET to a read query when asked; reused by the facade's
+  /// pagination paths so the base `select` keeps its zero-option behavior.
+  private static func applyLimitOffset(sql: String, limit: Int?, offset: Int?) throws -> String {
+    let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard limit != nil || offset != nil else { return trimmed }
+    var clauses: [String] = []
+    if let limit { clauses.append("LIMIT \(limit)") }
+    if let offset { clauses.append("OFFSET \(offset)") }
+    return trimmed + " " + clauses.joined(separator: " ")
   }
 
   /// Runs any DML/DDL statement to completion. Affected-row counts are not

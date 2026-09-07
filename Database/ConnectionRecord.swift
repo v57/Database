@@ -74,8 +74,8 @@ enum EngineSettings {
     }
   }
 
-  /// Host for server engines; the FILE PATH for SQLite (the record reuses
-  /// the host column as the path — a file database has no server).
+  /// Host for server engines; the FILE PATH for SQLite (the record
+  /// reuses the host column as the path — a file database has no server).
   var host: String {
     switch self {
     case .mongodb(let c): c.host

@@ -86,6 +86,33 @@ import Testing
     #expect(descending.first?["name"] == .string("cat"))
   }
 
+  @Test func findWithPaginationSkips() async throws {
+    let db = TestEnv.freshDBName("pg")
+    let docs: [Document] = (0..<250).map { n in ["n": BSON.int64(Int64(n))] }
+    try await TestEnv.seed(database: db, collection: "nums", docs: docs)
+    defer { try? await TestEnv.drop(database: db) }
+
+    let conn = MongoConnection(config: TestEnv.config())
+    defer { try? await conn.disconnect() }
+    try await conn.connect()
+    try await conn.use(database: db)
+
+    // Page 1: first 100, sorted by insertion order (no sort -> natural order).
+    let page1 = try await conn.find(in: "nums", limit: 100)
+    #expect(page1.count == 100)
+    #expect(page1.first?["n"] == .int64(0))
+
+    // Page 2 via skip 100: picks up where page 1 left off.
+    let page2 = try await conn.find(in: "nums", limit: 100, skip: 100)
+    #expect(page2.count == 100)
+    #expect(page2.first?["n"] == .int64(100))
+
+    // Page 3: remaining tail.
+    let page3 = try await conn.find(in: "nums", limit: 100, skip: 200)
+    #expect(page3.count == 50)
+    #expect(page3.first?["n"] == .int64(200))
+  }
+
   @Test func updateManyUpdatesMatchingDocuments() async throws {
     let db = TestEnv.freshDBName("upd")
     let docs: [Document] = [

@@ -36,7 +36,7 @@ struct ConnectionsSidebarView: View {
                 maxWidth: .infinity, alignment: .leading
               ).background(.black.opacity(0.001))
             }.buttonStyle(.plain).contextMenu {
-              Button("Connect") { selectConnection(record) }
+              Button("Connect") { connect(record) }
               Button("Disconnect") { Task { await model.disconnect() } }.disabled(
                 !model.isSessionActive)
               Divider()
@@ -154,6 +154,20 @@ struct ConnectionsSidebarView: View {
   }
 
   private func selectConnection(_ record: ConnectionRecord) {
+    guard !model.isConnecting else { return }
+    // Clicking the connection that's already active closes it (disconnect)
+    // instead of reconnecting — the connection row is a toggle.
+    if isActive(record) {
+      selectedRecordID = nil
+      Task { await model.disconnect() }
+      return
+    }
+    connect(record)
+  }
+
+  /// Connects to `record`, always (used by row click for a non-active
+  /// connection and by the context-menu "Connect" action).
+  private func connect(_ record: ConnectionRecord) {
     guard !model.isConnecting else { return }
     selectedRecordID = record.id
     Task { await model.connect(record.toSettings()) }

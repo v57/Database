@@ -36,14 +36,14 @@ struct DocumentsView: View {
             description: Text("Select a collection in the sidebar."))
         } else if model.documents.isEmpty {
           ContentUnavailableView(
-            "No Documents", systemImage: "doc.text.magnifyingglass",
-            description: Text("No documents match. Clear or edit the filter."))
+            emptyTitle, systemImage: "doc.text.magnifyingglass",
+            description: Text(emptySummary))
         } else {
           documentList
         }
       }
     }.frame(maxHeight: .infinity).safeAreaBar(edge: .top) {
-      if model.selectedCollection != nil && model.session != nil {
+      if model.selectedCollection != nil && model.isSessionActive {
         queryBar
       }
     }.toolbar {
@@ -83,12 +83,17 @@ struct DocumentsView: View {
 
   private var queryBar: some View {
     VStack(alignment: .leading, spacing: 4) {
-      TextField("Filter", text: $filterText, axis: .vertical)
+      // Redis has no server-side sort/projection: only a key-glob Filter is
+      // offered. MongoDB keeps all three; SQL uses Filter(WHERE)/Sort(ORDER
+      // BY)/Project(columns) as raw fragments.
+      TextField(filterPlaceholder, text: $filterText, axis: .vertical)
         .onChange(of: filterText) { _, _ in debounceApply() }
-      TextField("Sort", text: $sortText, axis: .vertical)
-        .onChange(of: sortText) { _, _ in debounceApply() }
-      TextField("Project", text: $projectText, axis: .vertical)
-        .onChange(of: projectText) { _, _ in debounceApply() }
+      if model.activeEngine != .redis {
+        TextField("Sort", text: $sortText, axis: .vertical)
+          .onChange(of: sortText) { _, _ in debounceApply() }
+        TextField("Project", text: $projectText, axis: .vertical)
+          .onChange(of: projectText) { _, _ in debounceApply() }
+      }
       if editMode {
         TextField("Update", text: $updateText, axis: .vertical)
       }
@@ -98,6 +103,34 @@ struct DocumentsView: View {
     }.padding(8).background(.bar)
       .autocorrectionDisabled()
       .textFieldStyle(.roundedBorder).onSubmit { apply() }
+  }
+
+  /// The Filter field's placeholder differs per engine: MongoDB takes query
+  /// syntax ({age: {$gt:30}}), SQL takes a raw WHERE body, Redis a key glob.
+  private var filterPlaceholder: String {
+    switch model.activeEngine {
+    case .redis: "Filter (key glob)"
+    case .postgresql, .sqlite: "Filter (WHERE…)"
+    case .mongodb, nil: "Filter"
+    }
+  }
+
+  /// Title/description of the empty state, which differs for Redis (keys vs
+  /// documents) and when the query bar is actively filtering.
+  private var emptyTitle: String {
+    switch model.activeEngine {
+    case .redis: "No Keys"
+    case .postgresql, .sqlite: "No Rows"
+    case .mongodb, nil: "No Documents"
+    }
+  }
+
+  private var emptySummary: String {
+    switch model.activeEngine {
+    case .redis: "No keys match. Clear or edit the filter."
+    case .postgresql, .sqlite: "No rows match. Clear or edit the filter."
+    case .mongodb, nil: "No documents match. Clear or edit the filter."
+    }
   }
 
   // MARK: - Document list
@@ -133,7 +166,26 @@ struct DocumentsView: View {
             .foregroundStyle(.secondary)
         }
       }
+      // "Load more" sentinel: appears at the bottom while more rows exist.
+      // Its `.onAppear` fires when the user scrolls to the bottom, loading the
+      // next page; a ProgressView shows while a fetch is in flight.
+      if model.hasMore && model.activeEngine != .redis {
+        HStack(spacing: 8) {
+          if model.isLoadingMore {
+            ProgressView().controlSize(.small)
+            Text("Loading…").font(.caption).foregroundStyle(.secondary)
+          } else {
+            Text(scrollHint).font(.caption).foregroundStyle(.secondary)
+          }
+        }.frame(maxWidth: .infinity).padding(.vertical, 8)
+          .onAppear { Task { await model.loadMoreDocuments() } }
+      }
     }.listStyle(.inset)
+  }
+
+  /// Hint shown at the scroll-bottom sentinel before the next page arrives.
+  private var scrollHint: String {
+    model.activeEngine == .redis ? "" : "Scroll down to load more"
   }
 
   private func documentHeader(for doc: BSONDocument, index: Int) -> String {

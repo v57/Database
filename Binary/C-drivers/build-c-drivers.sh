@@ -1,28 +1,33 @@
 #!/usr/bin/env bash
 #
-# build-c-drivers.sh — Build the MongoDB/PostgreSQL/Redis C driver libraries for
-# iOS (device arm64 + simulator arm64/x86_64) AND macOS (arm64), then merge them
-# into a SINGLE Cdrivers.xcframework that a SwiftPM binaryTarget can consume.
+# build-c-drivers.sh — Cross-compile the C/C++ client libraries for the Database
+# app's engines into a SINGLE Cdrivers.xcframework that a SwiftPM binaryTarget
+# can consume. Libraries built (static-only) for every Apple slice:
 #
-# The Database app facades are thin async wrappers over the OFFICIAL C libraries
-# (libmongoc/libbson, libpq, hiredis). This cross-compiles them for every Apple
-# platform so the app no longer depends on Homebrew at build time.
+#   iOS device (arm64), iOS simulator (arm64 + x86_64), macOS (arm64)
+#
+#   MongoDB   -> libmongoc + libbson      (mongo-c-driver, CMake)
+#   PostgreSQL-> libpq + support libs      (postgresql, autoconf)
+#   Redis     -> hiredis                   (hiredis, raw clang)
+#   SSH       -> libssh2                   (from the sibling Shell repo's XCFramework)
 #
 # WHY ONE MERGED XCFRAMEWORK: SwiftPM 6.4 cannot host two or more raw C-module
 # binaryTargets in one build graph — each ships a Headers/module.modulemap that
 # SwiftPM flattens into the SAME Build/Products/<arch>/include/module.modulemap,
 # colliding ("Multiple commands produce .../include/module.modulemap"). Merging
-# all three libraries into ONE XCFramework with ONE modulemap (declaring modules
-# CMongoC / CPostgreSQL / CHiredis) sidesteps the collision entirely while the
-# Swift sources keep importing those exact module names.
+# all libraries into ONE XCFramework with ONE modulemap (declaring modules
+# CMongoC / CPostgreSQL / CHiredis / CLibssh2)
+# sidesteps the collision entirely while the Swift sources keep importing those
+# exact module names.
 #
 # PREREQUISITES:
 #   - Xcode 16+ (xcrun --sdk iphoneos / iphonesimulator / macosx)
-#   - cmake, autoconf, libtool, make   (brew install cmake autoconf)
-#   - Internet (downloaded once; sources cached in build/.cache)
+#   - cmake, autoconf, libtool, make, perl   (brew install cmake autoconf)
+#   - Internet (sources downloaded once; cached in build/.cache)
+#   - The sibling Shell repo's libssh2 XCFramework (override $LIBSSH2_DIR)
 #
 # USAGE:
-#   ./build-c-drivers.sh               # build + merge all three
+#   ./build-c-drivers.sh               # build + merge all libraries
 #   ./build-c-drivers.sh clean         # remove Cdrivers.xcframework + slice outputs
 #
 # OUTPUT (committed):
@@ -57,6 +62,7 @@ IPHONEOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
 IPHONESIM_SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
 MACOS_SDK="$(xcrun --sdk macosx --show-sdk-path)"
 CC="$(xcrun --find clang)"
+CXX="$(xcrun --find clang++)"
 AR="$(xcrun --find ar)"
 
 info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -66,6 +72,20 @@ die()  { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 fetch() { # $1=url $2=destname
   [ -f "$SDK_CACHE/$2" ] || curl -sL -o "$SDK_CACHE/$2" "$1"
   tar xzf "$SDK_CACHE/$2" -C "$BUILD_DIR"
+}
+
+# `libtool -static` a list of archives, tolerating the (harmless) 2>/dev/null.
+libtool_merge() { # $1=output; rest=archives
+  local out="$1"; shift
+  rmr "$(dirname "$out")/$(basename "$out")"
+  mkdir -p "$(dirname "$out")"
+  libtool -static -o "$out" "$@" 2>/dev/null || die "libtool -static -> $out"
+}
+
+# lipo two single-arch archives into one fat archive at $out.
+lipo_fat() { # $1=out  $2=arm64-in  $3=x86-in
+  local out="$1"; mkdir -p "$(dirname "$out")"
+  lipo -create -output "$out" "$2" "$3" 2>/dev/null || die "lipo -> $out"
 }
 
 # =====================================================================================
@@ -250,18 +270,10 @@ build_libpq() {
 }
 
 # =====================================================================================
-# package_cdrivers — merge all per-lib slice archives into ONE XCFramework.
-# The libssh2 archive (built by the sibling Shell repo's build-ssh.sh, which produces
-# Binary/SSH-libssh2/Libssh2.xcframework) is merged in as well so the SINGLE Cdrivers
-# modulemap can declare CLibssh2 alongside CMongoC/CPostgreSQL/CHiredis. SwiftPM 6.4
-# cannot host two C-module binaryTargets in one build graph (Xcode's ProcessXCFramework
-# flattens each Headers/module.modulemap into the SAME Build/Products/<arch>/include/
-# module.modulemap -> 'Multiple commands produce'), so libssh2 rides the Cdrivers archive.
-# =====================================================================================
 package_cdrivers() {
   local out="$PREFIX_DIR/Cdrivers.xcframework"
   local merge="$BUILD_DIR/merge"
-  rmr "$merge" "$out"; mkdir -p "$merge"/{device,sim,macos}
+  rmr "$merge"; mkdir -p "$merge"/{device,sim,macos}
   local hdr="$BUILD_DIR/headers"
 
   # libssh2 slice archives (from the Shell repo's Binary/SSH-libssh2 build-ssh.sh).
@@ -273,27 +285,30 @@ package_cdrivers() {
     || die "libssh2 slice archives missing under $libssh2_dir (build with the Shell repo's build-ssh.sh)"
 
   info "merging archives + packaging Cdrivers.xcframework"
-  for plat in device macos; do
-    libtool -static -o "$merge/$plat/libcdrivers_all.a" \
-      "$BUILD_DIR/slices/libmongoc/$plat/libmongoc_combined.a" \
-      "$BUILD_DIR/slices/libpq/$plat/libpq.a" \
-      "$BUILD_DIR/slices/libhiredis/$plat/libhiredis.a" \
-      "$([ "$plat" = device ] && echo "$ls_dev" || echo "$ls_mac")" 2>/dev/null \
-      || die "merge $plat"
-  done
+  libtool -static -o "$merge/device/libcdrivers_all.a" \
+    "$BUILD_DIR/slices/libmongoc/device/libmongoc_combined.a" \
+    "$BUILD_DIR/slices/libpq/device/libpq.a" \
+    "$BUILD_DIR/slices/libhiredis/device/libhiredis.a" \
+    "$ls_dev" \
+
   libtool -static -o "$merge/sim/libcdrivers_all.a" \
     "$BUILD_DIR/slices/libmongoc/sim/libmongoc_combined.a" \
     "$BUILD_DIR/slices/libpq/sim/libpq.a" \
     "$BUILD_DIR/slices/libhiredis/sim/libhiredis.a" \
-    "$ls_sim" 2>/dev/null \
-    || die "merge sim"
+    "$ls_sim" \
 
-  # hiredis core headers live in the extracted source; stage them + write ONE modulemap
+  libtool -static -o "$merge/macos/libcdrivers_all.a" \
+    "$BUILD_DIR/slices/libmongoc/macos/libmongoc_combined.a" \
+    "$BUILD_DIR/slices/libpq/macos/libpq.a" \
+    "$BUILD_DIR/slices/libhiredis/macos/libhiredis.a" \
+    "$ls_mac" \
+
+  # hiredis core headers live in the extracted source; stage them (already staged
+  # by build_mongoc into headers/ too) + write ONE modulemap declaring all modules.
   local hsrc="$BUILD_DIR/hiredis-1.4.1"
   cp "$hsrc"/*.h "$hdr/" 2>/dev/null
   rm -f "$hdr/hiredis_ssl.h"
-  # libssh2 public headers (self-contained: only stddef/string/sys/stdint — no mbedTLS
-  # include needed at consume time) so the CLibssh2 module is importable by Swift.
+  # libssh2 public headers (self-contained: only stddef/string/sys/stdint).
   cp "$libssh2_dir/macos-arm64/Headers/libssh2.h" \
      "$libssh2_dir/macos-arm64/Headers/libssh2_publickey.h" \
      "$libssh2_dir/macos-arm64/Headers/libssh2_sftp.h" "$hdr/" 2>/dev/null
@@ -317,6 +332,12 @@ module CLibssh2 [system] {
 }
 EOF
 
+  # Replace the existing xcframework (move aside first; cannot rm a dir with -f).
+  if [ -d "$out" ]; then
+    local old="$out.old.$$"
+    mv "$out" "$old" 2>/dev/null || die "cannot stage old xcframework"
+    rmr "$old"
+  fi
   xcodebuild -create-xcframework \
     -library "$merge/device/libcdrivers_all.a" -headers "$hdr" \
     -library "$merge/sim/libcdrivers_all.a"     -headers "$hdr" \

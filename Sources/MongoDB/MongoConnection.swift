@@ -126,10 +126,10 @@ public final class MongoConnection {
   /// Runs a find on `collection` in the current database. `filter` defaults to
   /// "match everything"; `sort`/`projection` are optional BSON documents
   /// (e.g. `["age": -1]`, `["name": 1]`). Returns ALL matches (small local
-  /// datasets); use `limit` to cap.
+  /// datasets); use `limit` to cap, `skip` to page past the first N.
   public func find(
     in collection: String, filter: Document? = nil, sort: Document? = nil,
-    projection: Document? = nil, limit: Int? = nil
+    projection: Document? = nil, limit: Int? = nil, skip: Int? = nil
   ) async throws -> [Document] {
     let db = try requireDatabaseName()
     let collectionName = collection
@@ -144,8 +144,8 @@ public final class MongoConnection {
       defer { bson_destroy(filterBson) }
       var optsBson: UnsafeMutablePointer<bson_t>?
       defer { if let o = optsBson { bson_destroy(o) } }
-      if sort != nil || projection != nil || limit != nil {
-        let opts = try Self.findOptions(sort: sort, projection: projection, limit: limit)
+      if sort != nil || projection != nil || limit != nil || skip != nil {
+        let opts = try Self.findOptions(sort: sort, projection: projection, limit: limit, skip: skip)
         optsBson = opts
       }
       let cursor = mongoc_collection_find_with_opts(coll, filterBson, optsBson, nil)
@@ -400,9 +400,9 @@ public final class MongoConnection {
     return names.sorted()
   }
 
-  private static func findOptions(sort: Document?, projection: Document?, limit: Int?) throws
-    -> UnsafeMutablePointer<bson_t>
-  {
+  private static func findOptions(
+    sort: Document?, projection: Document?, limit: Int?, skip: Int?
+  ) throws -> UnsafeMutablePointer<bson_t> {
     let opts = BSONCMap.encode(BSONDocument())
     if let sort {
       let sortBson = BSONCMap.encode(sort)
@@ -416,6 +416,9 @@ public final class MongoConnection {
     }
     if let limit {
       _ = bson_append_int32(opts, "limit", 5, Int32(limit))
+    }
+    if let skip {
+      _ = bson_append_int32(opts, "skip", 4, Int32(skip))
     }
     return opts
   }

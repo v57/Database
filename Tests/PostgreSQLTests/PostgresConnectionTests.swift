@@ -94,6 +94,29 @@ import Testing
     }
   }
 
+  @Test func selectHonorsLimitAndOffset() async throws {
+    let conn = try await TestEnv.connect(TestEnv.config())
+    let schema = TestEnv.freshSchemaName("page")
+    await TestEnv.dropSchema(conn, schema)
+    try await TestEnv.makeSchema(conn, schema)
+
+    try await conn.execute(sql: "CREATE TABLE \(schema).nums (v int)")
+    // Insert 12 rows 0..11 via a VALUES list.
+    let values = (0..<12).map { "(\($0))" }.joined(separator: ", ")
+    try await conn.execute(sql: "INSERT INTO \(schema).nums (v) VALUES \(values)")
+
+    let p1 = try await conn.select(
+      sql: "SELECT v FROM \(schema).nums ORDER BY v", limit: 5, offset: 0)
+    #expect(p1.map { $0["v"] } == [.int(0), .int(1), .int(2), .int(3), .int(4)])
+    let p2 = try await conn.select(
+      sql: "SELECT v FROM \(schema).nums ORDER BY v", limit: 5, offset: 5)
+    #expect(p2.map { $0["v"] } == [.int(5), .int(6), .int(7), .int(8), .int(9)])
+    let p3 = try await conn.select(
+      sql: "SELECT v FROM \(schema).nums ORDER BY v", limit: 5, offset: 10)
+    #expect(p3.map { $0["v"] } == [.int(10), .int(11)])
+    await conn.disconnect()
+  }
+
   @Test func connectFailsWithBadCredentials() async {
     let bad = PostgresConnectionConfig(
       name: "bad", host: "127.0.0.1", port: 5432, username: "postgres",

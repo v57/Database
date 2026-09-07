@@ -119,14 +119,18 @@ public final class SQLiteConnection {
   }
 
   /// Runs a SELECT and returns every row as key/value pairs. `limit` stops
-  /// stepping the statement early (the app caps document loads at 100).
-  public func select(sql: String, limit: Int? = nil) async throws -> [SQLiteRowData] {
+  /// stepping the statement early; `offset` skips the first N rows (for
+  /// cursor-free pagination with a stable ORDER BY).
+  public func select(sql: String, limit: Int? = nil, offset: Int? = nil) async throws
+    -> [SQLiteRowData]
+  {
     guard let db else { throw SQLiteError.notConnected }
     let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { throw SQLiteError.invalidQuery("Empty SQL statement") }
+    let applied = try Self.applyLimitOffset(sql: trimmed, limit: limit, offset: offset)
 
     var stmt: OpaquePointer?
-    guard sqlite3_prepare_v2(db, trimmed, -1, &stmt, nil) == SQLITE_OK else {
+    guard sqlite3_prepare_v2(db, applied, -1, &stmt, nil) == SQLITE_OK else {
       throw SQLiteError.invalidQuery(errorMessage(db) ?? "unknown SQLite error")
     }
     defer { sqlite3_finalize(stmt) }
@@ -142,6 +146,16 @@ public final class SQLiteConnection {
       throw SQLiteError.server(errorMessage(db) ?? "unknown SQLite error")
     }
     return rows
+  }
+
+  /// Appends LIMIT/OFFSET to a read query when asked. SQLite parses both
+  /// natively, so the stepping loop's early-break still caps the row count.
+  private static func applyLimitOffset(sql: String, limit: Int?, offset: Int?) throws -> String {
+    guard limit != nil || offset != nil else { return sql }
+    var clauses: [String] = []
+    if let limit { clauses.append("LIMIT \(limit)") }
+    if let offset { clauses.append("OFFSET \(offset)") }
+    return sql + " " + clauses.joined(separator: " ")
   }
 
   /// Runs any DML/DDL to completion — literally: sqlite3_exec executes every

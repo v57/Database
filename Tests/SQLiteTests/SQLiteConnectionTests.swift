@@ -119,6 +119,24 @@ import Testing
     #expect(rows.count == 5)
   }
 
+  @Test func selectHonorsOffset() async throws {
+    let path = TestEnv.freshFile("offset")
+    TestEnv.createEmptyFile(at: path)
+    defer { TestEnv.remove(path) }
+    let conn = try await TestEnv.connect(TestEnv.config(label: "offset", path: path))
+    defer { await conn.disconnect() }
+    try await conn.execute(sql: "CREATE TABLE nums (v INTEGER)")
+    for i in 0..<12 { try await conn.execute(sql: "INSERT INTO nums VALUES (\(i))") }
+
+    // Page 1 (limit 5, offset 0) then page 2 (limit 5, offset 5) then the tail.
+    let p1 = try await conn.select(sql: "SELECT v FROM nums ORDER BY v", limit: 5, offset: 0)
+    #expect(p1.map { $0["v"] } == [.int(0), .int(1), .int(2), .int(3), .int(4)])
+    let p2 = try await conn.select(sql: "SELECT v FROM nums ORDER BY v", limit: 5, offset: 5)
+    #expect(p2.map { $0["v"] } == [.int(5), .int(6), .int(7), .int(8), .int(9)])
+    let p3 = try await conn.select(sql: "SELECT v FROM nums ORDER BY v", limit: 5, offset: 10)
+    #expect(p3.map { $0["v"] } == [.int(10), .int(11)])
+  }
+
   @Test func executeRunsDMLAndCountReflectsChanges() async throws {
     let path = TestEnv.freshFile("dml")
     TestEnv.createEmptyFile(at: path)
