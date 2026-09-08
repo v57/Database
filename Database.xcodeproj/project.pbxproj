@@ -12,6 +12,7 @@
 		A1A1A1A1A1A1A1A1A1A1A1A1 /* MongoDB in Frameworks */ = {isa = PBXBuildFile; productRef = B2B2B2B2B2B2B2B2B2B2B2B2 /* MongoDB */; };
 		E1E1E1E1E1E1E1E1E1E1E1E1 /* PostgreSQL in Frameworks */ = {isa = PBXBuildFile; productRef = C1C1C1C1C1C1C1C1C1C1C1C1 /* PostgreSQL */; };
 		F1F1F1F1F1F1F1F1F1F1F1F1 /* Redis in Frameworks */ = {isa = PBXBuildFile; productRef = D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */; };
+		AFCEAD4516F5C5239F265754 /* SQLQuery in Frameworks */ = {isa = PBXBuildFile; productRef = 265DA9DEDA15E423029EB916 /* SQLQuery */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +49,7 @@
 				E1E1E1E1E1E1E1E1E1E1E1E1 /* PostgreSQL in Frameworks */,
 				F1F1F1F1F1F1F1F1F1F1F1F1 /* Redis in Frameworks */,
 				884D4B024EB8075F6DE519D6 /* SQLite in Frameworks */,
+				AFCEAD4516F5C5239F265754 /* SQLQuery in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -92,6 +94,7 @@
 				C1C1C1C1C1C1C1C1C1C1C1C1 /* PostgreSQL */,
 				D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */,
 				E0DBE02A193510FD325EAD7C /* SQLite */,
+				265DA9DEDA15E423029EB916 /* SQLQuery */,
 			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* Database.app */;
@@ -415,6 +418,10 @@
 		E0DBE02A193510FD325EAD7C /* SQLite */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SQLite;
+		};
+		265DA9DEDA15E423029EB916 /* SQLQuery */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SQLQuery;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

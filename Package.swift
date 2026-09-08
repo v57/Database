@@ -7,6 +7,7 @@ let package = Package(
   products: [
     .library(name: "Database", targets: ["Database"]),
     .library(name: "MongoDB", targets: ["MongoDB"]),
+    .library(name: "SQLQuery", targets: ["SQLQuery"]),
     .library(name: "PostgreSQL", targets: ["PostgreSQL"]),
     .library(name: "Redis", targets: ["Redis"]), .library(name: "SQLite", targets: ["SQLite"]),
     .library(name: "Cdrivers", targets: ["Cdrivers"]),
@@ -24,6 +25,9 @@ let package = Package(
       name: "Redis",
       dependencies: ["Cdrivers"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .target(name: "SQLite", swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+    .target(
+      name: "SQLQuery",
+      dependencies: ["MongoDB"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
       name: "DatabaseTests", dependencies: ["Database"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
@@ -38,6 +42,9 @@ let package = Package(
       name: "RedisTests", dependencies: ["Redis"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
-      name: "SQLiteTests", dependencies: ["SQLite"],
+      name: "SQLiteTests", dependencies: ["SQLite", "SQLQuery"],
+      swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+    .testTarget(
+      name: "SQLQueryTests", dependencies: ["SQLQuery"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
   ])

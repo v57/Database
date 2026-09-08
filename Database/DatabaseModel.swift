@@ -4,6 +4,7 @@ import Observation
 import PostgreSQL
 import Redis
 import SQLite
+import SQLQuery
 import SwiftData
 
 /// Observable app state: the active session and the three-column navigation state.
@@ -403,10 +404,10 @@ import SwiftData
     if let session {
       docs = try await findCurrentMongo(in: selectedCollection, session: session, limit: pageSize)
     } else if case .postgresql(let pg) = alternateSession {
-      let rows = try await pg.select(sql: selectSQL(in: selectedCollection), limit: pageSize)
+      let rows = try await pg.select(sql: try selectSQL(in: selectedCollection), limit: pageSize)
       docs = rows.map { Self.document(from: $0) }
     } else if case .sqlite(let sqlite) = alternateSession {
-      let rows = try await sqlite.select(sql: selectSQL(in: selectedCollection), limit: pageSize)
+      let rows = try await sqlite.select(sql: try selectSQL(in: selectedCollection), limit: pageSize)
       docs = rows.map { Self.document(from: $0) }
     } else if case .redis(let redis) = alternateSession {
       let entries = try await redis.entries(matching: currentQuery.filter ?? "")
@@ -439,11 +440,11 @@ import SwiftData
         documents.append(contentsOf: docs)
       } else if case .postgresql(let pg) = alternateSession {
         let rows = try await pg.select(
-          sql: selectSQL(in: selectedCollection), limit: pageSize, offset: offset)
+          sql: try selectSQL(in: selectedCollection), limit: pageSize, offset: offset)
         documents.append(contentsOf: rows.map { Self.document(from: $0) })
       } else if case .sqlite(let sqlite) = alternateSession {
         let rows = try await sqlite.select(
-          sql: selectSQL(in: selectedCollection), limit: pageSize, offset: offset)
+          sql: try selectSQL(in: selectedCollection), limit: pageSize, offset: offset)
         documents.append(contentsOf: rows.map { Self.document(from: $0) })
       }
       loadedCount += documents.count - offset
@@ -459,10 +460,10 @@ import SwiftData
     if let session {
       return try await findCurrentMongo(in: collection, session: session, limit: pageSize)
     } else if case .postgresql(let pg) = alternateSession {
-      let rows = try await pg.select(sql: selectSQL(in: collection), limit: pageSize)
+      let rows = try await pg.select(sql: try selectSQL(in: collection), limit: pageSize)
       return rows.map { Self.document(from: $0) }
     } else if case .sqlite(let sqlite) = alternateSession {
-      let rows = try await sqlite.select(sql: selectSQL(in: collection), limit: pageSize)
+      let rows = try await sqlite.select(sql: try selectSQL(in: collection), limit: pageSize)
       return rows.map { Self.document(from: $0) }
     } else if case .redis(let redis) = alternateSession {
       let entries = try await redis.entries(matching: currentQuery.filter ?? "")
@@ -479,46 +480,45 @@ import SwiftData
     return try await session.find(in: selectedCollection, filter: f, limit: limit)
   }
 
-  /// Builds the SQL statement the current query bar implies: Filter→WHERE,
-  /// Sort→ORDER BY, Project→column list. Column/table names come from the
-  /// sidebar (trust metadata, not user text), so identifiers are NOT wrapped
-  /// here — the SELECT column list is only ever reduced, never invented.
-  private func selectSQL(in collection: String) -> String {
+  /// Builds the SQL statement the current query bar implies. Each field is
+  /// compiled per its text: Mongo-style JSON-like input (same dialect as the
+  /// MongoDB query bar) becomes SQL — Filter→WHERE, Sort→ORDER BY,
+  /// Projection→SELECT column list, with inline-escaped values — and anything
+  /// else stays a raw SQL fragment spliced verbatim. Compile errors throw so
+  /// the query bar can surface them; table names come from sidebar metadata,
+  /// never from query text.
+  private func selectSQL(in collection: String) throws -> String {
     switch activeEngine {
-    case .postgresql: return postgresSelectSQL(in: collection)
-    case .mongodb, .redis, .sqlite: return sqliteSelectSQL(in: collection)
+    case .postgresql: return try postgresSelectSQL(in: collection)
+    case .mongodb, .redis, .sqlite: return try sqliteSelectSQL(in: collection)
     case nil: return "SELECT * FROM \(Self.quotedIdentifier(collection))"
     }
   }
 
-  /// SELECT <projected columns> FROM <quoted table> [WHERE <filter>]
-  /// [ORDER BY <sort>]. Filter/sort are RAW SQL fragments (house decision):
-  /// the user types a plain WHERE/ORDER BY clause body. Empty filter/sort adds
-  /// no clause. Projection (if any) splits on commas — untrusted text, so the
-  /// caller is responsible for SQL safety; we only splice it in verbatim.
-  private func sqliteSelectSQL(in collection: String) -> String {
+  /// SQLite SELECT built from the query bar. JSON-like input is compiled by
+  /// SQLQueryCompiler (raw text passes through as a WHERE/ORDER BY body; JSON
+  /// projections are finally applied, raw column lists stay unapplied).
+  private func sqliteSelectSQL(in collection: String) throws -> String {
     let table = Self.quotedIdentifier(collection)
-    var sql = "SELECT * FROM \(table)"
-    let filter = currentQuery.filter?.trimmingCharacters(in: .whitespacesAndNewlines)
-    if let filter, !filter.isEmpty { sql += " WHERE \(filter)" }
-    let sort = currentQuery.sort?.trimmingCharacters(in: .whitespacesAndNewlines)
-    if let sort, !sort.isEmpty { sql += " ORDER BY \(sort)" }
+    let query = try SQLQueryCompiler.compile(
+      filter: currentQuery.filter, sort: currentQuery.sort, projection: currentQuery.projection)
+    var sql = "SELECT \(query.columns) FROM \(table)"
+    if let filter = query.whereBody, !filter.isEmpty { sql += " WHERE \(filter)" }
+    if let sort = query.orderBy, !sort.isEmpty { sql += " ORDER BY \(sort)" }
     return sql
   }
 
-  /// PostgreSQL variant of `sqliteSelectSQL`: same scripted SELECT shape
-  /// (table names come from information_schema as schema.table, already
-  /// caller-quoted there), filter/sort are raw SQL fragments appended verbatim.
-  private func postgresSelectSQL(in collection: String) -> String {
-    // Collection is "schema.table"; quote each component defensively so a
-    // dotted name stays two identifiers (schema.table) rather than one.
+  /// PostgreSQL variant of `sqliteSelectSQL`: the compiled SQL parts are
+  /// identical — only the FROM-table quoting differs (schema.table splits
+  /// into two quoted identifiers, not one).
+  private func postgresSelectSQL(in collection: String) throws -> String {
     let table = collection.split(separator: ".").map { Self.quotedIdentifier(String($0)) }
       .joined(separator: ".")
-    var sql = "SELECT * FROM \(table)"
-    let filter = currentQuery.filter?.trimmingCharacters(in: .whitespacesAndNewlines)
-    if let filter, !filter.isEmpty { sql += " WHERE \(filter)" }
-    let sort = currentQuery.sort?.trimmingCharacters(in: .whitespacesAndNewlines)
-    if let sort, !sort.isEmpty { sql += " ORDER BY \(sort)" }
+    let query = try SQLQueryCompiler.compile(
+      filter: currentQuery.filter, sort: currentQuery.sort, projection: currentQuery.projection)
+    var sql = "SELECT \(query.columns) FROM \(table)"
+    if let filter = query.whereBody, !filter.isEmpty { sql += " WHERE \(filter)" }
+    if let sort = query.orderBy, !sort.isEmpty { sql += " ORDER BY \(sort)" }
     return sql
   }
 

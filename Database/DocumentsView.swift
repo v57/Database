@@ -84,8 +84,9 @@ struct DocumentsView: View {
   private var queryBar: some View {
     VStack(alignment: .leading, spacing: 4) {
       // Redis has no server-side sort/projection: only a key-glob Filter is
-      // offered. MongoDB keeps all three; SQL uses Filter(WHERE)/Sort(ORDER
-      // BY)/Project(columns) as raw fragments.
+      // offered. MongoDB keeps all three; SQL accepts the same JSON query
+      // dialect (auto-detected) or raw SQL fragments — Filter→WHERE,
+      // Sort→ORDER BY, JSON Project→column list.
       TextField(filterPlaceholder, text: $filterText, axis: .vertical)
         .onChange(of: filterText) { _, _ in debounceApply() }
       if model.activeEngine != .redis {
@@ -105,12 +106,13 @@ struct DocumentsView: View {
       .textFieldStyle(.roundedBorder).onSubmit { apply() }
   }
 
-  /// The Filter field's placeholder differs per engine: MongoDB takes query
-  /// syntax ({age: {$gt:30}}), SQL takes a raw WHERE body, Redis a key glob.
+  /// The Filter field's placeholder differs per engine: MongoDB and SQL take
+  /// JSON query syntax ({age: {$gt:30}}); SQL also accepts raw WHERE bodies,
+  /// Redis a key glob.
   private var filterPlaceholder: String {
     switch model.activeEngine {
     case .redis: "Filter (key glob)"
-    case .postgresql, .sqlite: "Filter (WHERE…)"
+    case .postgresql, .sqlite: "Filter (JSON or WHERE…)"
     case .mongodb, nil: "Filter"
     }
   }
