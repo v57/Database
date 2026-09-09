@@ -8,9 +8,13 @@ import SwiftUI
 /// color-coded: .primary for strings, .blue otherwise.
 ///
 /// A persistent query bar (search/sort/project) sits above the list; the Edit
-/// button toggles add-field rows; Delete previews matches and confirms.
+/// button toggles add-field rows; Delete previews matches and confirms. The
+/// toolbar's segmented picker switches the display format: List (below),
+/// Table (spreadsheet grid) or JSON (pretty-printed text).
 struct DocumentsView: View {
   @Environment(DatabaseModel.self) private var model
+
+  @AppStorage("documentDisplayFormat") private var storedDisplayFormat = DisplayFormat.list.rawValue
 
   @State private var showDeleteSheet = false
   @State private var errorMessage: String?
@@ -39,7 +43,7 @@ struct DocumentsView: View {
             emptyTitle, systemImage: "doc.text.magnifyingglass",
             description: Text(emptySummary))
         } else {
-          documentList
+          contentForFormat
         }
       }
     }.frame(maxHeight: .infinity).safeAreaBar(edge: .top) {
@@ -70,12 +74,49 @@ struct DocumentsView: View {
           }
         }
       }
-    }.navigationSubtitle(model.statusMessage).sheet(
+    }.toolbar {
+      ToolbarItemGroup {
+        if model.selectedCollection != nil && model.isSessionActive {
+          Picker("Display Format", selection: displayFormatBinding) {
+            ForEach(DisplayFormat.allCases) { format in
+              Image(systemName: format.symbol).accessibilityLabel(format.name).tag(format)
+            }
+          }
+          .pickerStyle(.segmented)
+          .help("Display format: List / Table / JSON")
+        }
+      }
+    }
+    .navigationSubtitle(model.statusMessage).sheet(
       isPresented: $showDeleteSheet
     ) { DeleteSheet(filter: filterText, errorMessage: $errorMessage) }.onAppear {
       filterText = model.currentQuery.filter ?? ""
       sortText = model.currentQuery.sort ?? ""
       projectText = model.currentQuery.projection ?? ""
+    }
+  }
+
+  // MARK: - Display format
+
+  private var displayFormat: DisplayFormat {
+    DisplayFormat(rawValue: storedDisplayFormat) ?? .list
+  }
+
+  private var displayFormatBinding: Binding<DisplayFormat> {
+    Binding(
+      get: { displayFormat },
+      set: { storedDisplayFormat = $0.rawValue })
+  }
+
+  /// The documents pane content for the current display format. List keeps
+  /// the expand/collapse + inline-edit rows; Table/JSON are read-only
+  /// renderers over the same loaded documents.
+  @ViewBuilder
+  private var contentForFormat: some View {
+    switch displayFormat {
+    case .list: documentList
+    case .table: TableDocumentsView(documents: model.documents)
+    case .json: JSONDocumentsView(documents: model.documents)
     }
   }
 
