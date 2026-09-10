@@ -42,7 +42,7 @@ let package = Package(
       name: "RedisTests", dependencies: ["Redis"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
-      name: "SQLiteTests", dependencies: ["SQLite", "SQLQuery"],
+      name: "SQLiteTests", dependencies: ["SQLite", "SQLQuery", "MongoDB"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
       name: "SQLQueryTests", dependencies: ["SQLQuery"],

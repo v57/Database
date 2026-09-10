@@ -154,12 +154,17 @@ public enum SQLQueryCompiler {
         case "$in": parts.append(contentsOf: try inList(quoted, argument, negated: false))
         case "$nin": parts.append(contentsOf: try inList(quoted, argument, negated: true))
         case "$exists": parts.append(try existsClause(quoted, argument))
+        case "$contains": parts.append(try likeClause(quoted, argument, mode: .contains))
+        case "$notContains": parts.append(try likeClause(quoted, argument, mode: .notContains))
+        case "$startsWith": parts.append(try likeClause(quoted, argument, mode: .startsWith))
+        case "$endsWith": parts.append(try likeClause(quoted, argument, mode: .endsWith))
         default:
           if op.hasPrefix("$") {
             throw SQLQueryError.invalidQuery(
               "Unsupported operator \"\(op)\" on \"\(column)\" — supported: "
-                + "$eq $ne $gt $gte $lt $lte $in $nin $exists. "
-                + "Use a raw SQL fragment for anything else (e.g. LIKE).")
+                + "$eq $ne $gt $gte $lt $lte $in $nin $exists "
+                + "$contains $notContains $startsWith $endsWith. "
+                + "Use a raw SQL fragment for anything else (e.g. ILIKE, casts).")
           }
           throw SQLQueryError.invalidQuery(
             "Object value for \"\(column)\" can't map to SQL equality — SQL columns are "
@@ -216,6 +221,43 @@ public enum SQLQueryCompiler {
       throw SQLQueryError.invalidQuery("$exists on \(column) needs true or false")
     }
     return exists ? "\(column) IS NOT NULL" : "\(column) IS NULL"
+  }
+
+  /// The LIKE forms the UI filter builder emits (see Sources/MongoDB/FilterRules.swift).
+  /// `%`, `_` and backslashes typed by the user are escaped and the clause carries
+  /// `ESCAPE '\'` so they match literally instead of acting as wildcards.
+  private enum LikeMode {
+    case contains, notContains, startsWith, endsWith
+
+    var operatorName: String {
+      switch self {
+      case .contains: return "$contains"
+      case .notContains: return "$notContains"
+      case .startsWith: return "$startsWith"
+      case .endsWith: return "$endsWith"
+      }
+    }
+  }
+
+  private static func likeClause(_ column: String, _ argument: BSON, mode: LikeMode) throws -> String {
+    guard case .string(let text) = argument else {
+      throw SQLQueryError.invalidQuery("\(mode.operatorName) on \(column) needs a string value")
+    }
+    guard !text.contains("\0") else {
+      throw SQLQueryError.invalidQuery("Value for \"\(column)\" contains a NUL byte")
+    }
+    let escaped = text
+      .replacingOccurrences(of: "\\", with: "\\\\")
+      .replacingOccurrences(of: "%", with: "\\%")
+      .replacingOccurrences(of: "_", with: "\\_")
+    let body: String
+    switch mode {
+    case .contains, .notContains: body = "%\(escaped)%"
+    case .startsWith: body = "\(escaped)%"
+    case .endsWith: body = "%\(escaped)"
+    }
+    let negated = mode == .notContains ? "NOT " : ""
+    return "\(column) \(negated)LIKE '\(body)' ESCAPE '\\'"
   }
 
   // MARK: - Sort (ORDER BY)
