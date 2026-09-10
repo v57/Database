@@ -2,7 +2,14 @@ import MongoDB
 import Observation
 import SwiftUI
 
-// MARK: - Flat field tree
+/// Query-derived state of one key row: which way it is sorted and whether the
+/// Projection text hides it.
+struct KeyMenuState: Equatable {
+  var sortDirection: SortText.Direction?
+  var isHidden: Bool
+}
+
+/// Flat field tree: a document flattens into one row per field.
 
 /// One flattened key/value row of a document: a single field (leaf or
 /// container) with its path, display key, nesting depth, and BSON value.
@@ -150,6 +157,12 @@ struct KeyValueRow: View {
   let onStartEdit: () -> Void
   let onCommit: () -> Void
   let onCancel: () -> Void
+  /// Query-derived state for this key, supplied by the pane (sort direction from
+  /// the Sort text, hidden from the Projection text). Drives the menu's
+  /// disabled items; never stored by the row itself.
+  var keyMenuState: KeyMenuState = KeyMenuState(sortDirection: nil, isHidden: false)
+  /// Every key gesture funnels through the pane's single action handler.
+  var onColumnAction: ((ColumnAction) -> Void)? = nil
 
   private var isEditing: Bool { editor?.docIndex == row.docIndex && editor?.path == row.path }
 
@@ -162,6 +175,37 @@ struct KeyValueRow: View {
       ).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
       valueContent
     }.padding(.leading, CGFloat(row.depth) * 16).padding(.vertical, 2)
+      .contextMenu {
+        // Array element rows are keyed `[0]`, `[1]`, … — not field names, so they
+        // get no sort/search/filter/hide actions.
+        if let onColumnAction, !row.key.hasPrefix("[") {
+          Button("Sort Ascending", systemImage: "arrow.up") {
+            onColumnAction(.setSort(row.key, .ascending))
+          }.disabled(keyMenuState.sortDirection == .ascending)
+          Button("Sort Descending", systemImage: "arrow.down") {
+            onColumnAction(.setSort(row.key, .descending))
+          }.disabled(keyMenuState.sortDirection == .descending)
+          Button("Disable Sorting", systemImage: "xmark.circle") {
+            onColumnAction(.disableSort(row.key))
+          }.disabled(keyMenuState.sortDirection == nil)
+          Divider()
+          Button("Search…", systemImage: "magnifyingglass") { onColumnAction(.search(row.key)) }
+          Button("Filter by this value") {
+            onColumnAction(
+              .filter(row.key, FilterRule(field: row.key, op: .equal, value: row.bson)))
+          }
+          Button("Filter by this field…") {
+            onColumnAction(
+              .filter(row.key, FilterRule(field: row.key, op: .contains, value: .string(""))))
+          }
+          Divider()
+          if keyMenuState.isHidden {
+            Button("Show", systemImage: "eye") { onColumnAction(.show(row.key)) }
+          } else {
+            Button("Hide", systemImage: "eye.slash") { onColumnAction(.hide(row.key)) }
+          }
+        }
+      }
   }
 
   @ViewBuilder private var valueContent: some View {

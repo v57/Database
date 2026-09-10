@@ -31,6 +31,22 @@ struct DocumentsView: View {
   @State private var editMode = false
   @State private var debounceTask: Task<Void, Never>?
 
+  /// Filter-builder chips; their rendered text is the source of truth for the
+  /// Filter field while they exist.
+  @State private var filterRules: [FilterRule] = []
+  /// The chip editor sheet is owned here so column/key menus can open it
+  /// prefilled for their field (see `handle`).
+  @State private var editingRule: FilterRule?
+  @State private var isCreatingRule = false
+  /// Column "Search…" fragment box.
+  @State private var searchTarget: SearchTarget?
+  @State private var searchFragment = ""
+  @State private var searchError: String?
+  /// "Search all text fields" box.
+  @State private var quickSearch = ""
+  /// Redis key-filter match mode.
+  @State private var redisMatch: KeyGlob.Match = .contains
+
   var body: some View {
     VStack(spacing: 0) {
       Group {
@@ -89,7 +105,15 @@ struct DocumentsView: View {
     }
     .navigationSubtitle(model.statusMessage).sheet(
       isPresented: $showDeleteSheet
-    ) { DeleteSheet(filter: filterText, errorMessage: $errorMessage) }.onAppear {
+    ) { DeleteSheet(filter: filterText, errorMessage: $errorMessage) }.sheet(item: $searchTarget) {
+      target in
+      ColumnSearchSheet(
+        field: target.field,
+        fragment: $searchFragment,
+        errorMessage: $searchError,
+        onCancel: { searchTarget = nil },
+        onApply: { applySearchFragment(for: target.field) })
+    }.onAppear {
       filterText = model.currentQuery.filter ?? ""
       sortText = model.currentQuery.sort ?? ""
       projectText = model.currentQuery.projection ?? ""
@@ -115,7 +139,13 @@ struct DocumentsView: View {
   private var contentForFormat: some View {
     switch displayFormat {
     case .list: documentList
-    case .table: TableDocumentsView(documents: model.documents)
+    case .table:
+      TableDocumentsView(
+        documents: model.documents,
+        fields: FieldCatalog.fields(in: model.documents),
+        sortDirections: sortDirections,
+        hiddenFields: hiddenFields,
+        onColumnAction: handle)
     case .json: JSONDocumentsView(documents: model.documents)
     }
   }
@@ -128,6 +158,26 @@ struct DocumentsView: View {
       // offered. MongoDB keeps all three; SQL accepts the same JSON query
       // dialect (auto-detected) or raw SQL fragments — Filter→WHERE,
       // Sort→ORDER BY, JSON Project→column list.
+      if model.activeEngine == .redis {
+        RedisKeyFilterView(match: $redisMatch, text: $filterText) { apply() }
+      } else if let dialect = FilterEngine.dialect(for: model.activeEngine) {
+        FilterBuilderView(
+          fields: FieldCatalog.fields(in: model.documents),
+          rules: $filterRules,
+          editing: $editingRule,
+          isCreating: $isCreatingRule,
+          dialect: dialect,
+          onChange: applyRules)
+        if !filterRules.isEmpty
+          && !rulesMatchFilterText(dialect: dialect, anyOfFields: searchableFields)
+        {
+          Label(
+            "Filter text was edited by hand — Clear the chips to start over",
+            systemImage: "exclamationmark.triangle"
+          ).font(.caption).foregroundStyle(.orange)
+        }
+        if !searchableFields.isEmpty { quickSearchRow }
+      }
       TextField(filterPlaceholder, text: $filterText, axis: .vertical)
         .onChange(of: filterText) { _, _ in debounceApply() }
       if model.activeEngine != .redis {
@@ -135,6 +185,7 @@ struct DocumentsView: View {
           .onChange(of: sortText) { _, _ in debounceApply() }
         TextField("Project", text: $projectText, axis: .vertical)
           .onChange(of: projectText) { _, _ in debounceApply() }
+        if !allFields.isEmpty { fieldsRow }
       }
       if editMode {
         TextField("Update", text: $updateText, axis: .vertical)
@@ -145,6 +196,49 @@ struct DocumentsView: View {
     }.padding(8).background(.bar)
       .autocorrectionDisabled()
       .textFieldStyle(.roundedBorder).onSubmit { apply() }
+  }
+
+  /// "Search all text fields" box: writes ONE `$or` chip over every string field
+  /// of the loaded rows, so a search is still a chip that can be removed again.
+  private var quickSearchRow: some View {
+    HStack(spacing: 6) {
+      TextField("Search all text fields", text: $quickSearch)
+        .textFieldStyle(.roundedBorder).frame(maxWidth: 260)
+        .onSubmit { applyQuickSearch() }
+      if !quickSearch.isEmpty {
+        Button("Search") { applyQuickSearch() }
+        Button("Cancel", systemImage: "xmark.circle") {
+          quickSearch = ""
+          filterRules.removeAll { $0.field == Self.quickSearchMarker }
+          applyRules()
+        }.buttonStyle(.plain).labelStyle(.iconOnly)
+      }
+      Spacer(minLength: 0)
+    }
+  }
+
+  /// Hide/show menu for every loaded field. Writes the Projection text (through
+  /// `handle`), so it can un-hide a column whose header is already gone.
+  private var fieldsRow: some View {
+    HStack(spacing: 6) {
+      Menu {
+        ForEach(allFields, id: \.self) { field in
+          Button {
+            handle(hiddenFields.contains(field) ? .show(field) : .hide(field))
+          } label: {
+            Label(field, systemImage: hiddenFields.contains(field) ? "eye.slash" : "eye")
+          }
+        }
+        Divider()
+        Button("Show All Fields", systemImage: "eye") { handle(.showAllFields) }
+      } label: {
+        Label("Fields", systemImage: "eye")
+      }.fixedSize().help("Hide or show fields (writes the Project filter)")
+      if !hiddenFields.isEmpty {
+        Text("\(hiddenFields.count) hidden").font(.caption).foregroundStyle(.secondary)
+      }
+      Spacer(minLength: 0)
+    }
   }
 
   /// The Filter field's placeholder differs per engine: MongoDB and SQL take
@@ -196,7 +290,12 @@ struct DocumentsView: View {
           ) { row in
             KeyValueRow(
               row: row, editor: editor, expandedKeys: expandedKeys, onToggle: toggleExpansion,
-              onStartEdit: { startEditing(row) }, onCommit: commitEditor, onCancel: { editor = nil }
+              onStartEdit: { startEditing(row) }, onCommit: commitEditor,
+              onCancel: { editor = nil },
+              keyMenuState: KeyMenuState(
+                sortDirection: SortText.direction(of: row.key, in: sortText),
+                isHidden: hiddenFields.contains(row.key)),
+              onColumnAction: handle
             )
           }
           if editMode {
@@ -282,6 +381,138 @@ struct DocumentsView: View {
     }
   }
 
+  // MARK: - Filter chips
+
+  /// Writes the chips into the Filter field and re-runs the query. The chip text
+  /// is the single source of truth for execution while chips exist.
+  private func applyRules() {
+    guard let dialect = FilterEngine.dialect(for: model.activeEngine) else { return }
+    filterText = FilterText.render(filterRules, dialect: dialect, anyOfFields: searchableFields) ?? ""
+    apply()
+  }
+
+  /// True while the Filter field still holds exactly what the chips render.
+  private func rulesMatchFilterText(dialect: FilterDialect, anyOfFields: [String]) -> Bool {
+    filterText.trimmingCharacters(in: .whitespacesAndNewlines)
+      == (FilterText.render(filterRules, dialect: dialect, anyOfFields: anyOfFields) ?? "")
+  }
+
+  /// String fields offered to "search all text fields". `_id` is excluded: its
+  /// values are opaque identifiers, so a substring/regex search over them only
+  /// adds a useless branch to every `$or`.
+  private var searchableFields: [String] {
+    FieldCatalog.textFields(in: model.documents).filter { $0 != "_id" }
+  }
+
+  /// Marker field of the "search all text fields" chip (see `FilterText.render`).
+  private static let quickSearchMarker = "$or"
+
+  /// Writes/replaces the "search all text fields" chip and applies it.
+  private func applyQuickSearch() {
+    let text = quickSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+    filterRules.removeAll { $0.field == Self.quickSearchMarker }
+    guard !text.isEmpty else {
+      applyRules()
+      return
+    }
+    filterRules.append(
+      FilterRule(
+        field: Self.quickSearchMarker, op: .contains, value: .array([.string(text)])))
+    applyRules()
+  }
+
+  // MARK: - Column UI: everything derived from the query bar text
+
+  /// Sort keys parsed from the Sort text: the ONLY source for header arrows and
+  /// for what the next click does. Hand-typed sort text drives the UI too.
+  private var sortKeys: [SortKey] { SortText.parse(sortText) }
+
+  /// Arrow per column, derived from `sortKeys`.
+  private var sortDirections: [String: SortText.Direction] {
+    var result: [String: SortText.Direction] = [:]
+    for key in sortKeys { result[key.field] = key.ascending ? .ascending : .descending }
+    return result
+  }
+
+  /// The field universe of the loaded rows (drives hide/show and projections).
+  private var allFields: [String] { FieldCatalog.fields(in: model.documents).map(\.name) }
+
+  /// Hidden columns, derived from the Projection text — never stored.
+  private var hiddenFields: Set<String> {
+    guard let dialect = FilterEngine.dialect(for: model.activeEngine) else { return [] }
+    return Set(ProjectionText.hidden(in: projectText, allFields: allFields, dialect: dialect))
+  }
+
+  /// One funnel for every column/key gesture (table headers, List key menus and
+  /// the query bar's Fields menu). Every case rewrites query TEXT and re-runs the
+  /// query; no sort/hidden/filter state is ever stored in a view.
+  private func handle(_ action: ColumnAction) {
+    guard let dialect = FilterEngine.dialect(for: model.activeEngine) else { return }
+    switch action {
+    case .cycleSort(let field):
+      writeSort(SortText.cycle(field, in: sortKeys).keys, dialect: dialect)
+    case .setSort(let field, let direction):
+      writeSort(SortText.set(field, direction: direction, in: sortKeys), dialect: dialect)
+    case .disableSort(let field):
+      writeSort(SortText.remove(field, from: sortKeys), dialect: dialect)
+    case .hide(let field):
+      projectText = ProjectionText.hide(
+        field, in: projectText, allFields: allFields, dialect: dialect) ?? ""
+      apply()
+    case .show(let field):
+      projectText = ProjectionText.show(
+        field, in: projectText, allFields: allFields, dialect: dialect) ?? ""
+      apply()
+    case .showAllFields:
+      projectText = ProjectionText.showAll ?? ""
+      apply()
+    case .filter(let field, let rule):
+      // A menu item that still needs a value ("Filter: contains…") opens the chip
+      // editor prefilled instead of adding an empty chip.
+      if rule.op.needsValue, !rule.op.takesList, FilterText.display(rule.value).isEmpty {
+        isCreatingRule = true
+        editingRule = rule
+      } else {
+        filterRules.append(rule)
+        applyRules()
+      }
+    case .search(let field):
+      searchFragment = ""
+      searchError = nil
+      searchTarget = SearchTarget(field: field)
+    }
+  }
+
+  /// Writes sort keys as dialect text (Mongo `{ a: 1 }`, SQL `a ASC`) and re-runs.
+  private func writeSort(_ keys: [SortKey], dialect: FilterDialect) {
+    sortText = SortText.render(keys, dialect: dialect) ?? ""
+    apply()
+  }
+
+  // MARK: - Column search fragments
+
+  /// Validates a typed fragment with the SAME parser the query bar uses, then
+  /// stores it verbatim as a `.custom` chip: `15` -> `{ age: 15 }`,
+  /// `{ $gt: 15 }` -> `{ age: { $gt: 15 } }`. On error the box stays open with the
+  /// parser's message (it carries a column number) and nothing is applied.
+  private func applySearchFragment(for field: String) {
+    let fragment = searchFragment.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !fragment.isEmpty else {
+      searchError = "Type a value or an operator object, e.g. 15 or { $gt: 15 }"
+      return
+    }
+    do {
+      try FilterText.validate(fragment: fragment, for: field)
+    } catch {
+      searchError = error.localizedDescription
+      return
+    }
+    filterRules.removeAll { $0.field == field && $0.op == .custom }
+    filterRules.append(FilterRule(field: field, op: .custom, value: .string(fragment)))
+    searchTarget = nil
+    applyRules()
+  }
+
   private func debounceApply() {
     debounceTask?.cancel()
     debounceTask = Task {
@@ -297,6 +528,12 @@ struct DocumentsView: View {
   }
 
   private func refresh() { apply() }
+}
+
+/// Identifiable wrapper so the "Search…" fragment box can be a sheet item.
+private struct SearchTarget: Identifiable {
+  let field: String
+  var id: String { field }
 }
 
 /// One document section in the list: a snapshot of (index, document) captured

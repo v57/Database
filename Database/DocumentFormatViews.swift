@@ -2,6 +2,23 @@ import Foundation
 import MongoDB
 import SwiftUI
 
+/// What one column/key UI gesture asks the pane to do. Every case is answered by
+/// rewriting query text in DocumentsView (see `handle`) — the table itself owns
+/// nothing, so arrows and hidden columns are always derived from the text.
+enum ColumnAction: Equatable {
+  case cycleSort(String)
+  case setSort(String, SortText.Direction)
+  case disableSort(String)
+  case hide(String)
+  case show(String)
+  case showAllFields
+  /// Add a ready-made filter chip; when its value is still blank (`contains…`,
+  /// `Search…`) the owner opens the chip editor instead.
+  case filter(String, FilterRule)
+  /// Open the "Search…" fragment box for a field (`{ $gt: 15 }`, `15`).
+  case search(String)
+}
+
 /// How the document list is displayed in the main pane. `list` is the
 /// historical default (key/value sections with expand/collapse + editing);
 /// `table` renders rows as a spreadsheet grid (union of keys as columns);
@@ -39,17 +56,29 @@ enum DisplayFormat: String, CaseIterable, Identifiable {
 struct TableDocumentsView: View {
   @Environment(DatabaseModel.self) private var model
   let documents: [BSONDocument]
+  /// Fields/kinds/sample values of the loaded rows (drives the header menus).
+  let fields: [FieldInfo]
+  /// Arrow per column, DERIVED from the Sort text by the owner (not stored here).
+  let sortDirections: [String: SortText.Direction]
+  /// Hidden columns, DERIVED from the Projection text by the owner.
+  let hiddenFields: Set<String>
+  /// Every column gesture funnels through this one callback.
+  let onColumnAction: (ColumnAction) -> Void
 
   /// Snapshot (index, document) pairs so rows never re-index a live array.
   private var rows: [TableRow] {
     documents.enumerated().map { TableRow(id: $0.offset, document: $0.element) }
   }
 
-  /// Column keys in first-seen order across the loaded documents.
+  /// Column keys in first-seen order across the loaded documents, minus the
+  /// fields the Projection text hides: a hidden column disappears immediately
+  /// and stays gone while the text says so, independent of the re-query.
   private var columns: [String] {
     var seen: [String] = []
     for doc in documents {
-      for key in doc.keys where !seen.contains(key) { seen.append(key) }
+      for key in doc.keys where !seen.contains(key) && !hiddenFields.contains(key) {
+        seen.append(key)
+      }
     }
     return seen
   }
@@ -77,13 +106,83 @@ struct TableDocumentsView: View {
       Text("#").font(.caption).bold().frame(width: 44, alignment: .center)
       ForEach(cols) { column in
         columnDivider
-        Text(column.name).font(.caption).bold().lineLimit(1)
-          .truncationMode(.tail).frame(minWidth: 170, alignment: .leading)
+        HStack(spacing: 2) {
+          // The whole title is one click target: clicking cycles this column's
+          // sort. The chevron menu keeps the other gestures (search/hide/…).
+          Button {
+            onColumnAction(.cycleSort(column.name))
+          } label: {
+            HStack(spacing: 3) {
+              Text(column.name).font(.caption).bold().lineLimit(1).truncationMode(.tail)
+              sortArrow(column.name)
+            }
+          }.buttonStyle(.plain).help("Sort by \(column.name) — click to cycle asc/desc/off")
+          columnMenu(column.name)
+        }.frame(minWidth: 170, alignment: .leading)
       }
     }
     .padding(.vertical, 6)
     .background(.bar)
     .overlay(alignment: .bottom) { Divider() }
+  }
+
+  /// Arrow for a column: derived from the Sort text parsed by the owner, so a
+  /// hand-typed `{ age: -1 }` shows here with no extra state.
+  @ViewBuilder private func sortArrow(_ name: String) -> some View {
+    switch sortDirections[name] {
+    case .some(.ascending): Image(systemName: "arrow.up").font(.caption2).foregroundStyle(.blue)
+    case .some(.descending): Image(systemName: "arrow.down").font(.caption2).foregroundStyle(.blue)
+    case .none: EmptyView()
+    }
+  }
+
+  /// Per-column menu. Every item reports a ColumnAction; DocumentsView turns it
+  /// into Sort/Project/Filter text. Values come from the loaded rows (page-local).
+  private func columnMenu(_ name: String) -> some View {
+    let info = fields.first { $0.name == name }
+    let direction = sortDirections[name]
+    return Menu {
+      Button("Sort Ascending", systemImage: "arrow.up") {
+        onColumnAction(.setSort(name, .ascending))
+      }.disabled(direction == .ascending)
+      Button("Sort Descending", systemImage: "arrow.down") {
+        onColumnAction(.setSort(name, .descending))
+      }.disabled(direction == .descending)
+      Button("Disable Sorting", systemImage: "xmark.circle") {
+        onColumnAction(.disableSort(name))
+      }.disabled(direction == nil)
+      Divider()
+      Button("Search…", systemImage: "magnifyingglass") { onColumnAction(.search(name)) }
+      if let info, !info.values.isEmpty {
+        Menu("Filter: is") {
+          ForEach(Array(info.values.prefix(20).enumerated()), id: \.offset) { _, value in
+            Button(FilterText.display(value)) {
+              onColumnAction(.filter(name, FilterRule(field: name, op: .equal, value: value)))
+            }
+          }
+        }
+      }
+      Button("Filter: contains…") {
+        onColumnAction(.filter(name, FilterRule(field: name, op: .contains, value: .string(""))))
+      }
+      Button("Filter: is empty") {
+        onColumnAction(.filter(name, FilterRule(field: name, op: .isEmpty)))
+      }
+      Button("Filter: is not empty") {
+        onColumnAction(.filter(name, FilterRule(field: name, op: .isNotEmpty)))
+      }
+      Divider()
+      if hiddenFields.contains(name) {
+        Button("Show", systemImage: "eye") { onColumnAction(.show(name)) }
+      } else {
+        Button("Hide", systemImage: "eye.slash") { onColumnAction(.hide(name)) }
+      }
+      Button("Show All Fields", systemImage: "eye") { onColumnAction(.showAllFields) }
+    } label: {
+      Image(systemName: "chevron.down").font(.caption2).foregroundStyle(.secondary)
+    }
+    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+    .help("Sort, search, filter or hide \(name)")
   }
 
   private func rowView(_ row: TableRow, columns cols: [Column]) -> some View {
