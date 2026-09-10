@@ -130,8 +130,15 @@ public struct FilterRule: Equatable, Identifiable, Sendable {
   /// `any text field ...` instead of leaking the marker into the UI.
   public var summary: String {
     let name = field.hasPrefix("$") ? "any text field" : field
-    return op.needsValue ? "\(name) \(op.label) \(FilterText.display(value))"
-      : "\(name) \(op.label)"
+    // The "search all text fields" chip carries its text as a one-element list;
+    // show the text itself rather than a bracketed list.
+    let shown: String
+    if field.hasPrefix("$"), case .array(let values) = value, values.count == 1 {
+      shown = FilterText.display(values[0])
+    } else {
+      shown = FilterText.display(value)
+    }
+    return op.needsValue ? "\(name) \(op.label) \(shown)" : "\(name) \(op.label)"
   }
 }
 
@@ -146,8 +153,31 @@ public enum FilterText {
   /// Query text for `rules`, or nil when nothing restricts the result set.
   /// A rule is dropped when its field is blank, when a list op has no values,
   /// or when a text-match operator has empty text ("contains ''" = match all).
-  public static func render(_ rules: [FilterRule], dialect: FilterDialect) -> String? {
-    let parts = rules.compactMap { condition($0, dialect: dialect) }
+  ///
+  /// A rule whose field is the marker `"$or"` is the "search all text fields"
+  /// chip: its value list carries the searched text and `anyOfFields` names the
+  /// fields to search, so it renders as ONE `$or` group
+  /// (`{ "$or": [ { a: {...} }, { b: {...} } ] }`). With no target fields the
+  /// marker rule is dropped rather than rendered as a literal `$or` key.
+  public static func render(
+    _ rules: [FilterRule], dialect: FilterDialect, anyOfFields: [String] = []
+  ) -> String? {
+    let parts = rules.compactMap { rule -> String? in
+      guard rule.field == "$or" else { return condition(rule, dialect: dialect) }
+      guard !anyOfFields.isEmpty, case .array(let values) = rule.value,
+        let wanted = values.first
+      else { return nil }
+      let branches = anyOfFields.compactMap { field -> String? in
+        guard
+          let paired = condition(
+            FilterRule(field: field, op: rule.op, value: wanted), dialect: dialect)
+        else { return nil }
+        // A branch must be a DOCUMENT of one condition, not a bare pair.
+        return "{ \(paired) }"
+      }
+      guard !branches.isEmpty else { return nil }
+      return "\"$or\": [ " + branches.joined(separator: ", ") + " ]"
+    }
     guard !parts.isEmpty else { return nil }
     return "{ " + parts.joined(separator: ", ") + " }"
   }

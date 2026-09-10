@@ -180,6 +180,41 @@ import Testing
         == .string("2026-01-01T00:00:00Z"))
   }
 
+  // MARK: - Search everywhere (the "$or" marker chip)
+
+  @Test func orGroupRuleRendersOneOredConditionPerField() {
+    // The chip builder stores "search everywhere" as a rule on the marker field
+    // "$or" whose value is the searched text.
+    let rule = FilterRule(field: "$or", op: .contains, value: .array([.string("ann")]))
+    #expect(
+      FilterText.render([rule], dialect: .mongo, anyOfFields: ["name", "city"])
+        == "{ \"$or\": [ { name: { \"$regex\": \"ann\" } }, { city: { \"$regex\": \"ann\" } } ] }")
+    #expect(
+      FilterText.render([rule], dialect: .sql, anyOfFields: ["name", "city"])
+        == "{ \"$or\": [ { name: { \"$contains\": \"ann\" } }, { city: { \"$contains\": \"ann\" } } ] }")
+  }
+
+  @Test func markerFieldChipReadsAsAnyTextField() {
+    #expect(
+      FilterRule(field: "$or", op: .contains, value: .array([.string("ann")])).summary
+        == "any text field contains ann")
+  }
+
+  @Test func markerRuleWithoutTargetFieldsIsDropped() {
+    let rule = FilterRule(field: "$or", op: .contains, value: .array([.string("ann")]))
+    #expect(FilterText.render([rule], dialect: .mongo) == nil)
+  }
+
+  @Test func markerRuleMixesWithNormalChips() {
+    let rules = [
+      FilterRule(field: "age", op: .greaterThan, value: .int32(30)),
+      FilterRule(field: "$or", op: .contains, value: .array([.string("ann")])),
+    ]
+    #expect(
+      FilterText.render(rules, dialect: .mongo, anyOfFields: ["name"])
+        == "{ age: { \"$gt\": 30 }, \"$or\": [ { name: { \"$regex\": \"ann\" } } ] }")
+  }
+
   // MARK: - Round trip through the query parser
 
   @Test func renderedTextParsesBackWithQueryParser() throws {
