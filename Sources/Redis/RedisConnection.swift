@@ -102,6 +102,33 @@ public final class RedisConnection {
     return Array(keys.sorted().prefix(count))
   }
 
+  /// Keys matching an EXPLICIT glob pattern (`nil` = every key). Unlike
+  /// `listKeys(matching:)` the pattern is used verbatim, so prefix/suffix/exact
+  /// matches from the UI filter builder work.
+  public func listKeys(pattern: String?, count: Int = 1000) async throws -> [String] {
+    guard let pattern else { return try await listKeys(count: count) }
+    guard session.isConnected else { throw RedisError.notConnected }
+    var keys: [String] = []
+    var cursor = "0"
+    repeat {
+      let reply = try await session.command(
+        ["SCAN", cursor, "MATCH", pattern, "COUNT", "1000"])
+      guard case .array(let parts) = reply, parts.count >= 2 else { break }
+      cursor = parts[0].stringValue
+      keys.append(contentsOf: parts[1].stringArray ?? [])
+      if keys.count >= count { break }
+    } while cursor != "0"
+    return Array(keys.sorted().prefix(count))
+  }
+
+  /// Key details for an explicit glob pattern (`nil` = every key).
+  public func entries(pattern: String?) async throws -> [RedisKeyEntry] {
+    let keys = try await listKeys(pattern: pattern)
+    var result: [RedisKeyEntry] = []
+    for key in keys { result.append(try await entry(for: key)) }
+    return result
+  }
+
   /// Full detail for one key: TYPE + value + TTL as UI rows.
   public func entry(for key: String) async throws -> RedisKeyEntry {
     guard session.isConnected else { throw RedisError.notConnected }
