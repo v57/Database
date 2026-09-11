@@ -31,17 +31,24 @@ public enum SQLiteValue: Equatable, Sendable {
   case bytes([UInt8])
 }
 
-/// One result row as key/value pairs (column name -> value). Duplicate
-/// column names collapse to the last occurrence — acceptable for a client UI.
+/// One result row as key/value pairs (column name -> value). `columns` keeps the
+/// SELECT's column order — the UI derives its List keys and Table columns from
+/// it, so the order must match the statement rather than a dictionary's hash
+/// order. Duplicate column names collapse to the last occurrence in `values`
+/// while keeping both slots in `columns`.
 public struct SQLiteRowData: Equatable, Identifiable, Sendable {
   /// Stable per-row identity within one result set.
   public var id: Int
+  /// Column names as the statement returned them, in order, duplicates included.
+  public var columns: [String]
   public var values: [String: SQLiteValue]
 
   init(id: Int, columns: [String], cells: [SQLiteValue]) {
     precondition(columns.count == cells.count)
     self.id = id
-    self.values = Dictionary(uniqueKeysWithValues: zip(columns, cells))
+    self.columns = columns
+    self.values = Dictionary(
+      zip(columns, cells), uniquingKeysWith: { _, last in last })
   }
 
   public subscript(key: String) -> SQLiteValue? { values[key] }

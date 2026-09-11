@@ -552,10 +552,14 @@ import SwiftData
 
   // MARK: - Row/key -> Document conversion (shared UI rendering)
 
-  /// PostgreSQL row as a display document: column/value pairs.
+  /// PostgreSQL row as a display document: column/value pairs in the SELECT's
+  /// column order (walking `row.values` would give hash order instead).
   static func document(from row: PostgresRowData) -> Document {
     var doc = Document()
-    for (key, value) in row.values { doc[key] = bson(fromPostgres: value) }
+    for key in row.columns {
+      guard let value = row.values[key] else { continue }
+      doc[key] = bson(fromPostgres: value)
+    }
     return doc
   }
 
@@ -568,10 +572,14 @@ import SwiftData
     return doc
   }
 
-  /// SQLite row as a display document: column/value pairs.
+  /// SQLite row as a display document: column/value pairs in the SELECT's
+  /// column order (walking `row.values` would give hash order instead).
   static func document(from row: SQLiteRowData) -> Document {
     var doc = Document()
-    for (key, value) in row.values { doc[key] = bson(fromSQLite: value) }
+    for key in row.columns {
+      guard let value = row.values[key] else { continue }
+      doc[key] = bson(fromSQLite: value)
+    }
     return doc
   }
 
