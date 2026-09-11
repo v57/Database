@@ -284,19 +284,22 @@ struct ColumnSearchSheet: View {
 struct RedisKeyFilterView: View {
   @Binding var match: KeyGlob.Match
   @Binding var text: String
-  let onChange: () -> Void
+  /// Match-mode changes apply at once (one tap, no typing).
+  let onMatchChange: () -> Void
+  /// Text changes are debounced by the owner so a query is not fired per keystroke.
+  let onTextChange: () -> Void
 
   var body: some View {
     HStack(spacing: 6) {
       Picker("Match", selection: $match) {
         ForEach(KeyGlob.Match.allCases) { mode in Text(mode.label).tag(mode) }
       }.pickerStyle(.menu).labelsHidden().fixedSize().frame(maxWidth: 150)
-        .onChange(of: match) { _, _ in onChange() }
+        .onChange(of: match) { _, _ in onMatchChange() }
 
       TextField("Key text", text: $text)
         .textFieldStyle(.roundedBorder).frame(maxWidth: 260)
-        .onChange(of: text) { _, _ in onChange() }
-        .onSubmit { onChange() }
+        .onChange(of: text) { _, _ in onTextChange() }
+        .onSubmit { onMatchChange() }
 
       if let preview = KeyGlob.pattern(text, match: match) {
         Text(preview).font(.caption.monospaced()).foregroundStyle(.secondary)

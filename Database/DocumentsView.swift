@@ -1,4 +1,5 @@
 import MongoDB
+import Redis
 import SwiftUI
 
 /// Merged item-list + preview screen: documents render as $key/$value cell
@@ -46,6 +47,11 @@ struct DocumentsView: View {
   @State private var quickSearch = ""
   /// Redis key-filter match mode.
   @State private var redisMatch: KeyGlob.Match = .contains
+  /// Fields/kinds/sample values of the loaded rows, rebuilt only when the
+  /// documents CHANGE. Deriving it per body evaluation re-walked every loaded
+  /// row (chip bar, Fields menu, searchable fields, table headers all read it)
+  /// on each keystroke.
+  @State private var catalog: [FieldInfo] = []
 
   var body: some View {
     VStack(spacing: 0) {
@@ -113,10 +119,13 @@ struct DocumentsView: View {
         errorMessage: $searchError,
         onCancel: { searchTarget = nil },
         onApply: { applySearchFragment(for: target.field) })
+    }.onChange(of: model.documents) { _, documents in
+      catalog = FieldCatalog.fields(in: documents)
     }.onAppear {
       filterText = model.currentQuery.filter ?? ""
       sortText = model.currentQuery.sort ?? ""
       projectText = model.currentQuery.projection ?? ""
+      catalog = FieldCatalog.fields(in: model.documents)
     }
   }
 
@@ -142,7 +151,7 @@ struct DocumentsView: View {
     case .table:
       TableDocumentsView(
         documents: model.documents,
-        fields: FieldCatalog.fields(in: model.documents),
+        fields: catalog,
         sortDirections: sortDirections,
         hiddenFields: hiddenFields,
         onColumnAction: handle)
@@ -159,10 +168,14 @@ struct DocumentsView: View {
       // dialect (auto-detected) or raw SQL fragments — Filter→WHERE,
       // Sort→ORDER BY, JSON Project→column list.
       if model.activeEngine == .redis {
-        RedisKeyFilterView(match: $redisMatch, text: $filterText) { apply() }
+        RedisKeyFilterView(
+          match: $redisMatch,
+          text: $filterText,
+          onMatchChange: { apply() },
+          onTextChange: { debounceApply() })
       } else if let dialect = FilterEngine.dialect(for: model.activeEngine) {
         FilterBuilderView(
-          fields: FieldCatalog.fields(in: model.documents),
+          fields: catalog,
           rules: $filterRules,
           editing: $editingRule,
           isCreating: $isCreatingRule,
@@ -204,6 +217,7 @@ struct DocumentsView: View {
     HStack(spacing: 6) {
       TextField("Search all text fields", text: $quickSearch)
         .textFieldStyle(.roundedBorder).frame(maxWidth: 260)
+        .onChange(of: quickSearch) { _, _ in debounceQuickSearch() }
         .onSubmit { applyQuickSearch() }
       if !quickSearch.isEmpty {
         Button("Search") { applyQuickSearch() }
@@ -399,9 +413,10 @@ struct DocumentsView: View {
 
   /// String fields offered to "search all text fields". `_id` is excluded: its
   /// values are opaque identifiers, so a substring/regex search over them only
-  /// adds a useless branch to every `$or`.
+  /// adds a useless branch to every `$or`. Cap mirrors `FieldCatalog.textFields`.
   private var searchableFields: [String] {
-    FieldCatalog.textFields(in: model.documents).filter { $0 != "_id" }
+    Array(
+      catalog.filter { $0.kind == .string && $0.name != "_id" }.map(\.name).prefix(6))
   }
 
   /// Marker field of the "search all text fields" chip (see `FilterText.render`).
@@ -435,7 +450,7 @@ struct DocumentsView: View {
   }
 
   /// The field universe of the loaded rows (drives hide/show and projections).
-  private var allFields: [String] { FieldCatalog.fields(in: model.documents).map(\.name) }
+  private var allFields: [String] { catalog.map(\.name) }
 
   /// Hidden columns, derived from the Projection text — never stored.
   private var hiddenFields: Set<String> {
@@ -516,9 +531,26 @@ struct DocumentsView: View {
   private func debounceApply() {
     debounceTask?.cancel()
     debounceTask = Task {
-      try? await Task.sleep(nanoseconds: 400_000_000)
+      try? await Task.sleep(for: Self.applyDelay)
       guard !Task.isCancelled else { return }
       apply()
+    }
+  }
+
+  /// How long typing must pause before the query re-runs. A query per keystroke
+  /// meant a round trip plus a full document/table re-render per character,
+  /// which made typing in the query bar feel blocked.
+  private static let applyDelay: Duration = .seconds(1)
+
+  /// Debounced "search all text fields": typing re-runs the search one second
+  /// after the last keystroke; the Search button applies immediately.
+  private func debounceQuickSearch() {
+    guard !quickSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    debounceTask?.cancel()
+    debounceTask = Task {
+      try? await Task.sleep(for: Self.applyDelay)
+      guard !Task.isCancelled else { return }
+      applyQuickSearch()
     }
   }
 

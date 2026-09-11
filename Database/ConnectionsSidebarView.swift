@@ -85,7 +85,7 @@ struct ConnectionsSidebarView: View {
       id: model.collectionSearch
     ) {
       do {
-        try await Task.sleep(for: .milliseconds(100))
+        try await Task.sleep(for: .seconds(1))
         await model.loadAllCollections()
       } catch {}
     }.labelStyle(SidebarLabelStyle())
