@@ -19,7 +19,9 @@ struct FilterBuilderView: View {
   let onChange: () -> Void
 
   var body: some View {
-    HStack(spacing: 6) {
+    // Wraps onto further lines instead of overflowing the pane when there are
+    // more chips than fit in one row.
+    FlowLayout(spacing: 6, lineSpacing: 4) {
       ForEach(rules) { rule in chip(rule) }
       addMenu
       if !rules.isEmpty {
@@ -31,8 +33,8 @@ struct FilterBuilderView: View {
         }.buttonStyle(.plain).labelStyle(.iconOnly)
           .help("Clear all filter chips")
       }
-      Spacer(minLength: 0)
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.horizontal, 8).padding(.vertical, 4)
     .sheet(item: $editing) { rule in
       FilterRuleEditor(
@@ -97,6 +99,72 @@ struct FilterBuilderView: View {
     }
     .menuStyle(.borderlessButton).fixedSize()
     .help("Add a filter on a field")
+  }
+}
+
+/// Left-to-right layout that starts a new line when the next subview would not
+/// fit the proposed width (an HStack would overflow instead). Each line is as
+/// tall as its tallest item, and items are centered vertically within it.
+struct FlowLayout: Layout {
+  /// Horizontal gap between items on a line.
+  var spacing: CGFloat = 6
+  /// Vertical gap between lines.
+  var lineSpacing: CGFloat = 4
+
+  /// One laid-out line: the subview indices on it plus its size.
+  private struct Line {
+    var indices: [Int] = []
+    var width: CGFloat = 0
+    var height: CGFloat = 0
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let maxWidth = proposal.width ?? .infinity
+    let lines = lines(for: subviews, maxWidth: maxWidth)
+    let width = lines.map(\.width).max() ?? 0
+    let height = lines.map(\.height).reduce(0, +) + lineSpacing * CGFloat(max(lines.count - 1, 0))
+    return CGSize(width: proposal.width.map { min($0, width) } ?? width, height: height)
+  }
+
+  func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+  ) {
+    var y = bounds.minY
+    for line in lines(for: subviews, maxWidth: bounds.width) {
+      var x = bounds.minX
+      for index in line.indices {
+        let size = itemSize(subviews[index], maxWidth: bounds.width)
+        subviews[index].place(
+          at: CGPoint(x: x, y: y + (line.height - size.height) / 2), anchor: .topLeading,
+          proposal: ProposedViewSize(size))
+        x += size.width + spacing
+      }
+      y += line.height + lineSpacing
+    }
+  }
+
+  /// Ideal size, clamped so a single over-wide item still fits one line.
+  private func itemSize(_ subview: LayoutSubview, maxWidth: CGFloat) -> CGSize {
+    let ideal = subview.sizeThatFits(.unspecified)
+    guard ideal.width > maxWidth else { return ideal }
+    return subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+  }
+
+  private func lines(for subviews: Subviews, maxWidth: CGFloat) -> [Line] {
+    var lines: [Line] = []
+    var current = Line()
+    for index in subviews.indices {
+      let size = itemSize(subviews[index], maxWidth: maxWidth)
+      if !current.indices.isEmpty && current.width + spacing + size.width > maxWidth {
+        lines.append(current)
+        current = Line()
+      }
+      current.width += (current.indices.isEmpty ? 0 : spacing) + size.width
+      current.height = max(current.height, size.height)
+      current.indices.append(index)
+    }
+    if !current.indices.isEmpty { lines.append(current) }
+    return lines
   }
 }
 
@@ -182,8 +250,14 @@ private struct FilterRuleEditor: View {
     }
     .padding(20)
     .frame(width: 440)
-    .onChange(of: rule.op) { _, _ in resetValue() }
-    .onChange(of: rule.field) { _, _ in resetValue() }
+    // Keep what was typed while it still means something: `is` → `is not`
+    // reuses the value, only a different value shape (or field kind) clears it.
+    .onChange(of: rule.op) { oldOp, newOp in
+      if shape(of: oldOp, kind: kind) != shape(of: newOp, kind: kind) { resetValue() }
+    }
+    .onChange(of: rule.field) { oldField, _ in
+      if kind(of: oldField) != kind { resetValue() }
+    }
   }
 
   @ViewBuilder private var valueControl: some View {
@@ -225,6 +299,25 @@ private struct FilterRuleEditor: View {
     return !valueText.trimmingCharacters(in: .whitespaces).isEmpty
   }
 
+  /// What kind of value control an operator needs for a field kind.
+  private enum ValueShape {
+    case none, single, list, boolean
+    /// `.custom` (a column "Search…" chip) holds a raw query fragment, which
+    /// is not a usable value for any other operator.
+    case custom
+  }
+
+  private func shape(of op: FilterOp, kind: FieldKind) -> ValueShape {
+    if !op.needsValue { return .none }
+    if op == .custom { return .custom }
+    if op.takesList { return .list }
+    return kind == .boolean ? .boolean : .single
+  }
+
+  private func kind(of field: String) -> FieldKind {
+    fields.first { $0.name == field }?.kind ?? .mixed
+  }
+
   private func resetValue() {
     valueText = ""
     boolValue = false
@@ -255,32 +348,48 @@ private struct FilterRuleEditor: View {
 /// validated with the same parser the query bar uses before it is applied.
 struct ColumnSearchSheet: View {
   let field: String
+  /// Only changes the hint: SQL engines take the same JSON fragment syntax and
+  /// compile it to a WHERE clause, which isn't obvious from the examples alone.
+  var dialect: FilterDialect = .mongo
   @Binding var fragment: String
   @Binding var errorMessage: String?
   let onCancel: () -> Void
   let onApply: () -> Void
 
+  private var hint: String {
+    switch dialect {
+    case .mongo:
+      "Value or operator object — e.g. 15, \"ann\", { $gt: 15 }, { $in: [1, 2] }"
+    case .sql:
+      "JSON query syntax, compiled to SQL — e.g. 15, \"ann\", { $gt: 15 }, { $in: [1, 2] }"
+    }
+  }
+
+  private var isEmpty: Bool { fragment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text("Search \(field)").font(.headline)
-      Text("Value or operator object — e.g. 15, \"ann\", { $gt: 15 }, { $in: [1, 2] }")
-        .font(.caption).foregroundStyle(.secondary)
+      Text(hint).font(.caption).foregroundStyle(.secondary)
       TextField("Value or { $op: value }", text: $fragment)
-        .textFieldStyle(.roundedBorder).onSubmit { onApply() }
+        .textFieldStyle(.roundedBorder).onSubmit { if !isEmpty { onApply() } }
       if let errorMessage {
-        Text(errorMessage).font(.caption).foregroundStyle(.red)
+        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+          .font(.caption).foregroundStyle(.red)
       }
       HStack {
         Spacer()
         Button("Cancel") { onCancel() }.keyboardShortcut(.cancelAction)
-        Button("Apply") { onApply() }.keyboardShortcut(.defaultAction)
+        Button("Apply") { onApply() }.keyboardShortcut(.defaultAction).disabled(isEmpty)
       }
     }.padding(20).frame(width: 440)
   }
 }
 
 /// Redis key filter: a match-mode picker plus text, writing an explicit glob
-/// pattern into the Filter field (`user:*`, `*:1`, `user:1`, `*user*`).
+/// pattern into the Filter field (`user:*`, `*:1`, `user:1`, `*user*`). Text
+/// that already contains glob syntax is sent as typed and the match mode is
+/// disabled, since it no longer applies.
 struct RedisKeyFilterView: View {
   @Binding var match: KeyGlob.Match
   @Binding var text: String
@@ -289,20 +398,26 @@ struct RedisKeyFilterView: View {
   /// Text changes are debounced by the owner so a query is not fired per keystroke.
   let onTextChange: () -> Void
 
+  private var isGlob: Bool { KeyGlob.isPattern(text) }
+
   var body: some View {
     HStack(spacing: 6) {
       Picker("Match", selection: $match) {
         ForEach(KeyGlob.Match.allCases) { mode in Text(mode.label).tag(mode) }
       }.pickerStyle(.menu).labelsHidden().fixedSize().frame(maxWidth: 150)
+        .disabled(isGlob)
+        .help(isGlob ? "Glob pattern used as typed" : "How the text matches key names")
         .onChange(of: match) { _, _ in onMatchChange() }
 
-      TextField("Key text", text: $text)
+      TextField("Key", text: $text, prompt: Text("Key (text or glob, e.g. user:*)"))
         .textFieldStyle(.roundedBorder).frame(maxWidth: 260)
         .onChange(of: text) { _, _ in onTextChange() }
         .onSubmit { onMatchChange() }
 
-      if let preview = KeyGlob.pattern(text, match: match) {
-        Text(preview).font(.caption.monospaced()).foregroundStyle(.secondary)
+      // The exact SCAN pattern the query will use.
+      if let preview = KeyGlob.query(text, match: match) {
+        Text("MATCH \(preview)").font(.caption.monospaced()).foregroundStyle(.secondary)
+          .lineLimit(1).truncationMode(.middle)
       }
       Spacer(minLength: 0)
     }
