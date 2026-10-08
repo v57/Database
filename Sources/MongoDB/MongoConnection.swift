@@ -111,8 +111,17 @@ public final class MongoConnection {
   /// Collection names in the current database, optionally filtered by
   /// case-insensitive substring (client-side; collection counts are small).
   public func listCollections(matching search: String = "") async throws -> [String] {
+    try await listCollections(in: try requireDatabaseName(), matching: search)
+  }
+
+  /// Collection names of an explicit `database`, WITHOUT switching
+  /// `currentDatabase` — the sidebar lists other databases' collections while
+  /// queries keep running against the selected one.
+  public func listCollections(in db: String, matching search: String = "") async throws
+    -> [String]
+  {
+    guard box.client != nil else { throw MongoDBError.notConnected }
     let box = self.box
-    let db = try requireDatabaseName()
     let names = try await runOnQueue {
       guard let c = box.client else { throw MongoDBError.notConnected }
       return try Self.collectionNames(client: c, database: db)
@@ -193,6 +202,28 @@ public final class MongoConnection {
     }
     return MongoWriteResult(
       matchedCount: result.matched, modifiedCount: result.modified, upsertedId: result.upsertedId)
+  }
+
+  /// Exact number of documents matching `filter` (countDocuments), so delete
+  /// and update confirmations can state the real impact rather than a capped
+  /// preview size.
+  public func countDocuments(in collection: String, filter: Document? = nil) async throws -> Int {
+    let db = try requireDatabaseName()
+    let collectionName = collection
+    let box = self.box
+    return try await runOnQueue { () -> Int in
+      guard let c = box.client else { throw MongoDBError.notConnected }
+      guard let coll = mongoc_client_get_collection(c, db, collectionName) else {
+        throw MongoDBError.invalidQuery("Could not open collection '\(collectionName)'")
+      }
+      defer { mongoc_collection_destroy(coll) }
+      let filterBson = BSONCMap.encode(filter ?? Document())
+      defer { bson_destroy(filterBson) }
+      var err = bson_error_t()
+      let count = mongoc_collection_count_documents(coll, filterBson, nil, nil, nil, &err)
+      guard count >= 0 else { throw MongoDBError.server(Self.errorString(err)) }
+      return Int(count)
+    }
   }
 
   public func deleteMany(from collection: String, filter: Document) async throws

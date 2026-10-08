@@ -39,6 +39,47 @@ import Testing
     #expect(none.isEmpty)
   }
 
+  @Test func listCollectionsInOtherDatabaseKeepsCurrentDatabase() async throws {
+    let selected = TestEnv.freshDBName("selected")
+    let other = TestEnv.freshDBName("other")
+    try await TestEnv.seed(database: selected, collection: "users", docs: [["n": 1]])
+    try await TestEnv.seed(database: other, collection: "orders", docs: [["n": 1]])
+    defer {
+      try? await TestEnv.drop(database: selected)
+      try? await TestEnv.drop(database: other)
+    }
+
+    let conn = MongoConnection(config: TestEnv.config())
+    defer { try? await conn.disconnect() }
+    try await conn.connect()
+    try await conn.use(database: selected)
+
+    let names = try await conn.listCollections(in: other)
+    #expect(names == ["orders"])
+    // The sidebar lists another database without redirecting queries.
+    #expect(conn.currentDatabase == selected)
+    let found = try await conn.find(in: "users")
+    #expect(found.count == 1)
+  }
+
+  @Test func countDocumentsCountsEveryMatchBeyondPreviewLimits() async throws {
+    let db = TestEnv.freshDBName("count")
+    let docs: [Document] = (0..<12).map { ["n": .int32(Int32($0))] }
+    try await TestEnv.seed(database: db, collection: "items", docs: docs)
+    defer { try? await TestEnv.drop(database: db) }
+
+    let conn = MongoConnection(config: TestEnv.config())
+    defer { try? await conn.disconnect() }
+    try await conn.connect()
+    try await conn.use(database: db)
+
+    #expect(try await conn.countDocuments(in: "items") == 12)
+    let filter: Document = ["n": ["$gte": 5]]
+    #expect(try await conn.countDocuments(in: "items", filter: filter) == 7)
+    // A capped find (the delete preview) must not be mistaken for the total.
+    #expect(try await conn.find(in: "items", filter: filter, limit: 3).count == 3)
+  }
+
   @Test func findReturnsMatchingDocuments() async throws {
     let db = TestEnv.freshDBName("find")
     let docs: [Document] = [
