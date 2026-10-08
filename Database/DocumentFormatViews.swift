@@ -54,7 +54,14 @@ enum DisplayFormat: String, CaseIterable, Identifiable {
 /// appearance across the loaded rows), one row per document. Two-axis
 /// scrolling with a pinned header row; cells truncate to one line.
 struct TableDocumentsView: View {
-  @Environment(DatabaseModel.self) private var model
+  /// Every data column shares this width in the header and every row. Sizing
+  /// cells to their content let long values push their row's columns right, so
+  /// rows drifted apart and away from the header; long text truncates instead
+  /// and the full value is in the cell's tooltip.
+  static let columnWidth: CGFloat = 200
+  /// The leading `#` row-number column.
+  static let indexWidth: CGFloat = 44
+
   let documents: [BSONDocument]
   /// Fields/kinds/sample values of the loaded rows (drives the header menus).
   let fields: [FieldInfo]
@@ -91,9 +98,7 @@ struct TableDocumentsView: View {
           ForEach(rows) { row in
             rowView(row, columns: cols)
           }
-          if model.hasMore && model.activeEngine != .redis {
-            loadMoreFooter
-          }
+          LoadMoreFooter()
         } header: {
           headerView(cols)
         }
@@ -103,7 +108,7 @@ struct TableDocumentsView: View {
 
   private func headerView(_ cols: [Column]) -> some View {
     HStack(spacing: 0) {
-      Text("#").font(.caption).bold().frame(width: 44, alignment: .center)
+      Text("#").font(.caption).bold().frame(width: Self.indexWidth, alignment: .center)
       ForEach(cols) { column in
         columnDivider
         HStack(spacing: 2) {
@@ -118,7 +123,7 @@ struct TableDocumentsView: View {
             }
           }.buttonStyle(.plain).help("Sort by \(column.name) — click to cycle asc/desc/off")
           columnMenu(column.name)
-        }.frame(minWidth: 170, alignment: .leading)
+        }.padding(.horizontal, 6).frame(width: Self.columnWidth, alignment: .leading)
       }
     }
     .padding(.vertical, 6)
@@ -197,7 +202,7 @@ struct TableDocumentsView: View {
     }
     return HStack(spacing: 0) {
       Text("\(row.id + 1)").font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary).frame(width: 44, alignment: .center)
+        .foregroundStyle(.secondary).frame(width: Self.indexWidth, alignment: .center)
       ForEach(cols) { column in
         columnDivider
         cellView(displays[column.id])
@@ -219,27 +224,42 @@ struct TableDocumentsView: View {
     if let isString = cell.isString {
       Text(cell.text).lineLimit(1).truncationMode(.tail).textSelection(.enabled)
         .foregroundStyle(isString ? Color.primary : Color.blue)
-        .frame(minWidth: 170, alignment: .leading)
+        .padding(.horizontal, 6).frame(width: Self.columnWidth, alignment: .leading)
+        .help(cell.text)
     } else {
-      Text(cell.text).foregroundStyle(.secondary).frame(minWidth: 170, alignment: .leading)
+      Text(cell.text).foregroundStyle(.secondary)
+        .padding(.horizontal, 6).frame(width: Self.columnWidth, alignment: .leading)
+        .help("Field not present in this document")
     }
   }
 
   private var columnDivider: some View {
     Rectangle().fill(.quaternary).frame(width: 1).frame(maxHeight: .infinity)
   }
+}
 
-  private var loadMoreFooter: some View {
-    HStack(spacing: 8) {
-      if model.isLoadingMore {
-        ProgressView().controlSize(.small)
-        Text("Loading…").font(.caption).foregroundStyle(.secondary)
-      } else {
-        Text("Scroll down to load more").font(.caption).foregroundStyle(.secondary)
+// MARK: - Load more
+
+/// Bottom-of-list sentinel shared by the document formats. It renders only
+/// while the model has another page to fetch (Redis has no paging here), and
+/// its `.onAppear` — the user scrolled to the end — loads that page; a
+/// spinner shows while the fetch runs.
+struct LoadMoreFooter: View {
+  @Environment(DatabaseModel.self) private var model
+
+  var body: some View {
+    if model.hasMore && model.activeEngine != .redis {
+      HStack(spacing: 8) {
+        if model.isLoadingMore {
+          ProgressView().controlSize(.small)
+          Text("Loading…").font(.caption).foregroundStyle(.secondary)
+        } else {
+          Text("Scroll to load more").font(.caption).foregroundStyle(.secondary)
+        }
       }
+      .frame(maxWidth: .infinity).padding(.vertical, 8)
+      .onAppear { Task { await model.loadMoreDocuments() } }
     }
-    .frame(maxWidth: .infinity).padding(.vertical, 8)
-    .onAppear { Task { await model.loadMoreDocuments() } }
   }
 }
 
@@ -260,7 +280,6 @@ private struct Column: Identifiable {
 
 /// Every document as pretty-printed JSON text (monospaced, selectable).
 struct JSONDocumentsView: View {
-  @Environment(DatabaseModel.self) private var model
   let documents: [BSONDocument]
 
   private var blocks: [JSONBlock] {
@@ -282,18 +301,7 @@ struct JSONDocumentsView: View {
           .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
           .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
         }
-        if model.hasMore && model.activeEngine != .redis {
-          HStack(spacing: 8) {
-            if model.isLoadingMore {
-              ProgressView().controlSize(.small)
-              Text("Loading…").font(.caption).foregroundStyle(.secondary)
-            } else {
-              Text("Scroll down to load more").font(.caption).foregroundStyle(.secondary)
-            }
-          }
-          .frame(maxWidth: .infinity).padding(.vertical, 8)
-          .onAppear { Task { await model.loadMoreDocuments() } }
-        }
+        LoadMoreFooter()
       }
       .padding(10)
     }
