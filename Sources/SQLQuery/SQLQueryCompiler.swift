@@ -91,7 +91,7 @@ public enum SQLQueryCompiler {
   // MARK: - Filter (WHERE)
 
   /// ANDs every top-level condition. Returns nil when nothing restricts.
-  private static func compileFilter(_ doc: BSONDocument) throws -> String? {
+  static func compileFilter(_ doc: BSONDocument) throws -> String? {
     let parts = try conditionParts(of: doc)
     guard !parts.isEmpty else { return nil }
     return parts.count == 1 ? parts[0] : parts.joined(separator: " AND ")
@@ -264,7 +264,7 @@ public enum SQLQueryCompiler {
 
   /// Mongo-style sort document: keys in order, directions 1/-1 or
   /// "asc"/"desc". `{}` (or a sort that never restricts) means no ORDER BY.
-  private static func compileSort(_ doc: BSONDocument) throws -> String? {
+  static func compileSort(_ doc: BSONDocument) throws -> String? {
     var terms: [String] = []
     for (key, value) in doc.all {
       let direction: String
@@ -314,7 +314,7 @@ public enum SQLQueryCompiler {
   /// Renders a scalar as an inline SQL literal: strings single-quoted with
   /// embedded quotes doubled, numbers/booleans native. NULL is rejected here —
   /// only $eq/$ne/$exists know what NULL means in SQL.
-  private static func literal(_ value: BSON, for column: String) throws -> String {
+  static func literal(_ value: BSON, for column: String) throws -> String {
     switch value {
     case .string(let text):
       guard !text.contains("\0") else {

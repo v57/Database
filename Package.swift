@@ -36,7 +36,7 @@ let package = Package(
       dependencies: ["MongoDB"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
-      name: "PostgreSQLTests", dependencies: ["PostgreSQL"],
+      name: "PostgreSQLTests", dependencies: ["PostgreSQL", "SQLQuery", "MongoDB"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
       name: "RedisTests", dependencies: ["Redis"],
