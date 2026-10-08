@@ -31,4 +31,13 @@ import Testing
     #expect(!KeyGlob.isPattern("user"))
     #expect(!KeyGlob.isPattern(""))
   }
+
+  @Test func queryUsesTypedGlobsVerbatimAndWrapsPlainText() {
+    // Plain text follows the match mode.
+    #expect(KeyGlob.query("user", match: .startsWith) == "user*")
+    #expect(KeyGlob.query(" user ", match: .exact) == "user")
+    // Text that already is a glob ignores the mode instead of becoming `*user:**`.
+    #expect(KeyGlob.query("user:*", match: .contains) == "user:*")
+    #expect(KeyGlob.query("", match: .contains) == nil)
+  }
 }

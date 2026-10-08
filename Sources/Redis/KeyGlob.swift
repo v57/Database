@@ -33,6 +33,15 @@ public enum KeyGlob {
     }
   }
 
+  /// The SCAN MATCH pattern for the key filter box: text that already contains
+  /// glob syntax is used verbatim (the match mode is ignored), anything else is
+  /// escaped and wrapped per `match`. nil when there is no text (every key).
+  public static func query(_ text: String, match: Match) -> String? {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+    return isPattern(trimmed) ? trimmed : pattern(trimmed, match: match)
+  }
+
   /// True when the user typed glob syntax themselves, so the text is passed to
   /// SCAN MATCH verbatim instead of being wrapped as a substring search.
   public static func isPattern(_ text: String) -> Bool {
