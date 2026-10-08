@@ -95,6 +95,53 @@ enum EditableType: String, CaseIterable, Identifiable {
     default: .string
     }
   }
+
+  /// True for the types edited through a text field (and therefore the only
+  /// ones that can hold unparseable input or lose keyboard focus).
+  var usesTextField: Bool {
+    switch self {
+    case .string, .integer, .number, .objectId: true
+    case .boolean, .date, .null: false
+    }
+  }
+
+  /// The BSON value for the working inputs, or `nil` when `text` does not
+  /// parse for this type. Shared by the inline editor and the add-field row so
+  /// both accept exactly the same input.
+  func value(text: String, date: Date, bool: Bool) -> BSON? {
+    switch self {
+    case .string: .string(text)
+    case .integer: Int64(text.trimmingCharacters(in: .whitespaces)).map(BSON.int64)
+    case .number: Double(text.trimmingCharacters(in: .whitespaces)).map(BSON.double)
+    case .boolean: .bool(bool)
+    case .date: .datetime(date)
+    case .null: .null
+    case .objectId: (try? BSONObjectID(text.trimmingCharacters(in: .whitespaces))).map(BSON.objectID)
+    }
+  }
+
+  /// Caption shown under a text field whose input does not parse, so a
+  /// rejected Return/Add is explained instead of silently ignored.
+  var invalidMessage: String {
+    switch self {
+    case .integer: "Not a valid integer"
+    case .number: "Not a valid number"
+    case .objectId: "Not a valid ObjectId (24 hex characters)"
+    case .string, .boolean, .date, .null: "Not a valid value"
+    }
+  }
+}
+
+extension View {
+  /// Red outline drawn over a rounded-border text field holding input that
+  /// does not parse for the selected type.
+  func invalidOutline(_ isInvalid: Bool) -> some View {
+    overlay {
+      if isInvalid {
+        RoundedRectangle(cornerRadius: 5).stroke(.red, lineWidth: 1).allowsHitTesting(false)
+      }
+    }
+  }
 }
 
 /// Live editor state for one value: which document/path is being edited plus
@@ -131,28 +178,25 @@ enum EditableType: String, CaseIterable, Identifiable {
   /// The BSON value to write back, or `nil` when the current text does not
   /// parse for the selected type (integer/number/objectId).
   func committedValue() -> BSON? {
-    switch type {
-    case .string: return .string(text)
-    case .integer: return Int64(text).map(BSON.int64)
-    case .number: return Double(text).map(BSON.double)
-    case .boolean: return .bool(bool)
-    case .date: return .datetime(date)
-    case .null: return .null
-    case .objectId: return (try? BSONObjectID(text)).map(BSON.objectID)
-    }
+    type.value(text: text, date: date, bool: bool)
   }
 }
 
 // MARK: - Row view
 
 /// A single `$key, $value` row. Key and value are separate cells; the value
-/// cell is color-coded (`.primary` strings, `.blue` everything else) and
-/// turns into an editor on double-click. Containers show a summary badge and
-/// render their children as indented rows below.
+/// cell is color-coded (`.primary` strings, `.blue` everything else) and,
+/// when `isEditable`, turns into an editor on double-click. Containers show a
+/// summary badge and render their children as indented rows below.
 struct KeyValueRow: View {
   let row: FieldRow
   let editor: ValueEditorState?
   let expandedKeys: Set<String>
+  /// Whether double-click opens the inline editor. The pane passes true only
+  /// in Edit mode for engines that can write a value back; otherwise no
+  /// double-click recognizer is installed, so a single click (expand a string)
+  /// is not delayed waiting to rule out a second one.
+  var isEditable: Bool = false
   let onToggle: (String) -> Void
   let onStartEdit: () -> Void
   let onCommit: () -> Void
@@ -163,6 +207,9 @@ struct KeyValueRow: View {
   var keyMenuState: KeyMenuState = KeyMenuState(sortDirection: nil, isHidden: false)
   /// Every key gesture funnels through the pane's single action handler.
   var onColumnAction: ((ColumnAction) -> Void)? = nil
+
+  /// Drives the hover pencil that makes double-click editing discoverable.
+  @State private var isHovering = false
 
   private var isEditing: Bool { editor?.docIndex == row.docIndex && editor?.path == row.path }
 
@@ -211,12 +258,6 @@ struct KeyValueRow: View {
   @ViewBuilder private var valueContent: some View {
     if isEditing, let editor {
       ValueEditor(state: editor, onCommit: onCommit, onCancel: onCancel)
-    } else if row.bson.isString {
-      // Strings are one line by default; click to expand to full text.
-      Text(BSONSupport.displayString(row.bson)).font(.system(.body, design: .monospaced))
-        .foregroundStyle(.primary).lineLimit(isExpanded ? nil : 1).truncationMode(.tail)
-        .textSelection(.enabled).contentShape(Rectangle()).onTapGesture(count: 2) { onStartEdit() }
-        .onTapGesture { onToggle(row.key) }
     } else if row.bson.isContainer {
       // Containers collapse by default; click toggles their children.
       HStack(spacing: 4) {
@@ -226,39 +267,123 @@ struct KeyValueRow: View {
       }.font(.system(.body, design: .monospaced)).foregroundStyle(.blue).contentShape(Rectangle())
         .onTapGesture { onToggle(row.key) }
     } else {
-      // Non-string leaf: color-coded, selectable, double-click editable.
-      Text(BSONSupport.displayString(row.bson)).font(.system(.body, design: .monospaced))
-        .foregroundStyle(.blue).textSelection(.enabled).contentShape(Rectangle()).onTapGesture(
-          count: 2
-        ) { onStartEdit() }
+      HStack(spacing: 6) {
+        leafGestures(leafText)
+        // Hover pencil: the visible hint that this value can be edited, and a
+        // single-click way in for pointer users who don't think to double-click.
+        if isEditable && isHovering {
+          Button {
+            onStartEdit()
+          } label: {
+            Image(systemName: "pencil").font(.caption)
+          }.buttonStyle(.borderless).foregroundStyle(.secondary).help("Edit value")
+        }
+      }.onHover { isHovering = $0 }
+    }
+  }
+
+  /// Leaf value: strings are `.primary` and one line until clicked open;
+  /// every other scalar is `.blue` and shown in full.
+  private var leafText: some View {
+    let isString = row.bson.isString
+    return Text(BSONSupport.displayString(row.bson)).font(.system(.body, design: .monospaced))
+      .foregroundStyle(isString ? Color.primary : Color.blue)
+      .lineLimit(isString && !isExpanded ? 1 : nil).truncationMode(.tail)
+      .textSelection(.enabled).contentShape(Rectangle())
+  }
+
+  /// Installs only the recognizers this row needs. A double-tap recognizer
+  /// makes every single tap wait out the double-click interval, so it is added
+  /// only when the value is editable; strings keep click-to-expand either way.
+  @ViewBuilder private func leafGestures(_ content: some View) -> some View {
+    switch (isEditable, row.bson.isString) {
+    case (true, true):
+      content.onTapGesture(count: 2) { onStartEdit() }.onTapGesture { onToggle(row.key) }
+        .help("Click to expand, double-click to edit")
+    case (true, false):
+      content.onTapGesture(count: 2) { onStartEdit() }.help("Double-click to edit")
+    case (false, true):
+      content.onTapGesture { onToggle(row.key) }
+    case (false, false):
+      content
     }
   }
 }
 
 /// The inline editor: a type picker plus the matching control
-/// (TextField / Toggle / DatePicker / static null).
+/// (TextField / Toggle / DatePicker / static null), with explicit save/cancel
+/// buttons (Escape and click-away are not available everywhere, e.g. iOS).
+/// Input that doesn't parse for the type is outlined and captioned instead of
+/// silently keeping the editor open.
 struct ValueEditor: View {
   @Bindable var state: ValueEditorState
   let onCommit: () -> Void
   let onCancel: () -> Void
   @FocusState private var focused: Bool
+  /// Set by the first commit/cancel. Return can resign focus, and the blur
+  /// that follows would otherwise fire a second commit (or a cancel) for the
+  /// same edit.
+  @State private var isFinished = false
+  /// iOS dismisses the keyboard on every Return; after a rejected Return that
+  /// blur must not cancel the edit and throw away what was typed.
+  @State private var ignoresNextBlur = false
+
+  private var isValid: Bool { state.committedValue() != nil }
 
   var body: some View {
-    HStack(spacing: 6) {
-      Picker("Type", selection: $state.type) {
-        ForEach(EditableType.allCases) { type in Text(type.label).tag(type) }
-      }.labelsHidden().controlSize(.small).fixedSize()
-      control
-    }.onAppear { focused = true }
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 6) {
+        Picker("Type", selection: $state.type) {
+          ForEach(EditableType.allCases) { type in Text(type.label).tag(type) }
+        }.labelsHidden().controlSize(.small).fixedSize()
+        control
+        Button {
+          commit()
+        } label: {
+          Image(systemName: "checkmark.circle.fill")
+        }.buttonStyle(.borderless).disabled(!isValid).help("Save (Return)")
+        Button {
+          cancel()
+        } label: {
+          Image(systemName: "xmark.circle")
+        }.buttonStyle(.borderless).foregroundStyle(.secondary).help("Cancel (Escape)")
+      }
+      if state.type.usesTextField && !isValid {
+        Text(state.type.invalidMessage).font(.caption).foregroundStyle(.red)
+      }
+    }
+    .onAppear { focused = true }
+    // Clicking elsewhere ends the edit rather than leaving a dangling editor:
+    // keep a value that parses, drop one that doesn't. Switching the type to
+    // Boolean/Date/Null removes the text field (and its focus) on purpose, so
+    // that blur is not treated as leaving the editor.
+    .onChange(of: focused) { _, isFocused in
+      guard !isFocused, state.type.usesTextField else { return }
+      if ignoresNextBlur {
+        ignoresNextBlur = false
+        return
+      }
+      if isValid { commit() } else { cancel() }
+    }
+    // Back on a text type (e.g. Boolean → String): the field is new, so give it
+    // focus again; the text kept from before is revalidated for the new type.
+    .onChange(of: state.type) { _, type in
+      if type.usesTextField { focused = true }
+    }
   }
 
   @ViewBuilder private var control: some View {
     switch state.type {
     case .string, .integer, .number, .objectId:
       TextField("Value", text: $state.text).textFieldStyle(.roundedBorder).focused($focused)
-        .onSubmit { onCommit() }
+        .invalidOutline(!isValid)
+        .onSubmit { submit() }
+        .onKeyPress(.escape) {
+          cancel()
+          return .handled
+        }
 #if os(macOS)
-        .onExitCommand { onCancel() }
+        .onExitCommand { cancel() }
 #endif
         .frame(minWidth: 220)
     case .boolean: Toggle("", isOn: $state.bool).labelsHidden().toggleStyle(.switch)
@@ -271,12 +396,34 @@ struct ValueEditor: View {
     case .null: Text("null").font(.system(.body, design: .monospaced)).foregroundStyle(.secondary)
     }
   }
+
+  private func submit() {
+#if os(iOS)
+    if !isValid { ignoresNextBlur = true }
+#endif
+    commit()
+  }
+
+  /// Commits once; invalid input keeps the editor open with its caption.
+  private func commit() {
+    guard !isFinished, isValid else { return }
+    isFinished = true
+    onCommit()
+  }
+
+  private func cancel() {
+    guard !isFinished else { return }
+    isFinished = true
+    onCancel()
+  }
 }
 
 // MARK: - Add-field row
 
 /// Edit-mode row that inserts a new key/value field into a document. Shown at
-/// the end of each document section when Edit mode is on.
+/// the end of each document section when Edit mode is on. It never grabs
+/// focus on its own: one row exists per document in a lazy list, so an
+/// auto-focus would jump the keyboard to whichever row scrolled in last.
 struct AddFieldRow: View {
   let onAdd: (String, BSON) -> Void
   @State private var key = ""
@@ -284,24 +431,36 @@ struct AddFieldRow: View {
   @State private var text = ""
   @State private var date = Date()
   @State private var bool = false
-  @FocusState private var keyFocused: Bool
+
+  private var trimmedKey: String { key.trimmingCharacters(in: .whitespaces) }
+  private var value: BSON? { type.value(text: text, date: date, bool: bool) }
+  /// Only flag input the user actually typed; an untouched empty Integer
+  /// field is merely incomplete, and Add is disabled for it anyway.
+  private var showsInvalid: Bool { type.usesTextField && !text.isEmpty && value == nil }
 
   var body: some View {
-    HStack(spacing: 6) {
-      TextField("New field", text: $key, prompt: Text("New field")).textFieldStyle(.roundedBorder)
-        .frame(width: 190).focused($keyFocused)
-      Picker("Type", selection: $type) {
-        ForEach(EditableType.allCases) { t in Text(t.label).tag(t) }
-      }.labelsHidden().controlSize(.small).fixedSize()
-      valueControl
-      Button("Add") { add() }.disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
-    }.onAppear { keyFocused = true }
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 6) {
+        TextField("New field", text: $key, prompt: Text("New field")).textFieldStyle(.roundedBorder)
+          .frame(width: 190)
+        Picker("Type", selection: $type) {
+          ForEach(EditableType.allCases) { t in Text(t.label).tag(t) }
+        }.labelsHidden().controlSize(.small).fixedSize()
+        valueControl
+        Button("Add") { add() }.disabled(trimmedKey.isEmpty || value == nil)
+      }
+      if showsInvalid {
+        Text(type.invalidMessage).font(.caption).foregroundStyle(.red)
+      }
+    }
   }
 
   @ViewBuilder private var valueControl: some View {
     switch type {
     case .string, .integer, .number, .objectId:
       TextField("Value", text: $text).textFieldStyle(.roundedBorder).frame(minWidth: 140)
+        .invalidOutline(showsInvalid)
+        .onSubmit { add() }
     case .boolean: Toggle("", isOn: $bool).labelsHidden()
     case .date:
       DatePicker("", selection: $date, displayedComponents: [.date, .hourAndMinute]).labelsHidden()
@@ -313,19 +472,8 @@ struct AddFieldRow: View {
   }
 
   private func add() {
-    let k = key.trimmingCharacters(in: .whitespaces)
-    guard !k.isEmpty else { return }
-    let value: BSON? =
-      switch type {
-      case .string: .string(text)
-      case .integer: Int64(text).map(BSON.int64)
-      case .number: Double(text).map(BSON.double)
-      case .boolean: .bool(bool)
-      case .date: .datetime(date)
-      case .null: .null
-      case .objectId: (try? BSONObjectID(text)).map(BSON.objectID)
-      }
-    guard let value else { return }
+    let k = trimmedKey
+    guard !k.isEmpty, let value else { return }
     onAdd(k, value)
     key = ""
     text = ""
