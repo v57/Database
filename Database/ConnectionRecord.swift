@@ -36,11 +36,12 @@ enum DatabaseEngine: String, Codable, CaseIterable, Identifiable {
     }
   }
 
-  /// System image used in sidebar rows and pickers.
+  /// System image used in sidebar rows and pickers. Every name must be a
+  /// real SF Symbol: a missing one renders as a blank gap, not a fallback.
   var systemImage: String {
     switch self {
     case .mongodb: "leaf.fill"
-    case .postgresql: "elephant"  // falls back gracefully if unavailable
+    case .postgresql: "server.rack"
     case .redis: "bolt.horizontal.fill"
     case .sqlite: "internaldrive"
     }
@@ -151,6 +152,40 @@ enum EngineSettings {
           name: name, host: host, port: UInt16(port), username: username, password: password,
           databaseIndex: index))
     case .sqlite: return .sqlite(SQLiteConnectionConfig(name: name, filePath: host))
+    }
+  }
+
+  /// True when the live session in `model` was started from this record.
+  /// Engine configs regenerate their UUID on every toSettings() call, so ids
+  /// can't be compared — match by engine + name + host/port (file path for
+  /// SQLite) instead. Shared by the sidebar (status dot) and the form (which
+  /// must decide whether an edit needs a reconnect BEFORE mutating the record).
+  @MainActor func matchesLiveSession(of model: DatabaseModel) -> Bool {
+    guard model.isSessionActive, model.activeEngine == engineKind else { return false }
+    switch model.activeEngine {
+    case .mongodb:
+      guard let session = model.session, session.isConnected else { return false }
+      let c = session.config
+      return c.name == name && c.host == host && c.port == UInt16(port)
+    case .postgresql:
+      guard case .postgresql(let session) = model.alternateSession, session.isConnected else {
+        return false
+      }
+      let c = session.config
+      return c.name == name && c.host == host && c.port == UInt16(port)
+    case .redis:
+      guard case .redis(let session) = model.alternateSession, session.isConnected else {
+        return false
+      }
+      let c = session.config
+      return c.name == name && c.host == host && c.port == UInt16(port)
+    case .sqlite:
+      guard case .sqlite(let session) = model.alternateSession, session.isConnected else {
+        return false
+      }
+      let c = session.config
+      return c.name == name && c.filePath == host
+    case nil: return false
     }
   }
 

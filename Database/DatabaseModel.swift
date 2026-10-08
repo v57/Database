@@ -29,6 +29,9 @@ import SwiftData
   var alternateSession: AlternateSession?
   var isConnecting = false
   var statusMessage = ""
+  /// The last connect failure, surfaced by the sidebar as an alert (the
+  /// window subtitle alone was too easy to miss). Cleared on the next attempt.
+  var connectionError: String?
 
   var databases: [String] = []
   var selectedDatabase: String?
@@ -76,6 +79,7 @@ import SwiftData
   func connect(_ settings: EngineSettings) async {
     await disconnect()
     isConnecting = true
+    connectionError = nil
     statusMessage = "Connecting to \(settings.host):\(settings.port)…"
     defer { isConnecting = false }
     do {
@@ -120,7 +124,37 @@ import SwiftData
 
 
       }
-    } catch { statusMessage = "Connection failed: \(error.localizedDescription)" }
+    } catch {
+      // A half-open session (connected, then listing failed) is torn down so
+      // the sidebar never shows a "connected" row with no databases.
+      await disconnect()
+      statusMessage = "Connection failed: \(error.localizedDescription)"
+      connectionError = error.localizedDescription
+    }
+  }
+
+  /// Opens a throwaway connection with `settings` and closes it again; throws
+  /// the driver error on failure. Used by the form's "Test Connection" button.
+  /// Does not touch the live session.
+  func testConnection(_ settings: EngineSettings) async throws {
+    switch settings {
+    case .mongodb(let config):
+      let conn = MongoConnection(config: config)
+      try await conn.connect()
+      await conn.disconnect()
+    case .postgresql(let config):
+      let conn = PostgresConnection(config: config)
+      try await conn.connect()
+      await conn.disconnect()
+    case .redis(let config):
+      let conn = RedisConnection(config: config)
+      try await conn.connect()
+      await conn.disconnect()
+    case .sqlite(let config):
+      let conn = SQLiteConnection(config: config)
+      try await conn.connect()
+      await conn.disconnect()
+    }
   }
 
   /// Legacy overload so existing MongoDB-only call sites keep compiling.
