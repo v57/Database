@@ -160,21 +160,53 @@ public final class MongoConnection {
       let cursor = mongoc_collection_find_with_opts(coll, filterBson, optsBson, nil)
       guard let cursor else { throw MongoDBError.server("Could not start find cursor") }
       defer { mongoc_cursor_destroy(cursor) }
-      var result: [Document] = []
-      var doc: UnsafePointer<bson_t>? = nil
-      var cErr = bson_error_t()
-      while mongoc_cursor_next(cursor, &doc) {
-        if let d = doc {
-          let value = try BSONCMap.decode(UnsafeMutablePointer(mutating: d))
-          if case .document(let docValue) = value { result.append(docValue) }
-        }
-        if let limit, result.count >= limit { break }
-      }
-      if mongoc_cursor_error(cursor, &cErr) {
-        throw MongoDBError.server(Self.errorString(cErr))
-      }
-      return result
+      return try Self.drain(cursor, limit: limit)
     }
+  }
+
+  /// Runs an aggregation pipeline on `collection` in the current database and
+  /// returns its output documents (stop early with `limit`). Stages are sent
+  /// as given — callers page with trailing `$skip`/`$limit` stages.
+  public func aggregate(in collection: String, pipeline: [Document], limit: Int? = nil)
+    async throws -> [Document]
+  {
+    let db = try requireDatabaseName()
+    let collectionName = collection
+    let box = self.box
+    return try await runOnQueue {
+      guard let c = box.client else { throw MongoDBError.notConnected }
+      guard let coll = mongoc_client_get_collection(c, db, collectionName) else {
+        throw MongoDBError.invalidQuery("Could not open collection '\(collectionName)'")
+      }
+      defer { mongoc_collection_destroy(coll) }
+      var command = Document()
+      command["pipeline"] = .array(pipeline.map { .document($0) })
+      let pipelineBson = BSONCMap.encode(command)
+      defer { bson_destroy(pipelineBson) }
+      let cursor = mongoc_collection_aggregate(coll, MONGOC_QUERY_NONE, pipelineBson, nil, nil)
+      guard let cursor else { throw MongoDBError.server("Could not start aggregate cursor") }
+      defer { mongoc_cursor_destroy(cursor) }
+      return try Self.drain(cursor, limit: limit)
+    }
+  }
+
+  /// Reads a cursor's documents (up to `limit`), then surfaces its error, if
+  /// any — a failed find/aggregate reports through the cursor, not the call.
+  private static func drain(_ cursor: OpaquePointer, limit: Int?) throws -> [Document] {
+    var result: [Document] = []
+    var doc: UnsafePointer<bson_t>? = nil
+    var cErr = bson_error_t()
+    while mongoc_cursor_next(cursor, &doc) {
+      if let d = doc {
+        let value = try BSONCMap.decode(UnsafeMutablePointer(mutating: d))
+        if case .document(let docValue) = value { result.append(docValue) }
+      }
+      if let limit, result.count >= limit { break }
+    }
+    if mongoc_cursor_error(cursor, &cErr) {
+      throw MongoDBError.server(Self.errorString(cErr))
+    }
+    return result
   }
 
   public func updateMany(in collection: String, filter: Document, update: Document) async throws
