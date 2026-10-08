@@ -38,7 +38,33 @@ import SwiftUI
 #endif
   }
 
-  var body: some Scene { WindowGroup { ContentView(model: model, container: container) } }
+  var body: some Scene {
+    WindowGroup { ContentView(model: model, container: container) }.commands {
+      NewConnectionCommands()
+    }
+  }
+}
+
+/// File menu: "New Connection…" (⌘N) replaces New Window. Every window shares
+/// the one DatabaseModel, so an extra window would only mirror the same state;
+/// adding a connection is the useful "new" action.
+private struct NewConnectionCommands: Commands {
+  /// Published by the key window's sidebar; nil when no window can take it.
+  @FocusedBinding(\.isAddingConnection) private var isAddingConnection
+
+  var body: some Commands {
+    CommandGroup(replacing: .newItem) {
+      Button("New Connection…") { isAddingConnection = true }.keyboardShortcut("n").disabled(
+        isAddingConnection == nil)
+    }
+  }
+}
+
+extension FocusedValues {
+  /// The key window's "Add Connection" sheet flag, so the menu command opens
+  /// the same sheet as the sidebar's + button (without routing through the
+  /// shared DatabaseModel, which would open it in every window).
+  @Entry var isAddingConnection: Binding<Bool>?
 }
 
 struct ContentView: View {
@@ -62,13 +88,24 @@ struct ContentView: View {
     return model.session?.config.name ?? "Database Client"
   }
 
+  /// Which column a compact (iPhone) split view shows. Selecting a connection
+  /// or database in the sidebar List would otherwise push the empty
+  /// "No Collection Selected" pane; only a collection opens the detail.
+  @State private var compactColumn = NavigationSplitViewColumn.sidebar
+
   var body: some View {
     // Two-pane layout: sidebar (connections) + merged item-list/preview.
     // `detail:` is the main pane in a 2-column NavigationSplitView.
-    NavigationSplitView {
+    NavigationSplitView(preferredCompactColumn: $compactColumn) {
       ConnectionsSidebarView()
     } detail: {
       DocumentsView()
     }.navigationTitle(title).environment(model).modelContainer(container)
+      .onChange(of: compactColumn) { _, column in
+        if column == .detail && model.selectedCollection == nil { compactColumn = .sidebar }
+      }
+      .onChange(of: model.selectedCollection) { _, collection in
+        compactColumn = collection == nil ? .sidebar : .detail
+      }
   }
 }

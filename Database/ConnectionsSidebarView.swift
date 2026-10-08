@@ -5,6 +5,15 @@ import SQLite
 import SwiftData
 import SwiftUI
 
+/// One selectable sidebar row. Hashable so a native `List(selection:)` drives
+/// the system highlight and arrow-key navigation. Collections carry their
+/// database because the same name can exist in several databases.
+enum SidebarItem: Hashable {
+  case connection(PersistentIdentifier)
+  case database(String)
+  case collection(database: String, name: String)
+}
+
 /// Sidebar column: saved connections; under the active connection, its
 /// databases with collections nested inside (folded by default). Selecting a
 /// connection connects; expanding a database lazily loads its collections;
@@ -12,86 +21,126 @@ import SwiftUI
 struct ConnectionsSidebarView: View {
   @Environment(DatabaseModel.self) private var model
   @Environment(\.modelContext) private var modelContext
+  @Environment(\.horizontalSizeClass) private var horizontalSizeClass
   @Query(sort: \ConnectionRecord.name) private var records: [ConnectionRecord]
 
-  @State private var selectedRecordID: ConnectionRecord.ID?
+  @State private var selection: SidebarItem?
   /// Databases the user has expanded; collections stay folded until then.
   @State private var expandedDatabases: Set<String> = []
   @State private var showAddSheet = false
   @State private var editingRecord: ConnectionRecord?
+  /// Drives the delete confirmation (deleting a saved connection can't be undone).
+  @State private var recordPendingDeletion: ConnectionRecord?
+  /// The record whose connect is in flight, so its row can show a spinner.
+  @State private var connectingRecordID: ConnectionRecord.ID?
+  /// The record whose last connect failed, so the alert can name it and
+  /// offer to edit it. Nil when the failing connect came from elsewhere.
+  @State private var failedRecordID: ConnectionRecord.ID?
+
+  /// iPhone-width split view: ANY list selection pushes the detail column, so
+  /// only collections are selectable there; connections are plain buttons and
+  /// databases only fold. (nil on macOS, where everything stays selectable.)
+  private var isCompact: Bool { horizontalSizeClass == .compact }
 
   var body: some View {
     @Bindable var model = model
-    ScrollView {
-      LazyVStack {
-        Section {
-          if records.isEmpty {
-            Text("No saved connections — use + to add one.").foregroundStyle(.secondary)
-          }
-          ForEach(records) { record in
-            Button {
-              selectConnection(record)
-            } label: {
-              ConnectionRow(record: record, isActive: isActive(record)).frame(
-                maxWidth: .infinity, alignment: .leading
-              ).background(.black.opacity(0.001))
-            }.buttonStyle(.plain).contextMenu {
-              Button("Connect") { connect(record) }
-              Button("Disconnect") { Task { await model.disconnect() } }.disabled(
-                !model.isSessionActive)
-              Divider()
-              Button("Edit…") { editingRecord = record }
-              Button("Delete", role: .destructive) { delete(record) }
-            }
-          }
-        } header: {
-          HStack {
-            Text("Connections").frame(maxWidth: .infinity, alignment: .leading)
-            Button("Add", systemImage: "plus") { showAddSheet = true }.buttonStyle(.plain)
-              .labelStyle(.iconOnly).help("Add Connection")
-          }.foregroundStyle(.secondary).font(.caption).padding(.horizontal, 8)
-        }
-        if model.isSessionActive {
-          Section {
-            if visibleDatabases.isEmpty { emptyDatabasesText.foregroundStyle(.secondary) }
-            ForEach(visibleDatabases, id: \.self) { db in
-              // While searching: force-expand every database that
-              // has matches (the search field already triggered
-              // loading collections for all databases).
-              let isExpanded = isSearching ? .constant(true) : expandedBinding(for: db)
-              Button {
-                withAnimation(.smooth(duration: 0.25)) { isExpanded.wrappedValue.toggle() }
-              } label: {
-                Label(db, systemImage: "cylinder.split.1x2.fill").tint(
-                  isExpanded.wrappedValue ? .blue : .secondary)
-              }.buttonStyle(.plain)
-              if isExpanded.wrappedValue { collectionChildren(for: db).transition(.blurReplace) }
-            }
-          } header: {
-            Text(model.activeEngine == .redis ? "Databases (indexes)" : "Databases").frame(
-              maxWidth: .infinity, alignment: .leading
-            ).foregroundStyle(.secondary).font(.caption).padding(.horizontal, 8).padding(
-              .vertical, 4)
-          }.transition(.blurReplace)
+    List(selection: $selection) {
+      connectionsSection
+      if model.isSessionActive { databasesSection }
+    }.listStyle(.sidebar).searchable(
+      text: $model.collectionSearch, placement: .sidebar, prompt: "Collections or $database"
+    ).navigationSplitViewColumnWidth(min: 200, ideal: 250).sheet(isPresented: $showAddSheet) {
+      ConnectionFormView(onConnect: connectFromForm)
+    }.sheet(item: $editingRecord) { record in
+      ConnectionFormView(record: record, onConnect: connectFromForm)
+    }.focusedSceneValue(\.isAddingConnection, $showAddSheet).confirmationDialog(
+      "Delete “\(recordPendingDeletion?.name ?? "")”?", isPresented: deleteConfirmationBinding,
+      titleVisibility: .visible, presenting: recordPendingDeletion
+    ) { record in
+      Button("Delete", role: .destructive) { delete(record) }
+      Button("Cancel", role: .cancel) {}
+    } message: { _ in
+      Text("This removes the saved connection.")
+    }.alert(
+      connectionErrorTitle, isPresented: connectionErrorBinding, presenting: model.connectionError
+    ) { _ in
+      if let record = failedRecord {
+        Button("Edit Connection…") {
+          clearConnectionError()
+          editingRecord = record
         }
       }
-    }.safeAreaPadding(.horizontal, 10).searchable(
-      text: $model.collectionSearch, placement: .sidebar
-    ).navigationSplitViewColumnWidth(min: 200, ideal: 250).sheet(isPresented: $showAddSheet) {
-      ConnectionFormView()
-    }.sheet(item: $editingRecord) { record in ConnectionFormView(record: record) }.animation(
-      .smooth(duration: 0.25), value: model.isSessionActive
-    ).animation(.smooth(duration: 0.25), value: model.databases.count).task(
-      id: model.collectionSearch
-    ) {
-      do {
-        try await Task.sleep(for: .seconds(1))
-        await model.loadAllCollections()
-      } catch {}
-    }.labelStyle(SidebarLabelStyle())
+      Button("OK", role: .cancel) { clearConnectionError() }
+    } message: { message in
+      Text(message)
+    }.onChange(of: selection) { _, newValue in selectionChanged(to: newValue) }.task(id: selection)
+    {
+      await connectSelectedRecord()
+    }.onChange(of: model.selectedCollection) { syncSelectionFromModel() }.onChange(
+      of: model.selectedDatabase
+    ) { syncSelectionFromModel() }.onChange(of: model.isSessionActive) { _, isActive in
+      sessionActivityChanged(isActive)
+    }.onAppear { syncSelectionFromModel() }.task(id: model.collectionSearch) {
+      await loadCollectionsForSearch()
+    }.animation(.smooth(duration: 0.25), value: model.isSessionActive)
   }
 
-  // MARK: - Sidebar actions
+  // MARK: - Sections
+
+  private var connectionsSection: some View {
+    Section {
+      if records.isEmpty {
+        Text("No saved connections — use + to add one.").foregroundStyle(.secondary)
+      }
+      ForEach(records) { record in
+        let active = isActive(record)
+        let row = ConnectionRow(
+          record: record, isActive: active, isConnecting: connectingRecordID == record.id,
+          disconnect: disconnect)
+        Group {
+          if isCompact {
+            Button { connectIfInactive(record.id) } label: { row }.buttonStyle(.plain)
+          } else {
+            row.tag(SidebarItem.connection(record.id))
+          }
+        }.contextMenu {
+          Button("Connect") {
+            if !isCompact { selection = .connection(record.id) }
+            connect(record)
+          }.disabled(active || connectingRecordID != nil)
+          Button("Disconnect") { disconnect() }.disabled(!active)
+          Divider()
+          Button("Edit…") { editingRecord = record }
+          Button("Delete…", role: .destructive) { recordPendingDeletion = record }
+        }
+      }
+    } header: {
+      HStack {
+        Text("Connections")
+        Spacer()
+        Button("Add Connection", systemImage: "plus") { showAddSheet = true }.buttonStyle(
+          .borderless
+        ).labelStyle(.iconOnly).help("Add Connection (⌘N)")
+      }
+    }
+  }
+
+  private var databasesSection: some View {
+    Section(model.activeEngine == .redis ? "Databases (indexes)" : "Databases") {
+      if visibleDatabases.isEmpty { emptyDatabasesText.foregroundStyle(.secondary) }
+      ForEach(visibleDatabases, id: \.self) { db in
+        // While searching: force-expand every database that has matches
+        // (the search task already loaded their collections).
+        DisclosureGroup(isExpanded: isSearching ? .constant(true) : expandedBinding(for: db)) {
+          collectionChildren(for: db)
+        } label: {
+          Label(db, systemImage: "cylinder.split.1x2")
+        }.modifier(SelectableTag(item: .database(db), isEnabled: !isCompact))
+      }
+    }
+  }
+
+  // MARK: - Search
 
   /// True while the search field is active: databases are force-expanded
   /// and non-matching databases are hidden.
@@ -100,16 +149,30 @@ struct ConnectionsSidebarView: View {
   /// Databases shown in the sidebar:
   /// - `$name` terms filter by database name (AND).
   /// - plain terms keep only databases with at least one matching
-  ///   collection (all databases are loaded on search).
+  ///   collection (collections are loaded while searching).
   private var visibleDatabases: [String] {
     let terms = model.searchTerms
     return model.sortedDatabases.filter { db in
-      let dbMatches =
-        terms.hasDatabaseTerms
-        ? terms.databaseTerms.allSatisfy { db.localizedCaseInsensitiveContains($0) } : true
-      guard dbMatches else { return false }
+      guard matchesDatabaseTerms(db, terms) else { return false }
       if terms.collectionTerms.isEmpty { return true }
       return !model.collections(for: db).isEmpty
+    }
+  }
+
+  private func matchesDatabaseTerms(_ db: String, _ terms: SearchTerms) -> Bool {
+    terms.databaseTerms.allSatisfy { db.localizedCaseInsensitiveContains($0) }
+  }
+
+  /// Search needs collections of every database it can show. Debounced so
+  /// typing doesn't fan out a listing per keystroke, and skipped entirely
+  /// for an empty search (nothing is force-expanded then).
+  private func loadCollectionsForSearch() async {
+    guard isSearching else { return }
+    do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+    let terms = model.searchTerms
+    for db in model.sortedDatabases where matchesDatabaseTerms(db, terms) {
+      guard !Task.isCancelled else { return }
+      await model.loadCollections(for: db)
     }
   }
 
@@ -123,12 +186,17 @@ struct ConnectionsSidebarView: View {
     return Text("No matching collections")
   }
 
+  // MARK: - Databases & collections
+
   @ViewBuilder private func collectionChildren(for db: String) -> some View {
     let colls = model.collections(for: db)
     if colls.isEmpty {
       Text(isSearching ? "No matching collections" : "No collections").foregroundStyle(.secondary)
     } else {
-      ForEach(colls, id: \.self) { coll in collectionRow(coll, in: db) }
+      ForEach(colls, id: \.self) { coll in
+        Label(coll, systemImage: model.activeEngine == .redis ? "key.horizontal" : "tablecells")
+          .tag(SidebarItem.collection(database: db, name: coll))
+      }
     }
   }
 
@@ -145,107 +213,169 @@ struct ConnectionsSidebarView: View {
       })
   }
 
-  private func collectionRow(_ coll: String, in db: String) -> some View {
-    let isSelected = model.selectedCollection == coll && model.selectedDatabase == db
-    let icon = model.activeEngine == .redis ? "key.horizontal" : "tablecells.fill"
-    return Label(coll, systemImage: isSelected || model.activeEngine != .redis ? icon : icon).tint(
-      isSelected ? .blue : .secondary
-    ).onTapGesture { Task { await model.select(collection: coll, in: db) } }
+  // MARK: - Selection
+
+  /// Collections open immediately. Connections go through the debounced
+  /// `connectSelectedRecord()` so arrowing past a row doesn't connect to it.
+  /// Database rows only highlight; their chevron (or ←/→) folds them.
+  private func selectionChanged(to item: SidebarItem?) {
+    guard case .collection(let db, let name)? = item else { return }
+    // Already open (e.g. the selection was just synced FROM the model).
+    guard model.selectedDatabase != db || model.selectedCollection != name else { return }
+    Task { await model.select(collection: name, in: db) }
   }
 
-  private func selectConnection(_ record: ConnectionRecord) {
-    guard !model.isConnecting else { return }
-    // Clicking the connection that's already active closes it (disconnect)
-    // instead of reconnecting — the connection row is a toggle.
-    if isActive(record) {
-      selectedRecordID = nil
-      Task { await model.disconnect() }
-      return
-    }
+  /// Runs per selection change; cancelled when the selection moves on, so
+  /// only a connection row that stays selected briefly gets connected.
+  private func connectSelectedRecord() async {
+    guard case .connection(let id)? = selection else { return }
+    do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+    connectIfInactive(id)
+  }
+
+  /// Selecting the ACTIVE connection does nothing (disconnect is explicit:
+  /// the row's eject button or the context menu).
+  private func connectIfInactive(_ id: ConnectionRecord.ID) {
+    guard let record = records.first(where: { $0.id == id }), !isActive(record) else { return }
     connect(record)
   }
 
-  /// Connects to `record`, always (used by row click for a non-active
-  /// connection and by the context-menu "Connect" action).
-  private func connect(_ record: ConnectionRecord) {
-    guard !model.isConnecting else { return }
-    selectedRecordID = record.id
-    Task { await model.connect(record.toSettings()) }
+  /// Mirrors the model's open collection into the list highlight (it can
+  /// change from the documents pane, or be cleared by a disconnect).
+  private func syncSelectionFromModel() {
+    if let db = model.selectedDatabase, let coll = model.selectedCollection {
+      let item = SidebarItem.collection(database: db, name: coll)
+      if selection != item { selection = item }
+    } else if case .collection? = selection {
+      selection = nil
+    } else if selection == nil, !isCompact, let active = records.first(where: isActive) {
+      selection = .connection(active.id)
+    }
   }
 
+  /// On disconnect, drop the highlight of rows that no longer exist and of
+  /// the closed connection — otherwise clicking it again would not change the
+  /// selection and could not reconnect. While switching connections (the
+  /// model disconnects first) the newly picked row stays selected.
+  private func sessionActivityChanged(_ isActive: Bool) {
+    guard !isActive else { return }
+    expandedDatabases = []
+    switch selection {
+    case .database?, .collection?: selection = nil
+    case .connection?: if connectingRecordID == nil { selection = nil }
+    case nil: break
+    }
+  }
+
+  // MARK: - Connection actions
+
+  /// Connects to `record`. One attempt at a time: a row picked while another
+  /// attempt runs is connected when that attempt finishes.
+  private func connect(_ record: ConnectionRecord) {
+    guard connectingRecordID == nil, !model.isConnecting else { return }
+    let id = record.id
+    connectingRecordID = id
+    failedRecordID = nil
+    let settings = record.toSettings()
+    Task {
+      await model.connect(settings)
+      connectingRecordID = nil
+      if model.connectionError != nil {
+        failedRecordID = id
+        // Unselect so clicking the row again retries.
+        if selection == .connection(id) { selection = nil }
+      }
+      if case .connection(let next)? = selection, next != id { connectIfInactive(next) }
+    }
+  }
+
+  /// The form's "Save & Connect" (and reconnect-after-edit) goes through the
+  /// sidebar so the row shows progress and a failure alert can name it.
+  private func connectFromForm(_ record: ConnectionRecord) {
+    if !isCompact { selection = .connection(record.id) }
+    connect(record)
+  }
+
+  private func disconnect() { Task { await model.disconnect() } }
+
   private func delete(_ record: ConnectionRecord) {
-    if isActive(record) { Task { await model.disconnect() } }
-    if selectedRecordID == record.id { selectedRecordID = nil }
+    if isActive(record) { disconnect() }
+    if selection == .connection(record.id) { selection = nil }
     modelContext.delete(record)
     try? modelContext.save()
   }
 
   /// A record is "active" when the live session was started from it.
-  /// ConnectionConfig regenerates its UUID on every toSettings() call, so the
-  /// id can't be compared — match by engine + name + host + port instead.
   private func isActive(_ record: ConnectionRecord) -> Bool {
-    guard model.isSessionActive, let active = model.activeEngine, active == record.engineKind else {
-      return false
-    }
-    return record.name == record.name && record.host == record.host && record.port == record.port
-      && activeEngineMatches(record)
+    record.matchesLiveSession(of: model)
   }
 
-  private func activeEngineMatches(_ record: ConnectionRecord) -> Bool {
-    switch model.activeEngine {
-    case .mongodb:
-      guard let session = model.session, session.isConnected else { return false }
-      let c = session.config
-      return c.name == record.name && c.host == record.host && c.port == UInt16(record.port)
-    case .postgresql:
-      guard case .postgresql(let session) = model.alternateSession, session.isConnected else {
-        return false
-      }
-      let c = session.config
-      return c.name == record.name && c.host == record.host && c.port == UInt16(record.port)
-    case .redis:
-      guard case .redis(let session) = model.alternateSession, session.isConnected else {
-        return false
-      }
-      let c = session.config
-      return c.name == record.name && c.host == record.host && c.port == UInt16(record.port)
-    case .sqlite:
-      guard case .sqlite(let session) = model.alternateSession, session.isConnected else {
-        return false
-      }
-      let c = session.config
-      return c.name == record.name && c.filePath == record.host
-    case nil: return false
-    }
+  // MARK: - Dialog plumbing
+
+  private var deleteConfirmationBinding: Binding<Bool> {
+    Binding(
+      get: { recordPendingDeletion != nil },
+      set: { if !$0 { recordPendingDeletion = nil } })
+  }
+
+  private var failedRecord: ConnectionRecord? {
+    failedRecordID.flatMap { id in records.first { $0.id == id } }
+  }
+
+  private var connectionErrorTitle: String {
+    failedRecord.map { "Couldn’t connect to “\($0.name)”" } ?? "Couldn’t Connect"
+  }
+
+  private var connectionErrorBinding: Binding<Bool> {
+    Binding(
+      get: { model.connectionError != nil },
+      set: { if !$0 { clearConnectionError() } })
+  }
+
+  private func clearConnectionError() {
+    model.connectionError = nil
+    failedRecordID = nil
   }
 }
 
-/// One sidebar row: engine glyph + name + status dot (green = active session).
+/// One connection row: engine glyph + name; the active connection adds a
+/// green dot (shape, not just colour) and an explicit eject button; the row
+/// being connected shows a spinner.
 private struct ConnectionRow: View {
   let record: ConnectionRecord
   let isActive: Bool
+  let isConnecting: Bool
+  let disconnect: () -> Void
 
   var body: some View {
-    HStack(spacing: 8) {
-      Image(systemName: record.engineKind.systemImage).foregroundStyle(
-        isActive ? Color.blue : Color.secondary
-      ).frame(width: 16)
-      Text(record.name).lineLimit(1)
+    HStack(spacing: 6) {
+      Label(record.name, systemImage: record.engineKind.systemImage).lineLimit(1)
+        .accessibilityLabel("\(record.name), \(record.engineKind.displayName)")
+        .accessibilityValue(statusText)
       Spacer(minLength: 0)
-      Image(systemName: isActive ? "wifi" : "wifi.slash").foregroundStyle(
-        isActive ? Color.blue : Color.secondary.opacity(0.5)
-      ).font(.caption)
-    }.contentShape(Rectangle())
+      if isConnecting {
+        ProgressView().controlSize(.small).accessibilityLabel("Connecting")
+      } else if isActive {
+        Image(systemName: "circle.fill").font(.system(size: 7)).foregroundStyle(.green).help(
+          "Connected"
+        ).accessibilityHidden(true)
+        Button("Disconnect", systemImage: "eject", action: disconnect).labelStyle(.iconOnly)
+          .buttonStyle(.borderless).help("Disconnect from \(record.name)").accessibilityLabel(
+            "Disconnect from \(record.name)")
+      }
+    }.help(locationText)
   }
-}
 
-struct SidebarLabelStyle: LabelStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    HStack(alignment: .firstTextBaseline) {
-      configuration.icon.foregroundStyle(.tint).contentTransition(.symbolEffect).frame(width: 16)
-      configuration.title.contentTransition(.numericText())
-    }.padding(.horizontal, 8).padding(.vertical, 4).frame(maxWidth: .infinity, alignment: .leading)
-      .background(RoundedRectangle(cornerRadius: 8).fill(.primary.opacity(0.05)))
+  /// Spoken status; the dot itself is hidden from VoiceOver to avoid repeats.
+  private var statusText: String {
+    if isConnecting { return "Connecting" }
+    return isActive ? "Connected" : ""
+  }
+
+  private var locationText: String {
+    record.engineKind == .sqlite
+      ? "\(record.engineKind.displayName) · \(record.host)"
+      : "\(record.engineKind.displayName) · \(record.host):\(record.port)"
   }
 }
 
@@ -254,4 +384,15 @@ struct SidebarLabelStyle: LabelStyle {
     for: ConnectionRecord.self, DatabaseOpenRecord.self, CollectionOpenRecord.self)
   return ContentView(
     model: DatabaseModel(modelContext: container.mainContext), container: container)
+}
+
+/// Tags a row for `List(selection:)` only when `isEnabled` — compact layouts
+/// keep non-collection rows out of the selection (see `isCompact`).
+private struct SelectableTag: ViewModifier {
+  let item: SidebarItem
+  let isEnabled: Bool
+
+  func body(content: Content) -> some View {
+    if isEnabled { content.tag(item) } else { content }
+  }
 }
