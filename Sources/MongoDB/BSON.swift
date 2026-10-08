@@ -101,53 +101,45 @@ public struct Decimal128: Equatable, Sendable, CustomStringConvertible {
 
   public var description: String { Self.decodeString(bytes) }
 
-  /// Decodes the 16-byte IEEE decimal128 to a decimal-string representation.
+  /// Decodes the 16-byte IEEE decimal128 (BID encoding) to a decimal string.
+  /// BSON stores it little-endian: bytes 0–7 are the low 64 bits, bytes 8–15
+  /// the high 64 bits. Reading them big-endian turned 19.99 into a number
+  /// thousands of digits long.
   private static func decodeString(_ b: [UInt8]) -> String {
-    // Assemble the 128-bit value as a big-endian byte buffer (unsigned).
-    let high = (UInt64(b[0]) << 56) | (UInt64(b[1]) << 48) | (UInt64(b[2]) << 40)
-      | (UInt64(b[3]) << 32) | (UInt64(b[4]) << 24) | (UInt64(b[5]) << 16)
-      | (UInt64(b[6]) << 8) | UInt64(b[7])
-    let low = (UInt64(b[8]) << 56) | (UInt64(b[9]) << 48) | (UInt64(b[10]) << 40)
-      | (UInt64(b[11]) << 32) | (UInt64(b[12]) << 24) | (UInt64(b[13]) << 16)
-      | (UInt64(b[14]) << 8) | UInt64(b[15])
+    func word(at offset: Int) -> UInt64 {
+      (0..<8).reduce(UInt64(0)) { $0 | (UInt64(b[offset + $1]) << (8 * UInt64($1))) }
+    }
+    let low = word(at: 0)
+    let high = word(at: 8)
+    let negative = (high >> 63) == 1
+    let combination = (high >> 58) & 0b11111
 
-    let sign = (high >> 63) == 1
-    // 5-bit combination field.
-    let combo = UInt8((high >> 58) & 0x1F)
-    let expCont = UInt16((high >> 50) & 0xFF)  // 8 bits from high, rest from low
-    let exponentBits = (UInt16((high >> 50) & 0xFF) << 4) | UInt16((low >> 60) & 0x0F)
-    _ = expCont
-
-    // Special encodings: combination field's top two bits == 11.
-    if (combo & 0b11000) == 0b11000 {
-      // 0b11110 → Infinity, 0b11111 → NaN, other large forms → NaN.
-      if combo == 0b11110 { return sign ? "-Infinity" : "Infinity" }
-      return "NaN"
+    let exponent: Int
+    let coefficientHigh: UInt64
+    var coefficientLow = low
+    if (high >> 61) & 0b11 == 0b11 {
+      // Bits 62–61 set: Infinity / NaN, or a coefficient too large for 34
+      // digits, which the spec says to treat as zero.
+      if combination == 0b11110 { return negative ? "-Infinity" : "Infinity" }
+      if combination == 0b11111 { return "NaN" }
+      exponent = Int((high >> 47) & 0x3FFF) - 6176
+      coefficientHigh = 0
+      coefficientLow = 0
+    } else {
+      // 14-bit exponent in bits 62–49; 113-bit coefficient = high bits 48–0
+      // followed by the 64 low bits.
+      exponent = Int((high >> 49) & 0x3FFF) - 6176
+      coefficientHigh = high & ((UInt64(1) << 49) - 1)
     }
 
-    // Finite number: exponent MSBs come from combination bits [4..3], the
-    // remaining 12 exponent bits from the continuation.
-    let expMSBs = UInt16((combo >> 3) & 0b11)
-    let biasedExp = Int((expMSBs << 12) | exponentBits)
-    let exponent = biasedExp - 6176
-
-    // Coefficient: 113-bit unsigned integer = top 3 bits (combo & 0b111) {
-    // << 110 } | high bits 49..0 | low (64 bits).
-    let coefTop3 = UInt64(combo & 0b111)
-    let highBits49 = (high >> 1) & ((UInt64(1) << 49) - 1)
-
-    // Build the coefficient as little-endian bytes (6 bytes from highBits49 +
-    // top3, plus 8 bytes low).
+    // Coefficient as little-endian bytes: 8 low bytes, then 7 high bytes.
     var coeffBytes: [UInt8] = []
-    // low 64 bits, little-endian.
-    var l = low
+    var l = coefficientLow
     for _ in 0..<8 { coeffBytes.append(UInt8(l & 0xFF)); l >>= 8 }
-    // highBits49 (49 bits) + coefTop3 (3 bits) = 52 bits, little-endian:
-    // bits 0..48 = highBits49, bits 49..51 = coefTop3.
-    var h = highBits49 | (coefTop3 << 49)
+    var h = coefficientHigh
     for _ in 0..<7 { coeffBytes.append(UInt8(h & 0xFF)); h >>= 8 }
 
-    return renderDecimal(coeffBytes: coeffBytes, exponent: exponent, negative: sign)
+    return renderDecimal(coeffBytes: coeffBytes, exponent: exponent, negative: negative)
   }
 
   /// `coeffBytes` is little-endian (least-significant byte first). Renders a
