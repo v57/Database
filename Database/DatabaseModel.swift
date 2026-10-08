@@ -74,6 +74,20 @@ import SwiftData
   private(set) var hasMore = false
   /// Guards against concurrent load-more fetches (scroll can fire rapidly).
   var isLoadingMore = false
+  /// The last load-more failure; the footer shows it with a Retry button
+  /// (its scroll trigger has already fired and won't fire again by itself).
+  var loadMoreError: String?
+
+  /// Name of the live connection, if any.
+  var connectionName: String? {
+    if let session { return session.config.name }
+    switch alternateSession {
+    case .postgresql(let c): return c.config.name
+    case .redis(let c): return c.config.name
+    case .sqlite(let c): return c.config.name
+    case nil: return nil
+    }
+  }
 
   /// The engine of the live session, if any.
   var activeEngine: DatabaseEngine? {
@@ -87,6 +101,24 @@ import SwiftData
   /// Inline edits, Add Field, Update and Delete write back to the server only
   /// for MongoDB; SQL rows and Redis keys are read-only in the UI.
   var canEditDocuments: Bool { session != nil }
+
+  /// What the sidebar/pane calls the things listed under a database.
+  var containerNoun: (singular: String, plural: String) {
+    switch activeEngine {
+    case .redis: ("key", "keys")
+    case .postgresql, .sqlite: ("table", "tables")
+    case .mongodb, nil: ("collection", "collections")
+    }
+  }
+
+  /// Redis key listings stop at this many keys (SCAN cap in RedisConnection).
+  static let redisKeyLimit = 1000
+
+  /// True when a Redis database's key list hit the cap, so the sidebar can
+  /// say that more keys exist than are shown.
+  func isKeyListTruncated(_ database: String) -> Bool {
+    activeEngine == .redis && (collectionsByDatabase[database]?.count ?? 0) >= Self.redisKeyLimit
+  }
 
   /// What the pane calls one loaded item, for status/empty-state copy.
   var itemNoun: (singular: String, plural: String) {
@@ -103,9 +135,15 @@ import SwiftData
   /// selects the default database.
   func connect(_ settings: EngineSettings) async {
     await disconnect()
+    // Sidebar order comes from the history as of connecting; it is not
+    // re-sorted while the session runs (see markCollectionUsed).
+    loadOpenHistory()
     isConnecting = true
     connectionError = nil
-    statusMessage = "Connecting to \(settings.host):\(settings.port)…"
+    statusMessage =
+      settings.engine == .sqlite
+      ? "Opening \((settings.host as NSString).lastPathComponent)…"
+      : "Connecting to \(settings.host):\(settings.port)…"
     defer { isConnecting = false }
     do {
       switch settings {
@@ -224,6 +262,7 @@ import SwiftData
     loadedCount = 0
     hasMore = false
     isLoadingMore = false
+    loadMoreError = nil
     statusMessage = ""
   }
 
@@ -362,9 +401,10 @@ import SwiftData
     collectionLastUsed = colls
   }
 
+  /// Persists usage only: the in-memory dates that order the sidebar are
+  /// refreshed on the next connect, so rows don't jump while being worked in.
   private func markDatabaseOpened(_ database: String) {
     let now = Date.now
-    databaseLastOpened[database] = now
     let record: DatabaseOpenRecord
     if let existing = try? modelContext.fetch(
       FetchDescriptor<DatabaseOpenRecord>(predicate: #Predicate { $0.databaseName == database })
@@ -381,7 +421,6 @@ import SwiftData
   /// Records a query execution against `collection` for sidebar sorting.
   private func markCollectionUsed(_ database: String, _ collection: String) {
     let now = Date.now
-    collectionLastUsed[database, default: [:]][collection] = now
     let record: CollectionOpenRecord
     if let existing = try? modelContext.fetch(
       FetchDescriptor<CollectionOpenRecord>(
@@ -456,7 +495,7 @@ import SwiftData
         guard generation == queryGeneration else { return }
         redisSelectedEntry = entry
         documents = [Self.document(from: entry)]
-        statusMessage = "\(entry.typeName) · TTL \(entry.ttl)s"
+        statusMessage = "\(entry.typeName) · \(Self.ttlText(entry.ttl))"
       } else {
         let docs = try await loadFirstPage(collection: collection)
         guard generation == queryGeneration else { return }
@@ -473,13 +512,21 @@ import SwiftData
     }
   }
 
-  /// "100+ documents in users" while more pages exist — the count is what is
-  /// loaded, not a server-side total.
+  /// Redis TTL in words: -1 = no expiry, -2 = the key is gone.
+  static func ttlText(_ ttl: Int) -> String {
+    switch ttl {
+    case -1: "No expiry"
+    case -2: "Key no longer exists"
+    default: "Expires in \(ttl)s"
+    }
+  }
+
+  /// "100+ documents" while more pages exist — the count is what is loaded,
+  /// not a server-side total. The collection itself is the window title.
   private func loadedSummary(in collection: String? = nil) -> String {
     let noun = documents.count == 1 ? itemNoun.singular : itemNoun.plural
     let count = hasMore ? "\(documents.count)+" : "\(documents.count)"
-    guard let collection else { return "\(count) \(noun)" }
-    return "\(count) \(noun) in \(collection)"
+    return "\(count) \(noun)"
   }
 
   /// Selects a collection in the current database (documents refresh path).
@@ -493,23 +540,36 @@ import SwiftData
   /// real impact of an Update/Delete, not a capped preview.
   func countMatching(filter: String) async throws -> Int {
     guard let session, let selectedCollection else { throw MongoDBError.notConnected }
-    let f = try BSONSupport.document(fromQuery: filter)
+    let f = try Self.filterDocument(fromText: filter)
     return try await session.countDocuments(in: selectedCollection, filter: f)
   }
 
   /// Validates the Update text without running it, so a typo is reported
   /// before the confirmation dialog rather than after.
   func validateUpdate(_ update: String) throws {
-    // Update operators ($set, $inc, ...) must stay strict JSON.
-    _ = try BSONSupport.document(fromJSON: update)
+    _ = try Self.updateDocument(fromText: update)
+  }
+
+  /// Filter text for Update/Delete; blank means "every document" (the
+  /// parser rejects empty input, so a blank filter used to fail outright).
+  private static func filterDocument(fromText text: String) throws -> Document {
+    if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return Document() }
+    return try BSONSupport.document(fromQuery: text)
+  }
+
+  /// Update text in the same relaxed syntax as the Filter (`{ $set: { a: 1 } }`).
+  /// Strict JSON is tried first so extended JSON (`{ "$oid": … }`, `$date`),
+  /// which only the strict decoder understands, keeps working.
+  private static func updateDocument(fromText text: String) throws -> Document {
+    if let strict = try? BSONSupport.document(fromJSON: text) { return strict }
+    return try BSONSupport.document(fromQuery: text)
   }
 
   /// Runs updateMany against the selected collection and refreshes the list.
   func runUpdate(filter: String, update: String) async throws -> MongoWriteResult {
     guard let session, let selectedCollection else { throw MongoDBError.notConnected }
-    let f = try BSONSupport.document(fromQuery: filter)
-    // Update operators ($set, $inc, ...) must stay strict JSON.
-    let u = try BSONSupport.document(fromJSON: update)
+    let f = try Self.filterDocument(fromText: filter)
+    let u = try Self.updateDocument(fromText: update)
     let result = try await session.updateMany(in: selectedCollection, filter: f, update: u)
     await refreshAfterMutation(session, selectedCollection)
     statusMessage = "Updated \(result.matchedCount) matched, \(result.modifiedCount) modified"
@@ -519,7 +579,7 @@ import SwiftData
   /// Runs deleteMany against the selected collection and refreshes the list.
   func runDelete(filter: String) async throws -> MongoDeleteResult {
     guard let session, let selectedCollection else { throw MongoDBError.notConnected }
-    let f = try BSONSupport.document(fromQuery: filter)
+    let f = try Self.filterDocument(fromText: filter)
     let result = try await session.deleteMany(from: selectedCollection, filter: f)
     await refreshAfterMutation(session, selectedCollection)
     statusMessage = "Deleted \(result.deletedCount) document(s)"
@@ -638,7 +698,14 @@ import SwiftData
     documents = docs
     loadedCount = docs.count
     hasMore = docs.count >= pageSize && activeEngine != .redis
-    statusMessage = loadedSummary(in: selectedCollection)
+    if activeEngine == .redis, let pattern = currentQuery.filter {
+      // A key filter lists matching keys of the whole database, not the
+      // key selected in the sidebar — say so.
+      let noun = docs.count == 1 ? itemNoun.singular : itemNoun.plural
+      statusMessage = "\(docs.count) \(noun) matching \(pattern)"
+    } else {
+      statusMessage = loadedSummary(in: selectedCollection)
+    }
     // A successful query execution counts as collection + database usage.
     let db = selectedDatabase ?? ""
     markCollectionUsed(db, selectedCollection)
@@ -651,6 +718,7 @@ import SwiftData
     guard !isLoadingMore, hasMore, let selectedCollection else { return }
     guard activeEngine != .redis else { return }  // not paginated
     isLoadingMore = true
+    loadMoreError = nil
     defer { isLoadingMore = false }
     let generation = queryGeneration
     do {
@@ -676,7 +744,10 @@ import SwiftData
       loadedCount += page.count
       hasMore = page.count >= pageSize
       statusMessage = loadedSummary(in: selectedCollection)
-    } catch { statusMessage = error.localizedDescription }
+    } catch {
+      guard generation == queryGeneration else { return }
+      loadMoreError = error.localizedDescription
+    }
   }
 
   /// Loads the FIRST page of the current query for the selected collection,
@@ -702,7 +773,7 @@ import SwiftData
   /// Documents matching `filter` (capped at `limit`), for the delete preview.
   func previewDelete(filter: String, limit: Int? = 500) async throws -> [Document] {
     guard let session, let selectedCollection else { throw MongoDBError.notConnected }
-    let f = try BSONSupport.document(fromQuery: filter)
+    let f = try Self.filterDocument(fromText: filter)
     return try await session.find(in: selectedCollection, filter: f, limit: limit)
   }
 
@@ -782,6 +853,7 @@ import SwiftData
     loadedCount = 0
     hasMore = false
     isLoadingMore = false
+    loadMoreError = nil
   }
 
   // MARK: - Row/key -> Document conversion (shared UI rendering)

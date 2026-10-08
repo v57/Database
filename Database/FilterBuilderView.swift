@@ -29,7 +29,7 @@ struct FilterBuilderView: View {
           rules = []
           onChange()
         } label: {
-          Label("Clear filters", systemImage: "xmark.circle")
+          Label("Clear filters", systemImage: "xmark.circle").touchTarget(28)
         }.buttonStyle(.plain).labelStyle(.iconOnly)
           .help("Clear all filter chips")
       }
@@ -71,7 +71,8 @@ struct FilterBuilderView: View {
         rules.removeAll { $0.id == rule.id }
         onChange()
       } label: {
-        Image(systemName: "xmark.circle.fill").font(.caption)
+        Label("Remove filter \(rule.summary)", systemImage: "xmark.circle.fill")
+          .labelStyle(.iconOnly).font(.caption).touchTarget(28)
       }.buttonStyle(.plain).foregroundStyle(.secondary)
         .help("Remove this filter")
     }

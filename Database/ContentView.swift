@@ -76,17 +76,12 @@ struct ContentView: View {
     self.model = model
   }
 
-  /// Title shows the active connection name, or the engine hint when idle.
-  private var title: String {
-    if let alternateSession = model.alternateSession {
-      switch alternateSession {
-      case .postgresql(let c): return c.config.name
-      case .redis(let c): return c.config.name
-      case .sqlite(let c): return c.config.name
-      }
-    }
-    return model.session?.config.name ?? "Database Client"
-  }
+  /// Sidebar title: the active connection name, or the app name when idle.
+  private var title: String { model.connectionName ?? "Database Client" }
+
+  /// Detail title: the open collection/table/key, so the pane says what it
+  /// shows; the connection moves into the subtitle.
+  private var detailTitle: String { model.selectedCollection ?? title }
 
   /// Which column a compact (iPhone) split view shows. Selecting a connection
   /// or database in the sidebar List would otherwise push the empty
@@ -97,10 +92,10 @@ struct ContentView: View {
     // Two-pane layout: sidebar (connections) + merged item-list/preview.
     // `detail:` is the main pane in a 2-column NavigationSplitView.
     NavigationSplitView(preferredCompactColumn: $compactColumn) {
-      ConnectionsSidebarView()
+      ConnectionsSidebarView().navigationTitle(title)
     } detail: {
-      DocumentsView()
-    }.navigationTitle(title).environment(model).modelContainer(container)
+      DocumentsView().navigationTitle(detailTitle)
+    }.environment(model).modelContainer(container)
       .onChange(of: compactColumn) { _, column in
         if column == .detail && model.selectedCollection == nil { compactColumn = .sidebar }
       }

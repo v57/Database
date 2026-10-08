@@ -40,6 +40,8 @@ struct ConnectionFormView: View {
   @State private var isFileImporterPresented = false
   @State private var testState: TestState = .idle
   @State private var testTask: Task<Void, Never>?
+  /// iOS: bookmark of the picked SQLite file (see ConnectionRecord.fileBookmark).
+  @State private var fileBookmark: Data?
 
   /// Outcome of the "Test Connection" button, shown inline under the buttons.
   private enum TestState: Equatable {
@@ -78,6 +80,7 @@ struct ConnectionFormView: View {
     case nil: _defaultDatabase = State(initialValue: "")
     }
     _directConnection = State(initialValue: mongo?.directConnection ?? false)
+    _fileBookmark = State(initialValue: record?.fileBookmark)
   }
 
   private var isEditing: Bool { record != nil }
@@ -144,51 +147,111 @@ struct ConnectionFormView: View {
     ]
   }
 
+  private var title: String { isEditing ? "Edit Connection" : "Add Connection" }
+
+  /// A new connection is saved and connected. The iPhone bar is too narrow for
+  /// "Save & Connect" next to the title, so it says "Add" there.
+  private var saveTitle: String {
+    if isEditing { return "Save" }
+#if os(iOS)
+    return "Add"
+#else
+    return "Save & Connect"
+#endif
+  }
+
+  /// Cancel/Save live in the sheet's toolbar (top bar on iOS, bottom bar on
+  /// macOS): always visible, and never several buttons in one Form row — iOS
+  /// fires EVERY button of a row on a single tap.
   var body: some View {
+    NavigationStack {
+      form.navigationTitle(title)
+#if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+#endif
+        .toolbar {
+          ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+          }
+          ToolbarItem(placement: .confirmationAction) {
+            Button(saveTitle) { save() }.keyboardShortcut(
+              .defaultAction
+            ).disabled(!isValid)
+          }
+        }
+    }
+#if os(macOS)
+    .frame(minWidth: 460, minHeight: 520)
+#endif
+  }
+
+  private var form: some View {
     Form {
-      Text(isEditing ? "Edit Connection" : "Add Connection").font(.headline)
+#if os(macOS)
+      // macOS sheets don't show a navigation title.
+      Text(title).font(.headline).listRowBackground(Color.clear)
+#endif
       Section("Connection") {
         Picker("Engine", selection: $engine) {
           ForEach(DatabaseEngine.allCases) { e in Text(e.displayName).tag(e) }
-        }.onChange(of: engine) { _, newValue in
-          // Prefill the port of the newly selected engine; keep user edits
-          // otherwise untouched. SQLite's \"host\" field is a file
-          // path, so switching to either clears a stale hostname and leaving
-          // it with an empty path restores the localhost default.
-          port = Int(newValue.defaultPort)
+        }.onChange(of: engine) { oldValue, newValue in
+          // Prefill the new engine's default port only while the port is still
+          // the old engine's default — a custom port survives an engine switch.
+          // SQLite's "host" field is a file path, so switching to it clears a
+          // stale hostname and leaving it with an empty path restores the
+          // localhost default.
+          if port == Int(oldValue.defaultPort) || port == 0 { port = Int(newValue.defaultPort) }
           if newValue == .sqlite {
             host = ""
-          } else if host.isEmpty {
+          } else if oldValue == .sqlite || host.isEmpty {
             host = "localhost"
           }
+          fileBookmark = nil
         }
-        TextField("Name", text: $name)
+        labeledField("Name", text: $name, prompt: "My database")
         if isFileBased {
           fileSection
         } else {
-          TextField("Host", text: $host)
-          TextField("Port", value: $port, format: .number.grouping(.never))
+          labeledField("Host", text: $host, prompt: "localhost").plainTextEntry()
+          LabeledContent("Port") {
+            TextField("Port", value: $port, format: .number.grouping(.never))
+              .labelsHidden().multilineTextAlignment(.trailing)
+#if os(iOS)
+              .keyboardType(.numberPad)
+#endif
+          }
         }
       }
       if !isFileBased {
         Section("Authentication (optional)") {
-          TextField("Username", text: $username, prompt: usernamePrompt).help(
+          labeledField(
+            "Username", text: $username, prompt: engine == .redis ? "ACL user (optional)" : "None"
+          ).plainTextEntry().help(
             engine == .redis
               ? "Redis 6+ ACL username. Leave empty to authenticate as the default user." : "")
-          SecureField("Password", text: $password, prompt: passwordPrompt).disabled(
-            removeSavedPassword)
+          LabeledContent("Password") {
+            SecureField("Password", text: $password, prompt: Text(passwordPrompt))
+              .labelsHidden().multilineTextAlignment(.trailing)
+          }.disabled(removeSavedPassword)
           if hasStoredPassword {
             Toggle("Remove saved password", isOn: $removeSavedPassword).onChange(
               of: removeSavedPassword
             ) { _, remove in if remove { password = "" } }
           }
-          if engine == .mongodb { TextField("Auth Source", text: $authSource) }
+          if engine == .mongodb {
+            labeledField("Auth Source", text: $authSource, prompt: "admin").plainTextEntry()
+          }
         }
         Section("Startup") {
           if engine == .redis {
-            TextField("Database Index (0–15)", text: $defaultDatabase, prompt: Text("0"))
+            labeledField("Database Index (0–15)", text: $defaultDatabase, prompt: "0")
+              .plainTextEntry()
+#if os(iOS)
+              .keyboardType(.numberPad)
+#endif
           } else {
-            TextField("Default Database", text: $defaultDatabase)
+            labeledField("Default Database", text: $defaultDatabase, prompt: "Optional")
+              .plainTextEntry()
           }
           if engine == .mongodb {
             Toggle("Direct connect", isOn: $directConnection).help(
@@ -203,20 +266,14 @@ struct ConnectionFormView: View {
             .foregroundStyle(issue.isError ? Color.red : Color.secondary)
         }
         HStack {
-          Button("Test Connection") { testConnection() }.disabled(
+          Button("Test Connection") { testConnection() }.buttonStyle(.borderless).disabled(
             !isValid || testState == .running)
           if testState == .running { ProgressView().controlSize(.small) }
           Spacer()
-          Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-          Button(isEditing ? "Save" : "Save & Connect") { save() }.keyboardShortcut(
-            .defaultAction
-          ).disabled(!isValid)
         }
         testResult
       }
-    }.formStyle(.grouped).frame(minWidth: 420, minHeight: 480).padding().onChange(
-      of: testFingerprint
-    ) {
+    }.formStyle(.grouped).onChange(of: testFingerprint) {
       // A result for different settings would be misleading.
       testTask?.cancel()
       testState = .idle
@@ -227,23 +284,46 @@ struct ConnectionFormView: View {
     ) { result in
       guard case .success(let url) = result else { return }
       // Picked files outside the app container are security-scoped: access
-      // must be opened before SQLite can read the path. The grant lasts for
-      // this launch only — reopening the stored path after a relaunch would
-      // need a security-scoped bookmark (not persisted yet).
-      _ = url.startAccessingSecurityScopedResource()
+      // must be opened before SQLite can read the path, and only lasts for
+      // this launch — the bookmark saved with the record re-opens it later.
+      FileAccess.open(url)
+      fileBookmark = try? url.bookmarkData()
       host = url.path
+      suggestName(from: url)
     }
 #endif
   }
 
-  private var usernamePrompt: Text? {
-    engine == .redis ? Text("ACL user (optional)") : nil
+  /// A text field with a visible leading label. On iOS a Form TextField's
+  /// title is only a placeholder, so a filled field ("localhost", "27017")
+  /// would otherwise lose its label entirely.
+  private func labeledField(_ title: String, text: Binding<String>, prompt: String) -> some View {
+    LabeledContent(title) {
+      TextField(title, text: text, prompt: Text(prompt)).labelsHidden()
+        .multilineTextAlignment(.trailing)
+    }
   }
 
-  /// "Password" when adding; on edit with a stored secret, explain that an
-  /// empty field keeps it.
-  private var passwordPrompt: Text? {
-    hasStoredPassword && !removeSavedPassword ? Text("Saved — leave empty to keep") : nil
+  /// The picked file's bookmark, unless the path was edited by hand since
+  /// (the bookmark would then reopen a different file than the one shown).
+  private func bookmarkMatchingPath(_ path: String) -> Data? {
+    guard let fileBookmark else { return nil }
+    var isStale = false
+    guard let url = try? URL(resolvingBookmarkData: fileBookmark, bookmarkDataIsStale: &isStale),
+      url.path == path
+    else { return nil }
+    return fileBookmark
+  }
+
+  /// Fills an empty Name from a chosen database file ("orders.sqlite" → "orders").
+  private func suggestName(from url: URL) {
+    guard name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    name = url.deletingPathExtension().lastPathComponent
+  }
+
+  /// On edit with a stored secret, explain that an empty field keeps it.
+  private var passwordPrompt: String {
+    hasStoredPassword && !removeSavedPassword ? "Saved — leave empty to keep" : "None"
   }
 
   @ViewBuilder private var testResult: some View {
@@ -267,7 +347,8 @@ struct ConnectionFormView: View {
       Text("Database File").font(.caption).foregroundStyle(.secondary)
       HStack(spacing: 8) {
         TextField(filePathPlaceholder, text: $host).textFieldStyle(.roundedBorder)
-        Button("Browse…") { browseForFile() }
+          .plainTextEntry()
+        Button("Browse…") { browseForFile() }.buttonStyle(.borderless)
       }
       Text(fileDragHint).font(.caption).foregroundStyle(.secondary)
     }.padding(8).background(isDropTargeted ? Color.accentColor.opacity(0.15) : Color.clear).overlay(
@@ -277,6 +358,7 @@ struct ConnectionFormView: View {
     ).dropDestination(for: URL.self) { urls, _ in
       guard let url = urls.first, url.isFileURL else { return false }
       host = url.path
+      suggestName(from: url)
       return true
     } isTargeted: {
       isDropTargeted = $0
@@ -291,10 +373,12 @@ struct ConnectionFormView: View {
   }
 
   private var fileDragHint: String {
-    switch engine {
-    case .sqlite: "Drag a SQLite file here, or browse."
-    default: "Drag a database file here, or browse."
-    }
+#if os(iOS)
+    // No dragging files into a sheet on iPhone; Browse opens the Files picker.
+    "Browse to pick a SQLite file from Files."
+#else
+    "Drag a SQLite file here, or browse."
+#endif
   }
 
   private var filePanelTitle: String {
@@ -313,7 +397,11 @@ struct ConnectionFormView: View {
     panel.canChooseDirectories = false
     panel.allowsMultipleSelection = false
     panel.allowedContentTypes = databaseContentTypes
-    panel.begin { response in if response == .OK, let url = panel.url { host = url.path } }
+    panel.begin { response in
+      guard response == .OK, let url = panel.url else { return }
+      host = url.path
+      suggestName(from: url)
+    }
 #else
     isFileImporterPresented = true
 #endif
@@ -438,6 +526,7 @@ struct ConnectionFormView: View {
       target.defaultDatabase = c.databaseIndex.map(String.init)
       target.directConnection = false
     case .sqlite:
+      target.fileBookmark = bookmarkMatchingPath(settings.host)
       target.username = nil
       target.password = nil
       target.authSource = nil
@@ -449,5 +538,17 @@ struct ConnectionFormView: View {
   private func emptyToNil(_ s: String) -> String? {
     let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
     return t.isEmpty ? nil : t
+  }
+}
+
+extension View {
+  /// Hosts, paths, user and database names are identifiers: no autocorrect or
+  /// auto-capitalization ("localhost" must not become "Localhost").
+  func plainTextEntry() -> some View {
+#if os(iOS)
+    autocorrectionDisabled().textInputAutocapitalization(.never)
+#else
+    autocorrectionDisabled()
+#endif
   }
 }

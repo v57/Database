@@ -14,6 +14,7 @@ import SwiftUI
 /// Table (spreadsheet grid) or JSON (pretty-printed text).
 struct DocumentsView: View {
   @Environment(DatabaseModel.self) private var model
+  @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
   @AppStorage("documentDisplayFormat") private var storedDisplayFormat = DisplayFormat.list.rawValue
 
@@ -46,6 +47,19 @@ struct DocumentsView: View {
   /// prefilled for their field (see `handle`).
   @State private var editingRule: FilterRule?
   @State private var isCreatingRule = false
+  /// What the chips last wrote into the Filter field, and the chips that wrote
+  /// it. Filter text that differs was typed by hand; a chip change then asks
+  /// before replacing it, and Cancel restores `renderedRules`.
+  @State private var lastRenderedFilter = ""
+  @State private var renderedRules: [FilterRule] = []
+  @State private var confirmsFilterOverwrite = false
+  /// Fields the "search all text fields" chip searches, fixed when the search
+  /// is made: re-deriving them from each result page changed the search (and
+  /// its rendered text) every time the results changed.
+  @State private var quickSearchFields: [String] = []
+  /// Compact width: Sort/Project/Fields fold away behind a toggle so the query
+  /// bar doesn't take a third of an iPhone screen.
+  @State private var showsQueryOptions = false
   /// Column "Search…" fragment box.
   @State private var searchTarget: SearchTarget?
   @State private var searchFragment = ""
@@ -65,10 +79,19 @@ struct DocumentsView: View {
   var body: some View {
     VStack(spacing: 0) {
       Group {
-        if model.selectedCollection == nil {
+        if !model.isSessionActive {
+          if model.isConnecting {
+            ProgressView("Connecting…").frame(maxWidth: .infinity, maxHeight: .infinity)
+          } else {
+            ContentUnavailableView(
+              "Not Connected", systemImage: "cylinder.split.1x2",
+              description: Text("Choose a saved connection in the sidebar, or add one with +."))
+          }
+        } else if model.selectedCollection == nil {
+          let noun = model.containerNoun.singular
           ContentUnavailableView(
-            "No Collection Selected", systemImage: "shippingbox",
-            description: Text("Select a collection in the sidebar."))
+            "No \(noun.capitalized) Selected", systemImage: "shippingbox",
+            description: Text("Select a \(noun) in the sidebar."))
         } else if model.documents.isEmpty && model.isLoadingDocuments {
           ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.documents.isEmpty, let error = model.queryError {
@@ -126,17 +149,36 @@ struct DocumentsView: View {
             Label("Refresh", systemImage: "arrow.clockwise")
           }.keyboardShortcut("r", modifiers: .command).help("Re-run the query (⌘R)")
 
-          Picker("Display Format", selection: displayFormatBinding) {
-            ForEach(DisplayFormat.allCases) { format in
-              Image(systemName: format.symbol).accessibilityLabel(format.name).tag(format)
+          if isCompact {
+            // Edit + Refresh + a three-segment picker overflowed the iPhone
+            // toolbar; one menu button shows the current format instead.
+            Menu {
+              Picker("Display Format", selection: displayFormatBinding) {
+                ForEach(DisplayFormat.allCases) { format in
+                  Label(format.name, systemImage: format.symbol).tag(format)
+                }
+              }
+            } label: {
+              Label("Display Format: \(displayFormat.name)", systemImage: displayFormat.symbol)
             }
+          } else {
+            Picker("Display Format", selection: displayFormatBinding) {
+              ForEach(DisplayFormat.allCases) { format in
+                Image(systemName: format.symbol).accessibilityLabel(format.name).tag(format)
+              }
+            }
+            .pickerStyle(.segmented)
+            .help("Display format: List / Table / JSON")
           }
-          .pickerStyle(.segmented)
-          .help("Display format: List / Table / JSON")
         }
       }
     }
-    .navigationSubtitle(model.statusMessage).sheet(
+    .navigationSubtitle(subtitle)
+#if os(iOS)
+    // A large title sat in an empty band above the query bar.
+    .navigationBarTitleDisplayMode(.inline)
+#endif
+    .sheet(
       isPresented: $showDeleteSheet
     ) { DeleteSheet(filter: filterText) }.sheet(item: $searchTarget) {
       target in
@@ -159,13 +201,33 @@ struct DocumentsView: View {
         update.filter.isEmpty
           ? "No filter is set: this updates EVERY document in the collection."
           : "Applies the update to every document matching \(update.filter).")
+    }.alert(
+      "Replace the typed filter?", isPresented: $confirmsFilterOverwrite
+    ) {
+      Button("Replace") { applyRules(confirmed: true) }
+      Button("Cancel", role: .cancel) { filterRules = renderedRules }
+    } message: {
+      Text(
+        "Filter chips rewrite the Filter field, so “\(trimmed(filterText) ?? "")” would be replaced.")
     }.onChange(of: model.documents) { _, documents in
-      catalog = FieldCatalog.fields(in: documents)
+      // Keep the last non-empty field list: a query with no results would
+      // otherwise empty it, hiding the search box, Fields menu and chip
+      // fields right when the query needs changing. A new collection resets it.
+      if !documents.isEmpty { catalog = FieldCatalog.fields(in: documents) }
     }.onChange(of: collectionKey) { _, _ in
       resetQueryBar()
-    }.onChange(of: filterText) { _, _ in debounceApply() }
-    .onChange(of: sortText) { _, _ in debounceApply() }
-    .onChange(of: projectText) { _, _ in debounceApply() }
+    }.onChange(of: filterText) { _, text in
+      if let plain = text.withStraightQuotes { filterText = plain } else { debounceApply() }
+    }
+    .onChange(of: sortText) { _, text in
+      if let plain = text.withStraightQuotes { sortText = plain } else { debounceApply() }
+    }
+    .onChange(of: projectText) { _, text in
+      if let plain = text.withStraightQuotes { projectText = plain } else { debounceApply() }
+    }
+    .onChange(of: updateText) { _, text in
+      if let plain = text.withStraightQuotes { updateText = plain }
+    }
     .onChange(of: filterRules) { _, rules in
       // Removing the "search all text fields" chip (its ×, Clear) also clears
       // the box, so the two never disagree.
@@ -196,17 +258,25 @@ struct DocumentsView: View {
     projectText = ""
     updateText = ""
     filterRules = []
+    renderedRules = []
+    lastRenderedFilter = ""
     quickSearch = ""
+    quickSearchFields = []
     redisKeyText = ""
     editor = nil
     expandedKeys = []
     actionError = nil
+    // Rebuilt from what is loaded now (possibly nothing yet) rather than
+    // cleared: this handler and the documents one can run in either order.
+    catalog = FieldCatalog.fields(in: model.documents)
   }
 
   /// Clears filter/sort/projection (and their chips) and re-runs the query.
   private func clearQuery() {
     quickSearchTask?.cancel()
     filterRules = []
+    renderedRules = []
+    lastRenderedFilter = ""
     quickSearch = ""
     redisKeyText = ""
     filterText = ""
@@ -241,7 +311,7 @@ struct DocumentsView: View {
         sortDirections: sortDirections,
         hiddenFields: hiddenFields,
         onColumnAction: handle)
-    case .json: JSONDocumentsView(documents: model.documents)
+    case .json: JSONDocumentsView(documents: model.documents, header: documentHeader)
     }
   }
 
@@ -272,26 +342,54 @@ struct DocumentsView: View {
           editing: $editingRule,
           isCreating: $isCreatingRule,
           dialect: dialect,
-          onChange: applyRules)
-        if !filterRules.isEmpty
-          && !rulesMatchFilterText(dialect: dialect, anyOfFields: searchableFields)
-        {
-          Label(
-            "Filter text was edited by hand — Clear the chips to start over",
-            systemImage: "exclamationmark.triangle"
-          ).font(.caption).foregroundStyle(.orange)
+          onChange: { applyRules() })
+        if chipsOutOfSync {
+          HStack(alignment: .firstTextBaseline) {
+            Label(
+              "The Filter was edited by hand, so the chips no longer apply.",
+              systemImage: "exclamationmark.triangle"
+            ).font(.caption).foregroundStyle(.orange)
+            Button("Clear Chips") {
+              filterRules = []
+              applyRules()
+            }.font(.caption).buttonStyle(.borderless)
+          }
         }
-        if !searchableFields.isEmpty { quickSearchRow }
-        queryField("Filter", text: $filterText, prompt: filterPrompt) {
-          if runningQueries > 0 { ProgressView().controlSize(.small) }
+        if !searchableFields.isEmpty || !quickSearch.isEmpty { quickSearchRow }
+        queryField("Filter", text: $filterText, prompt: filterPrompt) { runControl }
+        if isCompact {
+          if showsQueryOptions || !sortText.isEmpty || !projectText.isEmpty {
+            queryField("Sort", text: $sortText, prompt: sortPrompt)
+            queryField("Project", text: $projectText, prompt: projectPrompt)
+            if !allFields.isEmpty { fieldsRow }
+          } else {
+            HStack(spacing: 6) {
+              Spacer().frame(width: Self.queryLabelWidth)
+              Button("Sort, Project & Fields…", systemImage: "slider.horizontal.3") {
+                showsQueryOptions = true
+              }.font(.caption).buttonStyle(.borderless)
+            }
+          }
+        } else {
+          HStack(alignment: .center, spacing: 12) {
+            queryField("Sort", text: $sortText, prompt: sortPrompt)
+            queryField("Project", text: $projectText, prompt: projectPrompt)
+          }
+          if !allFields.isEmpty { fieldsRow }
         }
-        HStack(alignment: .center, spacing: 12) {
-          queryField("Sort", text: $sortText, prompt: sortPrompt)
-          queryField("Project", text: $projectText, prompt: projectPrompt)
-        }
-        if !allFields.isEmpty { fieldsRow }
       }
-      if editMode && model.canEditDocuments { updateRow }
+      if editMode && model.canEditDocuments {
+        if displayFormat != .list {
+          // Table/JSON are read-only renderers; say where editing happens.
+          HStack(alignment: .firstTextBaseline) {
+            Label("Values are edited in List view.", systemImage: "info.circle")
+              .font(.caption).foregroundStyle(.secondary)
+            Button("Switch to List") { storedDisplayFormat = DisplayFormat.list.rawValue }
+              .font(.caption).buttonStyle(.borderless)
+          }
+        }
+        updateRow
+      }
       if let error = model.queryError, !model.documents.isEmpty {
         Label(
           "Query failed: \(error) — showing the previous results", systemImage: "exclamationmark.triangle"
@@ -308,7 +406,7 @@ struct DocumentsView: View {
         }
       }
     }.padding(8).background(.bar)
-      .autocorrectionDisabled()
+      .plainTextEntry()
       .textFieldStyle(.roundedBorder)
   }
 
@@ -324,12 +422,43 @@ struct DocumentsView: View {
       Text(label).font(.caption).foregroundStyle(.secondary)
         .frame(width: Self.queryLabelWidth, alignment: .trailing)
       TextField(label, text: text, prompt: Text(prompt), axis: .vertical)
+        .lineLimit(1...4)
         .onSubmit { apply() }
       trailing()
     }
   }
 
   private static let queryLabelWidth: CGFloat = 44
+
+  private var isCompact: Bool { horizontalSizeClass == .compact }
+
+  /// Spinner while a query runs; otherwise a Run button, highlighted while the
+  /// bar holds changes that haven't run (typing only auto-runs text that
+  /// parses — e.g. raw SQL waits for Return or Run).
+  @ViewBuilder private var runControl: some View {
+    if runningQueries > 0 {
+      ProgressView().controlSize(.small)
+    } else {
+      Button {
+        apply()
+      } label: {
+        Label("Run Query", systemImage: hasUnappliedChanges ? "play.circle.fill" : "play.circle")
+          .labelStyle(.iconOnly).touchTarget(32)
+      }.buttonStyle(.borderless)
+        .help(hasUnappliedChanges ? "Run the edited query (Return)" : "Run the query again")
+    }
+  }
+
+  private var hasUnappliedChanges: Bool { pendingSpec != model.currentQuery }
+
+  /// Window subtitle: the connection plus the loaded-items summary, since the
+  /// title names the open collection/table.
+  private var subtitle: String {
+    guard model.selectedCollection != nil, let name = model.connectionName else {
+      return model.statusMessage
+    }
+    return model.statusMessage.isEmpty ? name : "\(name) · \(model.statusMessage)"
+  }
 
   /// Edit-mode Update row: runs `updateMany(filter, update)` after a
   /// confirmation that states how many documents it will change.
@@ -338,9 +467,9 @@ struct DocumentsView: View {
       Text("Update").font(.caption).foregroundStyle(.secondary)
         .frame(width: Self.queryLabelWidth, alignment: .trailing)
       TextField(
-        "Update", text: $updateText, prompt: Text(#"{ "$set": { "status": "done" } }"#),
+        "Update", text: $updateText, prompt: Text(#"{ $set: { status: "done" } }"#),
         axis: .vertical
-      ).onSubmit { requestUpdate() }
+      ).lineLimit(1...4).onSubmit { requestUpdate() }
       Button("Update…") { requestUpdate() }
         .disabled(isRunning || updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         .help("Update every document matching the Filter (asks for confirmation)")
@@ -447,7 +576,7 @@ struct DocumentsView: View {
               onStartEdit: { startEditing(row) }, onCommit: commitEditor,
               onCancel: { editor = nil },
               keyMenuState: KeyMenuState(
-                sortDirection: SortText.direction(of: row.key, in: sortText),
+                sortDirection: SortText.direction(of: row.queryPath ?? row.key, in: sortText),
                 isHidden: hiddenFields.contains(row.key)),
               onColumnAction: handle
             )
@@ -476,11 +605,13 @@ struct DocumentsView: View {
     }.listStyle(.inset)
   }
 
+  /// "<_id> · #3" for documents with an id, else "Row 3" / "Key 3" /
+  /// "Document 3" per engine. Shared by the List and JSON formats.
   private func documentHeader(for doc: BSONDocument, index: Int) -> String {
     if let id = doc["_id"], !BSONSupport.displayString(id).isEmpty {
       return "\(BSONSupport.displayString(id)) · #\(index + 1)"
     }
-    return "Document \(index + 1)"
+    return "\(model.itemNoun.singular.capitalized) \(index + 1)"
   }
 
   // MARK: - Expansion / editing
@@ -492,7 +623,8 @@ struct DocumentsView: View {
   private func startEditing(_ row: FieldRow) {
     guard editMode && model.canEditDocuments else { return }
     commitEditor()  // commit any in-flight edit before switching targets
-    guard !row.bson.isContainer else { return }  // containers expand, not edit
+    // Containers expand rather than edit; types without an editor stay read-only.
+    guard !row.bson.isContainer, EditableType.canEdit(row.bson) else { return }
     editor = ValueEditorState(docIndex: row.docIndex, path: row.path, bson: row.bson)
   }
 
@@ -569,16 +701,37 @@ struct DocumentsView: View {
 
   /// Writes the chips into the Filter field and re-runs the query. The chip text
   /// is the single source of truth for execution while chips exist.
-  private func applyRules() {
+  /// Asks first (see the overwrite alert) when the Filter holds text typed by
+  /// hand, which the chips would otherwise silently replace. Removing every
+  /// chip just drops them and keeps the typed filter.
+  private func applyRules(confirmed: Bool = false) {
     guard let dialect = FilterEngine.dialect(for: model.activeEngine) else { return }
-    filterText = FilterText.render(filterRules, dialect: dialect, anyOfFields: searchableFields) ?? ""
+    if typedFilterDiffers && !confirmed {
+      if filterRules.isEmpty {
+        renderedRules = []
+      } else {
+        confirmsFilterOverwrite = true
+      }
+      return
+    }
+    let text = FilterText.render(filterRules, dialect: dialect, anyOfFields: quickSearchFields) ?? ""
+    filterText = text
+    lastRenderedFilter = text
+    renderedRules = filterRules
     apply()
   }
 
-  /// True while the Filter field still holds exactly what the chips render.
-  private func rulesMatchFilterText(dialect: FilterDialect, anyOfFields: [String]) -> Bool {
-    filterText.trimmingCharacters(in: .whitespacesAndNewlines)
-      == (FilterText.render(filterRules, dialect: dialect, anyOfFields: anyOfFields) ?? "")
+  /// The Filter holds non-empty text the chips didn't write.
+  private var typedFilterDiffers: Bool {
+    let text = trimmed(filterText) ?? ""
+    return !text.isEmpty && text != lastRenderedFilter
+  }
+
+  /// Chips exist but the Filter no longer holds what they wrote.
+  private var chipsOutOfSync: Bool {
+    // Not while the overwrite prompt is up: the chip it asks about is pending.
+    !confirmsFilterOverwrite && !filterRules.isEmpty
+      && (trimmed(filterText) ?? "") != lastRenderedFilter
   }
 
   /// String fields offered to "search all text fields". `_id` is excluded: its
@@ -604,6 +757,7 @@ struct DocumentsView: View {
       applyRules()
       return
     }
+    quickSearchFields = searchableFields
     filterRules.append(
       FilterRule(
         field: Self.quickSearchMarker, op: .contains, value: .array([.string(text)])))
@@ -685,7 +839,8 @@ struct DocumentsView: View {
   /// `{ $gt: 15 }` -> `{ age: { $gt: 15 } }`. On error the box stays open with the
   /// parser's message (it carries a column number) and nothing is applied.
   private func applySearchFragment(for field: String) {
-    let fragment = searchFragment.trimmingCharacters(in: .whitespacesAndNewlines)
+    let typed = searchFragment.trimmingCharacters(in: .whitespacesAndNewlines)
+    let fragment = typed.withStraightQuotes ?? typed
     guard !fragment.isEmpty else {
       searchError = "Type a value or an operator object, e.g. 15 or { $gt: 15 }"
       return
@@ -707,11 +862,23 @@ struct DocumentsView: View {
   /// comparing with `model.currentQuery` skips that duplicate run.
   private func debounceApply() {
     debounceTask?.cancel()
-    guard pendingSpec != model.currentQuery else { return }
+    guard pendingSpec != model.currentQuery, pendingSpecParses else { return }
     debounceTask = Task {
       try? await Task.sleep(for: Self.applyDelay)
       guard !Task.isCancelled, pendingSpec != model.currentQuery else { return }
       apply()
+    }
+  }
+
+  /// Typing only auto-runs text that parses as a query: a pause mid-expression
+  /// (`{ age: ` or SQL `age >`) used to run it and flash a failure. Raw SQL
+  /// fragments never parse here, so they run on Return / Run. Redis key globs
+  /// come from the key box and always run.
+  private var pendingSpecParses: Bool {
+    guard model.activeEngine != .redis else { return true }
+    return [filterText, sortText, projectText].allSatisfy { text in
+      guard let text = trimmed(text) else { return true }
+      return (try? BSONSupport.document(fromQuery: text)) != nil
     }
   }
 

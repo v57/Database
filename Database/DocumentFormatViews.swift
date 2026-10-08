@@ -54,11 +54,21 @@ enum DisplayFormat: String, CaseIterable, Identifiable {
 /// appearance across the loaded rows), one row per document. Two-axis
 /// scrolling with a pinned header row; cells truncate to one line.
 struct TableDocumentsView: View {
-  /// Every data column shares this width in the header and every row. Sizing
-  /// cells to their content let long values push their row's columns right, so
-  /// rows drifted apart and away from the header; long text truncates instead
-  /// and the full value is in the cell's tooltip.
-  static let columnWidth: CGFloat = 200
+  /// A column has ONE width shared by its header and every row (sizing cells
+  /// to their content let rows drift apart from the header). The default
+  /// follows the field's kind — a boolean needs far less room than text —
+  /// and dragging the header's right edge resizes it.
+  static func defaultWidth(for kind: FieldKind?) -> CGFloat {
+    switch kind {
+    case .boolean: 90
+    case .number: 120
+    case .date: 210
+    case .objectID: 230
+    case .string: 220
+    default: 200
+    }
+  }
+  static let minColumnWidth: CGFloat = 60
   /// The leading `#` row-number column.
   static let indexWidth: CGFloat = 44
 
@@ -71,6 +81,16 @@ struct TableDocumentsView: View {
   let hiddenFields: Set<String>
   /// Every column gesture funnels through this one callback.
   let onColumnAction: (ColumnAction) -> Void
+
+  /// Widths the user dragged, by column name.
+  @State private var columnWidths: [String: CGFloat] = [:]
+  /// The column being resized and its width when the drag began.
+  @State private var resizing: (name: String, startWidth: CGFloat)?
+  @State private var selectedRow: Int?
+
+  private func width(of name: String) -> CGFloat {
+    columnWidths[name] ?? Self.defaultWidth(for: fields.first { $0.name == name }?.kind)
+  }
 
   /// Snapshot (index, document) pairs so rows never re-index a live array.
   private var rows: [TableRow] {
@@ -123,12 +143,33 @@ struct TableDocumentsView: View {
             }
           }.buttonStyle(.plain).help("Sort by \(column.name) — click to cycle asc/desc/off")
           columnMenu(column.name)
-        }.padding(.horizontal, 6).frame(width: Self.columnWidth, alignment: .leading)
+        }.padding(.horizontal, 6).frame(width: width(of: column.name), alignment: .leading)
+          .overlay(alignment: .trailing) { resizeHandle(column.name) }
       }
     }
     .padding(.vertical, 6)
     .background(.bar)
     .overlay(alignment: .bottom) { Divider() }
+  }
+
+  /// Invisible grab strip on a header's right edge: dragging it resizes the
+  /// column in the header and every row together.
+  private func resizeHandle(_ name: String) -> some View {
+    Color.clear.frame(width: 10).contentShape(Rectangle())
+#if os(macOS)
+      .pointerStyle(.columnResize)
+#endif
+      .gesture(
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+          .onChanged { drag in
+            if resizing?.name != name { resizing = (name, width(of: name)) }
+            let start = resizing?.startWidth ?? width(of: name)
+            columnWidths[name] = max(Self.minColumnWidth, start + drag.translation.width)
+          }
+          .onEnded { _ in resizing = nil }
+      )
+      .offset(x: 5)
+      .accessibilityHidden(true)
   }
 
   /// Arrow for a column: derived from the Sort text parsed by the owner, so a
@@ -184,7 +225,8 @@ struct TableDocumentsView: View {
       }
       Button("Show All Fields", systemImage: "eye") { onColumnAction(.showAllFields) }
     } label: {
-      Image(systemName: "chevron.down").font(.caption2).foregroundStyle(.secondary)
+      Label("\(name) column options", systemImage: "chevron.down").labelStyle(.iconOnly)
+        .font(.caption2).foregroundStyle(.secondary).touchTarget(32)
     }
     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
     .help("Sort, search, filter or hide \(name)")
@@ -195,22 +237,45 @@ struct TableDocumentsView: View {
     var displays: [DisplayCell] = []
     for column in cols {
       if let value = doc[column.name] {
-        displays.append(DisplayCell(text: JSONText.compact(value), isString: value.isString))
+        // Strings read as plain text, as in the List format; only nested
+        // documents/arrays use (escaped) JSON.
+        let text = value.isContainer ? JSONText.compact(value) : BSONSupport.displayString(value)
+        displays.append(DisplayCell(text: text, isString: value.isString))
       } else {
         displays.append(DisplayCell(text: "—", isString: nil))
       }
     }
+    let isSelected = selectedRow == row.id
     return HStack(spacing: 0) {
       Text("\(row.id + 1)").font(.caption.monospacedDigit())
         .foregroundStyle(.secondary).frame(width: Self.indexWidth, alignment: .center)
       ForEach(cols) { column in
         columnDivider
-        cellView(displays[column.id])
+        cellView(displays[column.id], width: width(of: column.name))
+          .contextMenu {
+            if displays[column.id].isString != nil {
+              Button("Copy Value", systemImage: "doc.on.doc") {
+                Clipboard.copy(displays[column.id].text)
+              }
+            }
+            Button("Copy Row as JSON", systemImage: "curlybraces") {
+              Clipboard.copy(JSONText.pretty(.document(doc)))
+            }
+          }
       }
     }
     .padding(.vertical, 3)
-    .background(row.id.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.03))
+    .background {
+      if isSelected {
+        Color.accentColor.opacity(0.18)
+      } else if !row.id.isMultiple(of: 2) {
+        Color.primary.opacity(0.03)
+      }
+    }
     .overlay(alignment: .bottom) { Divider().opacity(0.5) }
+    .contentShape(Rectangle())
+    .onTapGesture { selectedRow = isSelected ? nil : row.id }
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
   }
 
   /// One table cell (text + how to color it). `isString` nil = key missing.
@@ -220,16 +285,17 @@ struct TableDocumentsView: View {
   }
 
   @ViewBuilder
-  private func cellView(_ cell: DisplayCell) -> some View {
+  private func cellView(_ cell: DisplayCell, width: CGFloat) -> some View {
     if let isString = cell.isString {
       Text(cell.text).lineLimit(1).truncationMode(.tail).textSelection(.enabled)
         .foregroundStyle(isString ? Color.primary : Color.blue)
-        .padding(.horizontal, 6).frame(width: Self.columnWidth, alignment: .leading)
+        .padding(.horizontal, 6).frame(width: width, alignment: .leading)
         .help(cell.text)
     } else {
       Text(cell.text).foregroundStyle(.secondary)
-        .padding(.horizontal, 6).frame(width: Self.columnWidth, alignment: .leading)
+        .padding(.horizontal, 6).frame(width: width, alignment: .leading)
         .help("Field not present in this document")
+        .accessibilityLabel("Missing")
     }
   }
 
@@ -253,6 +319,13 @@ struct LoadMoreFooter: View {
         if model.isLoadingMore {
           ProgressView().controlSize(.small)
           Text("Loading…").font(.caption).foregroundStyle(.secondary)
+        } else if let error = model.loadMoreError {
+          // The scroll trigger already fired; without a button the list would
+          // stay stuck on a footer that never loads.
+          Label("Couldn't load more: \(error)", systemImage: "exclamationmark.triangle")
+            .font(.caption).foregroundStyle(.red).lineLimit(2)
+          Button("Retry") { Task { await model.loadMoreDocuments() } }
+            .font(.caption).buttonStyle(.borderless)
         } else {
           Text("Scroll to load more").font(.caption).foregroundStyle(.secondary)
         }
@@ -281,6 +354,8 @@ private struct Column: Identifiable {
 /// Every document as pretty-printed JSON text (monospaced, selectable).
 struct JSONDocumentsView: View {
   let documents: [BSONDocument]
+  /// Block caption ("<_id> · #3", "Row 3"), shared with the List format.
+  let header: (BSONDocument, Int) -> String
 
   private var blocks: [JSONBlock] {
     documents.enumerated().map { JSONBlock(id: $0.offset, document: $0.element) }
@@ -291,7 +366,7 @@ struct JSONDocumentsView: View {
       LazyVStack(alignment: .leading, spacing: 14) {
         ForEach(blocks) { block in
           VStack(alignment: .leading, spacing: 4) {
-            Text(header(for: block)).font(.caption).foregroundStyle(.secondary)
+            Text(header(block.document, block.id)).font(.caption).foregroundStyle(.secondary)
             Text(JSONText.pretty(.document(block.document)))
               .font(.system(.callout, design: .monospaced))
               .textSelection(.enabled)
@@ -300,6 +375,11 @@ struct JSONDocumentsView: View {
           .padding(10)
           .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
           .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+          .contextMenu {
+            Button("Copy JSON", systemImage: "doc.on.doc") {
+              Clipboard.copy(JSONText.pretty(.document(block.document)))
+            }
+          }
         }
         LoadMoreFooter()
       }
@@ -307,13 +387,6 @@ struct JSONDocumentsView: View {
     }
   }
 
-  private func header(for block: JSONBlock) -> String {
-    let index = block.id + 1
-    if let id = block.document["_id"], !BSONSupport.displayString(id).isEmpty {
-      return "\(BSONSupport.displayString(id)) · #\(index)"
-    }
-    return "Document \(index)"
-  }
 }
 
 /// One JSON block: (index, document) snapshotted per body evaluation.

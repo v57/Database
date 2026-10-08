@@ -96,6 +96,18 @@ enum EngineSettings {
   }
 }
 
+/// Security-scoped file access, opened at most once per URL per launch (each
+/// `startAccessingSecurityScopedResource` call must be balanced, so repeated
+/// opens of the same file would otherwise pile up).
+@MainActor enum FileAccess {
+  private static var opened: Set<URL> = []
+
+  static func open(_ url: URL) {
+    guard !opened.contains(url), url.startAccessingSecurityScopedResource() else { return }
+    opened.insert(url)
+  }
+}
+
 /// A saved connection, persisted with SwiftData. Password is stored in plain
 /// text for now; Keychain integration is a noted future step.
 @Model final class ConnectionRecord {
@@ -109,6 +121,9 @@ enum EngineSettings {
   var authSource: String?
   var defaultDatabase: String?
   var directConnection: Bool = false
+  /// iOS: security-scoped bookmark of a picked SQLite file. The picker's
+  /// access grant only lasts for one launch; the bookmark re-opens it later.
+  var fileBookmark: Data?
 
   init(
     name: String, host: String, port: Int, username: String? = nil, password: String? = nil,
@@ -132,7 +147,7 @@ enum EngineSettings {
   }
 
   /// Maps the persisted record to engine-tagged connection settings.
-  func toSettings() -> EngineSettings {
+  @MainActor func toSettings() -> EngineSettings {
     switch engineKind {
     case .mongodb:
       return .mongodb(
@@ -151,8 +166,22 @@ enum EngineSettings {
         RedisConnectionConfig(
           name: name, host: host, port: UInt16(port), username: username, password: password,
           databaseIndex: index))
-    case .sqlite: return .sqlite(SQLiteConnectionConfig(name: name, filePath: host))
+    case .sqlite: return .sqlite(SQLiteConnectionConfig(name: name, filePath: filePath))
     }
+  }
+
+  /// SQLite file path to open. With a bookmark (iOS picker), the bookmark is
+  /// resolved and its security scope opened, so the file stays readable after
+  /// a relaunch; the resolved path wins because the app container can move.
+  @MainActor var filePath: String {
+    guard let fileBookmark else { return host }
+    var isStale = false
+    guard
+      let url = try? URL(
+        resolvingBookmarkData: fileBookmark, bookmarkDataIsStale: &isStale)
+    else { return host }
+    FileAccess.open(url)
+    return url.path
   }
 
   /// True when the live session in `model` was started from this record.
@@ -184,13 +213,13 @@ enum EngineSettings {
         return false
       }
       let c = session.config
-      return c.name == name && c.filePath == host
+      return c.name == name && (c.filePath == host || c.filePath == filePath)
     case nil: return false
     }
   }
 
   /// Legacy shim for call sites that still want the MongoDB config.
-  func toConfig() -> ConnectionConfig {
+  @MainActor func toConfig() -> ConnectionConfig {
     switch toSettings() {
     case .mongodb(let c): return c
     default: return ConnectionConfig(name: name, host: host, port: UInt16(port))

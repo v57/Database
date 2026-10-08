@@ -48,7 +48,7 @@ struct ConnectionsSidebarView: View {
       connectionsSection
       if model.isSessionActive { databasesSection }
     }.listStyle(.sidebar).searchable(
-      text: $model.collectionSearch, placement: .sidebar, prompt: "Collections or $database"
+      text: $model.collectionSearch, placement: .sidebar, prompt: searchPrompt
     ).navigationSplitViewColumnWidth(min: 200, ideal: 250).sheet(isPresented: $showAddSheet) {
       ConnectionFormView(onConnect: connectFromForm)
     }.sheet(item: $editingRecord) { record in
@@ -78,7 +78,12 @@ struct ConnectionsSidebarView: View {
       await connectSelectedRecord()
     }.onChange(of: model.selectedCollection) { syncSelectionFromModel() }.onChange(
       of: model.selectedDatabase
-    ) { syncSelectionFromModel() }.onChange(of: model.isSessionActive) { _, isActive in
+    ) { _, database in
+      // The open database starts unfolded: after connecting (SQLite's single
+      // `main` included) its tables are one click away, not two.
+      if let database { expandedDatabases.insert(database) }
+      syncSelectionFromModel()
+    }.onChange(of: model.isSessionActive) { _, isActive in
       sessionActivityChanged(isActive)
     }.onAppear { syncSelectionFromModel() }.task(id: model.collectionSearch) {
       await loadCollectionsForSearch()
@@ -142,6 +147,13 @@ struct ConnectionsSidebarView: View {
 
   // MARK: - Search
 
+  /// Names what the field searches for the live engine ("Tables or
+  /// $database"); before connecting there is nothing to search yet.
+  private var searchPrompt: String {
+    guard model.isSessionActive else { return "Connect to search" }
+    return "\(model.containerNoun.plural.capitalized) or $database"
+  }
+
   /// True while the search field is active: databases are force-expanded
   /// and non-matching databases are hidden.
   private var isSearching: Bool { model.searchTerms.isSearching }
@@ -183,19 +195,24 @@ struct ConnectionsSidebarView: View {
     } else if model.databases.isEmpty {
       return Text("No databases on server")
     }
-    return Text("No matching collections")
+    return Text("No matching \(model.containerNoun.plural)")
   }
 
   // MARK: - Databases & collections
 
   @ViewBuilder private func collectionChildren(for db: String) -> some View {
     let colls = model.collections(for: db)
+    let noun = model.containerNoun.plural
     if colls.isEmpty {
-      Text(isSearching ? "No matching collections" : "No collections").foregroundStyle(.secondary)
+      Text(isSearching ? "No matching \(noun)" : "No \(noun)").foregroundStyle(.secondary)
     } else {
       ForEach(colls, id: \.self) { coll in
         Label(coll, systemImage: model.activeEngine == .redis ? "key.horizontal" : "tablecells")
           .tag(SidebarItem.collection(database: db, name: coll))
+      }
+      if model.isKeyListTruncated(db) {
+        Text("Showing the first \(DatabaseModel.redisKeyLimit) keys — use the key filter to find others.")
+          .font(.caption).foregroundStyle(.secondary)
       }
     }
   }
@@ -219,6 +236,10 @@ struct ConnectionsSidebarView: View {
   /// `connectSelectedRecord()` so arrowing past a row doesn't connect to it.
   /// Database rows only highlight; their chevron (or ←/→) folds them.
   private func selectionChanged(to item: SidebarItem?) {
+    // Clicking a database row unfolds it (a highlight alone did nothing).
+    if case .database(let db)? = item, !expandedDatabases.contains(db) {
+      expandedBinding(for: db).wrappedValue = true
+    }
     guard case .collection(let db, let name)? = item else { return }
     // Already open (e.g. the selection was just synced FROM the model).
     guard model.selectedDatabase != db || model.selectedCollection != name else { return }
@@ -359,9 +380,10 @@ private struct ConnectionRow: View {
         Image(systemName: "circle.fill").font(.system(size: 7)).foregroundStyle(.green).help(
           "Connected"
         ).accessibilityHidden(true)
-        Button("Disconnect", systemImage: "eject", action: disconnect).labelStyle(.iconOnly)
-          .buttonStyle(.borderless).help("Disconnect from \(record.name)").accessibilityLabel(
-            "Disconnect from \(record.name)")
+        Button(action: disconnect) {
+          Label("Disconnect", systemImage: "eject").labelStyle(.iconOnly).touchTarget()
+        }.buttonStyle(.borderless).help("Disconnect from \(record.name)")
+          .accessibilityLabel("Disconnect from \(record.name)")
       }
     }.help(locationText)
   }
