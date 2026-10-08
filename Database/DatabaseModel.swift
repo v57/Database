@@ -48,6 +48,18 @@ import SwiftData
   var selectedDocument: Document?
   /// The active query (filter/sort/projection) driving the document list.
   var currentQuery = QuerySpec(filter: nil, sort: nil, projection: nil)
+  /// The last load/query failure for the selected collection, shown in the
+  /// documents pane; nil after the next successful load. While set,
+  /// `documents` may still hold the previous query's results (the pane marks
+  /// them as stale) — but never another collection's.
+  var queryError: String?
+  /// True while a collection's first page is loading after selection, so the
+  /// pane shows progress instead of a premature "empty" state.
+  var isLoadingDocuments = false
+  /// Bumped by every load/query; a result whose generation is no longer
+  /// current (a slower, older query or a previous collection) is dropped
+  /// instead of overwriting newer results.
+  private var queryGeneration = 0
   /// Redis: keys of the selected logical database (sidebar + list source).
   var redisEntries: [RedisKeyEntry] = []
   /// Redis: detail rows of the selected key, rendered as one document.
@@ -71,6 +83,19 @@ import SwiftData
 
   /// True when a session of ANY engine is open (sidebar gating, status dot).
   var isSessionActive: Bool { session != nil || alternateSession != nil }
+
+  /// Inline edits, Add Field, Update and Delete write back to the server only
+  /// for MongoDB; SQL rows and Redis keys are read-only in the UI.
+  var canEditDocuments: Bool { session != nil }
+
+  /// What the pane calls one loaded item, for status/empty-state copy.
+  var itemNoun: (singular: String, plural: String) {
+    switch activeEngine {
+    case .redis: ("key", "keys")
+    case .postgresql, .sqlite: ("row", "rows")
+    case .mongodb, nil: ("document", "documents")
+    }
+  }
 
   // MARK: - Connect / disconnect
 
@@ -193,6 +218,8 @@ import SwiftData
     selectedCollection = nil
     documents = []
     selectedDocument = nil
+    currentQuery = QuerySpec(filter: nil, sort: nil, projection: nil)
+    queryError = nil
     redisEntries = []
     loadedCount = 0
     hasMore = false
@@ -245,11 +272,54 @@ import SwiftData
 
   /// Loads (once) and caches collections for a database; called when the
   /// sidebar expands a database row.
+  /// Never switches the live session's database: Mongo lists another
+  /// database's collections directly, PostgreSQL/Redis use a short-lived side
+  /// connection (a PostgreSQL connection is bound to one database; a Redis
+  /// SELECT would redirect the live session). Queries therefore always keep
+  /// running against `selectedDatabase`.
   func loadCollections(for database: String) async {
-    guard let session, collectionsByDatabase[database] == nil else { return }
+    guard isSessionActive, collectionsByDatabase[database] == nil else { return }
     do {
-      try await session.use(database: database)
-      let names = try await session.listCollections()
+      let names: [String]
+      if let mongo = session {
+        names = try await mongo.listCollections(in: database)
+      } else if case .postgresql(let pg) = alternateSession {
+        if database == pg.currentDatabase {
+          names = try await pg.listTables()
+        } else {
+          var config = pg.config
+          config.defaultDatabase = database
+          let side = PostgresConnection(config: config)
+          try await side.connect()
+          do {
+            names = try await side.listTables()
+            await side.disconnect()
+          } catch {
+            await side.disconnect()
+            throw error
+          }
+        }
+      } else if case .redis(let redis) = alternateSession {
+        if database == redis.currentDatabase.map(String.init) {
+          names = try await redis.listKeys()
+        } else {
+          var config = redis.config
+          config.databaseIndex = Int(database)
+          let side = RedisConnection(config: config)
+          try await side.connect()
+          do {
+            names = try await side.listKeys()
+            await side.disconnect()
+          } catch {
+            await side.disconnect()
+            throw error
+          }
+        }
+      } else if case .sqlite(let sqlite) = alternateSession {
+        names = try await sqlite.listTables()
+      } else {
+        return
+      }
       collectionsByDatabase[database] = names
       if database == selectedDatabase { collections = names }
     } catch { statusMessage = error.localizedDescription }
@@ -347,38 +417,69 @@ import SwiftData
   /// the active database first when needed.
   func select(collection: String, in database: String) async {
     guard isSessionActive else { return }
+    let isNewTarget = selectedCollection != collection || selectedDatabase != database
+    // A query typed for one collection rarely fits another (SQL: unknown
+    // columns; Mongo: silently empty results), so each collection opens
+    // unfiltered. The pane clears its query bar on the same change.
+    if isNewTarget { currentQuery = QuerySpec(filter: nil, sort: nil, projection: nil) }
+    // Never leave the previous collection's rows on screen under the new
+    // collection's name — clear them before loading.
+    if isNewTarget { documents = [] }
+    selectedCollection = collection
+    queryError = nil
+    queryGeneration &+= 1
+    let generation = queryGeneration
+    isLoadingDocuments = true
+    defer { if generation == queryGeneration { isLoadingDocuments = false } }
+    // Selecting a collection is "opening"/"viewing", NOT usage — only an
+    // explicit query request (applyQuery/loadMore) bumps the sidebar sort
+    // timestamp. Reset pagination so a fresh collection starts at page 0;
+    // the first page is then loaded below and re-sets loadedCount/hasMore.
+    resetPagination()
     do {
       if selectedDatabase != database {
         if let mongo = session {
           try await mongo.use(database: database)
         } else if case .postgresql(let pg) = alternateSession {
           try await pg.use(database: database)
+        } else if case .redis(let redis) = alternateSession {
+          try await redis.use(database: database)
         } else if case .sqlite(let sqlite) = alternateSession {
           try await sqlite.use(database: database)
         }
         selectedDatabase = database
         collections = collectionsByDatabase[database] ?? []
       }
-      selectedCollection = collection
-      // Selecting a collection is "opening"/"viewing", NOT usage — only an
-      // explicit query request (applyQuery/loadMore) bumps the sidebar sort
-      // timestamp. Reset pagination so a fresh collection starts at page 0;
-      // the first page is then loaded below and re-sets loadedCount/hasMore.
-      resetPagination()
 
       if case .redis(let redis) = alternateSession {
         let entry = try await redis.entry(for: collection)
+        guard generation == queryGeneration else { return }
         redisSelectedEntry = entry
         documents = [Self.document(from: entry)]
         statusMessage = "\(entry.typeName) · TTL \(entry.ttl)s"
       } else {
         let docs = try await loadFirstPage(collection: collection)
+        guard generation == queryGeneration else { return }
         documents = docs
         loadedCount = docs.count
         hasMore = docs.count >= pageSize
-        statusMessage = "\(docs.count) row(s) in \(collection)"
+        statusMessage = loadedSummary(in: collection)
       }
-    } catch { statusMessage = error.localizedDescription }
+    } catch {
+      guard generation == queryGeneration else { return }
+      documents = []
+      queryError = error.localizedDescription
+      statusMessage = error.localizedDescription
+    }
+  }
+
+  /// "100+ documents in users" while more pages exist — the count is what is
+  /// loaded, not a server-side total.
+  private func loadedSummary(in collection: String? = nil) -> String {
+    let noun = documents.count == 1 ? itemNoun.singular : itemNoun.plural
+    let count = hasMore ? "\(documents.count)+" : "\(documents.count)"
+    guard let collection else { return "\(count) \(noun)" }
+    return "\(count) \(noun) in \(collection)"
   }
 
   /// Selects a collection in the current database (documents refresh path).
@@ -388,6 +489,21 @@ import SwiftData
 
   // MARK: - Mutations (MongoDB only for now; SQL/Redis get their own flows later)
 
+  /// Number of documents `filter` matches in the selected collection — the
+  /// real impact of an Update/Delete, not a capped preview.
+  func countMatching(filter: String) async throws -> Int {
+    guard let session, let selectedCollection else { throw MongoDBError.notConnected }
+    let f = try BSONSupport.document(fromQuery: filter)
+    return try await session.countDocuments(in: selectedCollection, filter: f)
+  }
+
+  /// Validates the Update text without running it, so a typo is reported
+  /// before the confirmation dialog rather than after.
+  func validateUpdate(_ update: String) throws {
+    // Update operators ($set, $inc, ...) must stay strict JSON.
+    _ = try BSONSupport.document(fromJSON: update)
+  }
+
   /// Runs updateMany against the selected collection and refreshes the list.
   func runUpdate(filter: String, update: String) async throws -> MongoWriteResult {
     guard let session, let selectedCollection else { throw MongoDBError.notConnected }
@@ -395,8 +511,8 @@ import SwiftData
     // Update operators ($set, $inc, ...) must stay strict JSON.
     let u = try BSONSupport.document(fromJSON: update)
     let result = try await session.updateMany(in: selectedCollection, filter: f, update: u)
-    statusMessage = "Updated \(result.matchedCount) matched, \(result.modifiedCount) modified"
     await refreshAfterMutation(session, selectedCollection)
+    statusMessage = "Updated \(result.matchedCount) matched, \(result.modifiedCount) modified"
     return result
   }
 
@@ -405,25 +521,75 @@ import SwiftData
     guard let session, let selectedCollection else { throw MongoDBError.notConnected }
     let f = try BSONSupport.document(fromQuery: filter)
     let result = try await session.deleteMany(from: selectedCollection, filter: f)
-    statusMessage = "Deleted \(result.deletedCount) document(s)"
     await refreshAfterMutation(session, selectedCollection)
+    statusMessage = "Deleted \(result.deletedCount) document(s)"
     return result
   }
 
-  /// Replaces one value in the in-memory document at `index` (local edit
-  /// only — not persisted to the server until write-back is added).
-  func updateDocument(_ index: Int, at path: [BSONPathSegment], to value: BSON) {
+  /// Writes one value of the document at `index` back to the server
+  /// (`updateOne`-style `{ _id } → { $set: { "a.0.b": value } }`), then mirrors
+  /// it in the loaded copy. Throws — leaving the loaded copy untouched — when
+  /// the engine is read-only, the document has no `_id`, or the path can't be
+  /// expressed as a dotted `$set` key.
+  func updateDocument(_ index: Int, at path: [BSONPathSegment], to value: BSON) async throws {
+    guard let session, let selectedCollection else { throw EditError.readOnly }
     guard documents.indices.contains(index) else { return }
+    guard let id = documents[index]["_id"] else { throw EditError.missingID }
+    let dotted = try Self.dottedPath(path)
+    var filter = Document()
+    filter["_id"] = id
+    var fields = Document()
+    fields[dotted] = value
+    var update = Document()
+    update["$set"] = .document(fields)
+    let result = try await session.updateMany(
+      in: selectedCollection, filter: filter, update: update)
+    guard result.matchedCount > 0 else { throw EditError.documentGone }
+    // Re-index after the await: the list may have been replaced meanwhile.
+    guard documents.indices.contains(index), documents[index]["_id"] == id else { return }
     var docs = documents
     docs[index] = BSONPath.setting(value, at: path, in: docs[index])
     documents = docs
     selectedDocument = docs[index]
+    statusMessage = "Saved \(path.map(\.description).joined(separator: "."))"
   }
 
-  /// Adds a new key/value field to the in-memory document at `index`.
-  func addField(to index: Int, key: String, value: BSON) {
+  /// Adds a new top-level field to the document at `index` on the server.
+  func addField(to index: Int, key: String, value: BSON) async throws {
     guard documents.indices.contains(index), !key.isEmpty else { return }
-    updateDocument(index, at: [.key(key)], to: value)
+    try await updateDocument(index, at: [.key(key)], to: value)
+  }
+
+  /// `[.key("a"), .index(0), .key("b")]` → `a.0.b`. Keys containing `.` or
+  /// starting with `$` can't be addressed by a `$set` path.
+  private static func dottedPath(_ path: [BSONPathSegment]) throws -> String {
+    var parts: [String] = []
+    for segment in path {
+      switch segment {
+      case .key(let key):
+        guard !key.isEmpty, !key.contains("."), !key.hasPrefix("$") else {
+          throw EditError.unaddressableKey(key)
+        }
+        parts.append(key)
+      case .index(let i): parts.append(String(i))
+      }
+    }
+    guard !parts.isEmpty else { throw EditError.unaddressableKey("") }
+    return parts.joined(separator: ".")
+  }
+
+  enum EditError: LocalizedError {
+    case readOnly, missingID, documentGone, unaddressableKey(String)
+
+    var errorDescription: String? {
+      switch self {
+      case .readOnly: "Editing is only supported for MongoDB collections."
+      case .missingID: "This document has no _id, so the change can't be saved."
+      case .documentGone: "The document no longer exists on the server. Refresh and try again."
+      case .unaddressableKey(let key):
+        "The field name “\(key)” contains “.” or starts with “$”, so it can't be edited here."
+      }
+    }
   }
 
   /// Applies the current query (filter/sort/projection) to the selected
@@ -432,8 +598,20 @@ import SwiftData
   /// Redis (filter=key glob, sort/project hidden). A successful query
   /// execution counts as collection usage and bumps the sidebar sort.
   func applyQuery() async throws -> [Document] {
+    queryGeneration &+= 1
+    let generation = queryGeneration
+    do {
+      let docs = try await runCurrentQuery(generation: generation)
+      if generation == queryGeneration { queryError = nil }
+      return docs
+    } catch {
+      if generation == queryGeneration { queryError = error.localizedDescription }
+      throw error
+    }
+  }
+
+  private func runCurrentQuery(generation: Int) async throws -> [Document] {
     guard let selectedCollection else { throw MongoDBError.notConnected }
-    resetPagination()
     let docs: [Document]
     if let session {
       docs = try await findCurrentMongo(in: selectedCollection, session: session, limit: pageSize)
@@ -444,15 +622,23 @@ import SwiftData
       let rows = try await sqlite.select(sql: try selectSQL(in: selectedCollection), limit: pageSize)
       docs = rows.map { Self.document(from: $0) }
     } else if case .redis(let redis) = alternateSession {
-      let entries = try await redis.entries(matching: currentQuery.filter ?? "")
+      // The Redis Filter text is already a SCAN MATCH glob (built by the key
+      // filter box via KeyGlob.query), so it is used verbatim.
+      let entries = try await redis.entries(pattern: currentQuery.filter)
       docs = entries.map { Self.document(from: $0) }
       redisEntries = entries
     } else {
       throw MongoDBError.notConnected
     }
+    // A newer query (or another collection) superseded this one meanwhile.
+    guard generation == queryGeneration else { return docs }
+    // Pagination resets only once the new results are in: a failing query
+    // keeps the previous page (and its load-more state) consistent.
+    resetPagination()
     documents = docs
     loadedCount = docs.count
-    hasMore = docs.count >= pageSize
+    hasMore = docs.count >= pageSize && activeEngine != .redis
+    statusMessage = loadedSummary(in: selectedCollection)
     // A successful query execution counts as collection + database usage.
     let db = selectedDatabase ?? ""
     markCollectionUsed(db, selectedCollection)
@@ -466,24 +652,30 @@ import SwiftData
     guard activeEngine != .redis else { return }  // not paginated
     isLoadingMore = true
     defer { isLoadingMore = false }
+    let generation = queryGeneration
     do {
       let offset = loadedCount
+      let page: [Document]
       if let session {
-        let docs = try await findCurrentMongo(
+        page = try await findCurrentMongo(
           in: selectedCollection, session: session, skip: offset, limit: pageSize)
-        documents.append(contentsOf: docs)
       } else if case .postgresql(let pg) = alternateSession {
         let rows = try await pg.select(
           sql: try selectSQL(in: selectedCollection), limit: pageSize, offset: offset)
-        documents.append(contentsOf: rows.map { Self.document(from: $0) })
+        page = rows.map { Self.document(from: $0) }
       } else if case .sqlite(let sqlite) = alternateSession {
         let rows = try await sqlite.select(
           sql: try selectSQL(in: selectedCollection), limit: pageSize, offset: offset)
-        documents.append(contentsOf: rows.map { Self.document(from: $0) })
+        page = rows.map { Self.document(from: $0) }
+      } else {
+        return
       }
-      loadedCount += documents.count - offset
-      hasMore = documents.count - offset >= pageSize
-      statusMessage = "\(documents.count) row(s) loaded"
+      // A new query replaced the list meanwhile: this page belongs to the old one.
+      guard generation == queryGeneration, loadedCount == offset else { return }
+      documents.append(contentsOf: page)
+      loadedCount += page.count
+      hasMore = page.count >= pageSize
+      statusMessage = loadedSummary(in: selectedCollection)
     } catch { statusMessage = error.localizedDescription }
   }
 
@@ -500,7 +692,7 @@ import SwiftData
       let rows = try await sqlite.select(sql: try selectSQL(in: collection), limit: pageSize)
       return rows.map { Self.document(from: $0) }
     } else if case .redis(let redis) = alternateSession {
-      let entries = try await redis.entries(matching: currentQuery.filter ?? "")
+      let entries = try await redis.entries(pattern: currentQuery.filter)
       redisEntries = entries
       return entries.map { Self.document(from: $0) }
     }
@@ -571,10 +763,18 @@ import SwiftData
       skip: skip)
   }
 
-  /// Re-runs the current query so the list reflects a mutation.
+  /// Re-runs the current query from the first page so the list (and its
+  /// pagination state) reflects a mutation.
   private func refreshAfterMutation(_ session: MongoConnection, _ collection: String) async {
-    if let docs = try? await findCurrentMongo(in: collection, session: session, limit: pageSize)
-    { documents = docs }
+    queryGeneration &+= 1
+    let generation = queryGeneration
+    guard let docs = try? await findCurrentMongo(in: collection, session: session, limit: pageSize)
+    else { return }
+    guard generation == queryGeneration else { return }
+    resetPagination()
+    documents = docs
+    loadedCount = docs.count
+    hasMore = docs.count >= pageSize
   }
 
   /// Resets pagination cursor state (new collection or new query).
@@ -600,6 +800,9 @@ import SwiftData
   /// Redis key detail as a display document (type/value/ttl rows).
   static func document(from entry: RedisKeyEntry) -> Document {
     var doc = Document()
+    // The key name comes first: a filtered key list without it was a column
+    // of anonymous values.
+    doc["key"] = .string(entry.key)
     doc["type"] = .string(entry.typeName)
     doc["value"] = .string(entry.displayValue)
     doc["ttl"] = .int32(Int32(clamping: entry.ttl))
@@ -678,7 +881,7 @@ import SwiftData
 
 /// The active query driving the document list: raw filter/sort/projection
 /// text, parsed with `QueryParser` (JSON, JS-style, or bare `key: value`).
-struct QuerySpec {
+struct QuerySpec: Equatable {
   var filter: String?
   var sort: String?
   var projection: String?

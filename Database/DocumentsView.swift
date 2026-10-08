@@ -18,7 +18,9 @@ struct DocumentsView: View {
   @AppStorage("documentDisplayFormat") private var storedDisplayFormat = DisplayFormat.list.rawValue
 
   @State private var showDeleteSheet = false
-  @State private var errorMessage: String?
+  /// Failure of a user action that isn't a query (saving an edit, Update):
+  /// shown in the query bar. Query failures live in `model.queryError`.
+  @State private var actionError: String?
   @State private var editor: ValueEditorState?
   /// Field keys currently expanded (applies to every entry with that key).
   @State private var expandedKeys: Set<String> = []
@@ -29,8 +31,13 @@ struct DocumentsView: View {
   @State private var projectText = ""
   @State private var updateText = ""
   @State private var isRunning = false
+  /// Queries in flight (several can overlap while typing); drives the spinner.
+  @State private var runningQueries = 0
   @State private var editMode = false
   @State private var debounceTask: Task<Void, Never>?
+  @State private var quickSearchTask: Task<Void, Never>?
+  /// An Update awaiting confirmation, with the number of documents it hits.
+  @State private var pendingUpdate: PendingUpdate?
 
   /// Filter-builder chips; their rendered text is the source of truth for the
   /// Filter field while they exist.
@@ -45,7 +52,9 @@ struct DocumentsView: View {
   @State private var searchError: String?
   /// "Search all text fields" box.
   @State private var quickSearch = ""
-  /// Redis key-filter match mode.
+  /// Redis key filter: the typed text and its match mode. The Filter text is
+  /// DERIVED from these (`KeyGlob.query`), so the mode really filters.
+  @State private var redisKeyText = ""
   @State private var redisMatch: KeyGlob.Match = .contains
   /// Fields/kinds/sample values of the loaded rows, rebuilt only when the
   /// documents CHANGE. Deriving it per body evaluation re-walked every loaded
@@ -60,12 +69,29 @@ struct DocumentsView: View {
           ContentUnavailableView(
             "No Collection Selected", systemImage: "shippingbox",
             description: Text("Select a collection in the sidebar."))
+        } else if model.documents.isEmpty && model.isLoadingDocuments {
+          ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if model.documents.isEmpty, let error = model.queryError {
+          ContentUnavailableView {
+            Label("Couldn't Load \(model.itemNoun.plural.capitalized)", systemImage: "exclamationmark.triangle")
+          } description: {
+            Text(error).textSelection(.enabled)
+          } actions: {
+            if !model.currentQuery.isEmpty { Button("Clear Query") { clearQuery() } }
+            Button("Retry") { refresh() }
+          }
         } else if model.documents.isEmpty {
-          ContentUnavailableView(
-            emptyTitle, systemImage: "doc.text.magnifyingglass",
-            description: Text(emptySummary))
+          ContentUnavailableView {
+            Label(emptyTitle, systemImage: "doc.text.magnifyingglass")
+          } description: {
+            Text(emptySummary)
+          } actions: {
+            if !model.currentQuery.isEmpty { Button("Clear Query") { clearQuery() } }
+          }
         } else {
-          contentForFormat
+          // Results of a query that has since failed stay visible but dimmed;
+          // the query bar says they are stale.
+          contentForFormat.opacity(model.queryError == nil ? 1 : 0.5)
         }
       }
     }.frame(maxHeight: .infinity).safeAreaBar(edge: .top) {
@@ -74,31 +100,32 @@ struct DocumentsView: View {
       }
     }.toolbar {
       ToolbarItemGroup {
-        if model.session != nil && model.selectedCollection == nil {
-          if editMode {
-            Button {
-              showDeleteSheet = true
-            } label: {
-              Label("Delete…", systemImage: "trash")
+        if model.selectedCollection != nil && model.isSessionActive {
+          // Writes (Edit/Update/Delete) only exist for MongoDB; SQL rows and
+          // Redis keys are read-only, so the controls are not offered there.
+          if model.canEditDocuments {
+            if editMode {
+              Button {
+                showDeleteSheet = true
+              } label: {
+                Label("Delete…", systemImage: "trash")
+              }.keyboardShortcut(.delete, modifiers: .command)
+                .help("Delete the documents matching the filter (⌘⌫)")
             }
-          }
-          
-          Button {
-            editMode.toggle()
-          } label: {
-            Label(editMode ? "Done" : "Edit", systemImage: editMode ? "checkmark.square" : "pencil")
+            Button {
+              editMode.toggle()
+              if !editMode { editor = nil }
+            } label: {
+              Label(editMode ? "Done" : "Edit", systemImage: editMode ? "checkmark" : "pencil")
+            }.help(editMode ? "Leave edit mode" : "Edit values, add fields, update or delete documents")
           }
 
           Button {
             refresh()
           } label: {
             Label("Refresh", systemImage: "arrow.clockwise")
-          }
-        }
-      }
-    }.toolbar {
-      ToolbarItemGroup {
-        if model.selectedCollection != nil && model.isSessionActive {
+          }.keyboardShortcut("r", modifiers: .command).help("Re-run the query (⌘R)")
+
           Picker("Display Format", selection: displayFormatBinding) {
             ForEach(DisplayFormat.allCases) { format in
               Image(systemName: format.symbol).accessibilityLabel(format.name).tag(format)
@@ -111,22 +138,81 @@ struct DocumentsView: View {
     }
     .navigationSubtitle(model.statusMessage).sheet(
       isPresented: $showDeleteSheet
-    ) { DeleteSheet(filter: filterText, errorMessage: $errorMessage) }.sheet(item: $searchTarget) {
+    ) { DeleteSheet(filter: filterText) }.sheet(item: $searchTarget) {
       target in
       ColumnSearchSheet(
         field: target.field,
+        dialect: FilterEngine.dialect(for: model.activeEngine) ?? .mongo,
         fragment: $searchFragment,
         errorMessage: $searchError,
         onCancel: { searchTarget = nil },
         onApply: { applySearchFragment(for: target.field) })
+    }.alert(
+      pendingUpdate.map { "Update \($0.count) \($0.count == 1 ? "document" : "documents")?" } ?? "",
+      isPresented: Binding(get: { pendingUpdate != nil }, set: { if !$0 { pendingUpdate = nil } }),
+      presenting: pendingUpdate
+    ) { update in
+      Button("Update", role: .destructive) { runUpdate(update) }
+      Button("Cancel", role: .cancel) {}
+    } message: { update in
+      Text(
+        update.filter.isEmpty
+          ? "No filter is set: this updates EVERY document in the collection."
+          : "Applies the update to every document matching \(update.filter).")
     }.onChange(of: model.documents) { _, documents in
       catalog = FieldCatalog.fields(in: documents)
+    }.onChange(of: collectionKey) { _, _ in
+      resetQueryBar()
+    }.onChange(of: filterText) { _, _ in debounceApply() }
+    .onChange(of: sortText) { _, _ in debounceApply() }
+    .onChange(of: projectText) { _, _ in debounceApply() }
+    .onChange(of: filterRules) { _, rules in
+      // Removing the "search all text fields" chip (its ×, Clear) also clears
+      // the box, so the two never disagree.
+      if !rules.contains(where: { $0.field == Self.quickSearchMarker }) && !quickSearch.isEmpty {
+        quickSearchTask?.cancel()
+        quickSearch = ""
+      }
     }.onAppear {
       filterText = model.currentQuery.filter ?? ""
       sortText = model.currentQuery.sort ?? ""
       projectText = model.currentQuery.projection ?? ""
       catalog = FieldCatalog.fields(in: model.documents)
     }
+  }
+
+  /// Identity of the selected collection; the query bar resets when it changes.
+  private var collectionKey: String {
+    "\(model.selectedDatabase ?? "")\u{1F}\(model.selectedCollection ?? "")"
+  }
+
+  /// A new collection starts with an empty query bar (the model resets
+  /// `currentQuery` on the same change, so no extra query is triggered).
+  private func resetQueryBar() {
+    debounceTask?.cancel()
+    quickSearchTask?.cancel()
+    filterText = ""
+    sortText = ""
+    projectText = ""
+    updateText = ""
+    filterRules = []
+    quickSearch = ""
+    redisKeyText = ""
+    editor = nil
+    expandedKeys = []
+    actionError = nil
+  }
+
+  /// Clears filter/sort/projection (and their chips) and re-runs the query.
+  private func clearQuery() {
+    quickSearchTask?.cancel()
+    filterRules = []
+    quickSearch = ""
+    redisKeyText = ""
+    filterText = ""
+    sortText = ""
+    projectText = ""
+    apply()
   }
 
   // MARK: - Display format
@@ -162,17 +248,23 @@ struct DocumentsView: View {
   // MARK: - Query bar
 
   private var queryBar: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      // Redis has no server-side sort/projection: only a key-glob Filter is
-      // offered. MongoDB keeps all three; SQL accepts the same JSON query
-      // dialect (auto-detected) or raw SQL fragments — Filter→WHERE,
+    VStack(alignment: .leading, spacing: 6) {
+      // Redis has no server-side sort/projection: only the key filter is
+      // offered (text or glob → SCAN MATCH). MongoDB and SQL share the JSON
+      // query dialect; SQL also accepts raw fragments — Filter→WHERE,
       // Sort→ORDER BY, JSON Project→column list.
       if model.activeEngine == .redis {
         RedisKeyFilterView(
           match: $redisMatch,
-          text: $filterText,
-          onMatchChange: { apply() },
-          onTextChange: { debounceApply() })
+          text: $redisKeyText,
+          onMatchChange: {
+            filterText = KeyGlob.query(redisKeyText, match: redisMatch) ?? ""
+            apply()
+          },
+          onTextChange: {
+            // The derived Filter text change is debounced by its onChange.
+            filterText = KeyGlob.query(redisKeyText, match: redisMatch) ?? ""
+          })
       } else if let dialect = FilterEngine.dialect(for: model.activeEngine) {
         FilterBuilderView(
           fields: catalog,
@@ -190,42 +282,86 @@ struct DocumentsView: View {
           ).font(.caption).foregroundStyle(.orange)
         }
         if !searchableFields.isEmpty { quickSearchRow }
-      }
-      TextField(filterPlaceholder, text: $filterText, axis: .vertical)
-        .onChange(of: filterText) { _, _ in debounceApply() }
-      if model.activeEngine != .redis {
-        TextField("Sort", text: $sortText, axis: .vertical)
-          .onChange(of: sortText) { _, _ in debounceApply() }
-        TextField("Project", text: $projectText, axis: .vertical)
-          .onChange(of: projectText) { _, _ in debounceApply() }
+        queryField("Filter", text: $filterText, prompt: filterPrompt) {
+          if runningQueries > 0 { ProgressView().controlSize(.small) }
+        }
+        HStack(alignment: .center, spacing: 12) {
+          queryField("Sort", text: $sortText, prompt: sortPrompt)
+          queryField("Project", text: $projectText, prompt: projectPrompt)
+        }
         if !allFields.isEmpty { fieldsRow }
       }
-      if editMode {
-        TextField("Update", text: $updateText, axis: .vertical)
+      if editMode && model.canEditDocuments { updateRow }
+      if let error = model.queryError, !model.documents.isEmpty {
+        Label(
+          "Query failed: \(error) — showing the previous results", systemImage: "exclamationmark.triangle"
+        ).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
       }
-      if let errorMessage {
-        Text(errorMessage).foregroundStyle(.red)
+      if let actionError {
+        HStack(alignment: .firstTextBaseline) {
+          Label(actionError, systemImage: "exclamationmark.triangle").font(.callout)
+            .foregroundStyle(.red).textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+          Button("Dismiss", systemImage: "xmark.circle") { self.actionError = nil }
+            .buttonStyle(.plain).labelStyle(.iconOnly).foregroundStyle(.secondary)
+        }
       }
     }.padding(8).background(.bar)
       .autocorrectionDisabled()
-      .textFieldStyle(.roundedBorder).onSubmit { apply() }
+      .textFieldStyle(.roundedBorder)
+  }
+
+  /// One labelled query field. The visible caption keeps Filter/Sort/Project
+  /// telling apart once they contain text (a placeholder alone disappears).
+  private func queryField(
+    _ label: String, text: Binding<String>, prompt: String,
+    @ViewBuilder trailing: () -> some View = { EmptyView() }
+  ) -> some View {
+    // Centered, not baseline-aligned: an empty iOS field (placeholder only)
+    // reports no text baseline, which pushed the caption above the field.
+    HStack(alignment: .center, spacing: 6) {
+      Text(label).font(.caption).foregroundStyle(.secondary)
+        .frame(width: Self.queryLabelWidth, alignment: .trailing)
+      TextField(label, text: text, prompt: Text(prompt), axis: .vertical)
+        .onSubmit { apply() }
+      trailing()
+    }
+  }
+
+  private static let queryLabelWidth: CGFloat = 44
+
+  /// Edit-mode Update row: runs `updateMany(filter, update)` after a
+  /// confirmation that states how many documents it will change.
+  private var updateRow: some View {
+    HStack(alignment: .center, spacing: 6) {
+      Text("Update").font(.caption).foregroundStyle(.secondary)
+        .frame(width: Self.queryLabelWidth, alignment: .trailing)
+      TextField(
+        "Update", text: $updateText, prompt: Text(#"{ "$set": { "status": "done" } }"#),
+        axis: .vertical
+      ).onSubmit { requestUpdate() }
+      Button("Update…") { requestUpdate() }
+        .disabled(isRunning || updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .help("Update every document matching the Filter (asks for confirmation)")
+    }
   }
 
   /// "Search all text fields" box: writes ONE `$or` chip over every string field
   /// of the loaded rows, so a search is still a chip that can be removed again.
   private var quickSearchRow: some View {
     HStack(spacing: 6) {
+      Spacer().frame(width: Self.queryLabelWidth)
       TextField("Search all text fields", text: $quickSearch)
         .textFieldStyle(.roundedBorder).frame(maxWidth: 260)
         .onChange(of: quickSearch) { _, _ in debounceQuickSearch() }
         .onSubmit { applyQuickSearch() }
       if !quickSearch.isEmpty {
         Button("Search") { applyQuickSearch() }
-        Button("Cancel", systemImage: "xmark.circle") {
+        Button("Clear Search", systemImage: "xmark.circle") {
           quickSearch = ""
-          filterRules.removeAll { $0.field == Self.quickSearchMarker }
-          applyRules()
-        }.buttonStyle(.plain).labelStyle(.iconOnly)
+          applyQuickSearch()
+        }.buttonStyle(.plain).labelStyle(.iconOnly).help("Clear the text search")
       }
       Spacer(minLength: 0)
     }
@@ -235,6 +371,7 @@ struct DocumentsView: View {
   /// `handle`), so it can un-hide a column whose header is already gone.
   private var fieldsRow: some View {
     HStack(spacing: 6) {
+      Spacer().frame(width: Self.queryLabelWidth)
       Menu {
         ForEach(allFields, id: \.self) { field in
           Button {
@@ -255,33 +392,35 @@ struct DocumentsView: View {
     }
   }
 
-  /// The Filter field's placeholder differs per engine: MongoDB and SQL take
-  /// JSON query syntax ({age: {$gt:30}}); SQL also accepts raw WHERE bodies,
-  /// Redis a key glob.
-  private var filterPlaceholder: String {
+  /// Example syntax per engine: MongoDB and SQL take the JSON query dialect;
+  /// SQL also accepts raw WHERE / ORDER BY fragments.
+  private var filterPrompt: String {
     switch model.activeEngine {
-    case .redis: "Filter (key glob)"
-    case .postgresql, .sqlite: "Filter (JSON or WHERE…)"
-    case .mongodb, nil: "Filter"
+    case .postgresql, .sqlite: "{ age: { $gt: 30 } }  or  age > 30"
+    case .mongodb, .redis, nil: "{ age: { $gt: 30 } }"
     }
   }
 
-  /// Title/description of the empty state, which differs for Redis (keys vs
-  /// documents) and when the query bar is actively filtering.
-  private var emptyTitle: String {
+  private var sortPrompt: String {
     switch model.activeEngine {
-    case .redis: "No Keys"
-    case .postgresql, .sqlite: "No Rows"
-    case .mongodb, nil: "No Documents"
+    case .postgresql, .sqlite: "{ age: -1 }  or  age DESC"
+    case .mongodb, .redis, nil: "{ age: -1 }"
     }
   }
+
+  private var projectPrompt: String { "{ name: 1, _id: 0 }" }
+
+  /// Title/description of the empty state: "nothing matches" only when a
+  /// query is actually restricting the results.
+  private var emptyTitle: String { "No \(model.itemNoun.plural.capitalized)" }
 
   private var emptySummary: String {
-    switch model.activeEngine {
-    case .redis: "No keys match. Clear or edit the filter."
-    case .postgresql, .sqlite: "No rows match. Clear or edit the filter."
-    case .mongodb, nil: "No documents match. Clear or edit the filter."
+    let noun = model.itemNoun.plural
+    if model.currentQuery.isEmpty {
+      return model.activeEngine == .redis
+        ? "This database has no keys." : "This collection has no \(noun)."
     }
+    return "No \(noun) match the current query."
   }
 
   // MARK: - Document list
@@ -303,7 +442,8 @@ struct DocumentsView: View {
               for: section.document, docIndex: section.index, expandedKeys: expandedKeys)
           ) { row in
             KeyValueRow(
-              row: row, editor: editor, expandedKeys: expandedKeys, onToggle: toggleExpansion,
+              row: row, editor: editor, expandedKeys: expandedKeys,
+              isEditable: editMode && model.canEditDocuments, onToggle: toggleExpansion,
               onStartEdit: { startEditing(row) }, onCommit: commitEditor,
               onCancel: { editor = nil },
               keyMenuState: KeyMenuState(
@@ -312,9 +452,16 @@ struct DocumentsView: View {
               onColumnAction: handle
             )
           }
-          if editMode {
+          if editMode && model.canEditDocuments {
             AddFieldRow(onAdd: { key, value in
-              model.addField(to: section.index, key: key, value: value)
+              Task {
+                do {
+                  try await model.addField(to: section.index, key: key, value: value)
+                  actionError = nil
+                } catch {
+                  actionError = "Couldn't add “\(key)”: \(error.localizedDescription)"
+                }
+              }
             }).padding(.leading, 16).padding(.vertical, 2)
           }
         } header: {
@@ -325,23 +472,8 @@ struct DocumentsView: View {
       // "Load more" sentinel: appears at the bottom while more rows exist.
       // Its `.onAppear` fires when the user scrolls to the bottom, loading the
       // next page; a ProgressView shows while a fetch is in flight.
-      if model.hasMore && model.activeEngine != .redis {
-        HStack(spacing: 8) {
-          if model.isLoadingMore {
-            ProgressView().controlSize(.small)
-            Text("Loading…").font(.caption).foregroundStyle(.secondary)
-          } else {
-            Text(scrollHint).font(.caption).foregroundStyle(.secondary)
-          }
-        }.frame(maxWidth: .infinity).padding(.vertical, 8)
-          .onAppear { Task { await model.loadMoreDocuments() } }
-      }
+      LoadMoreFooter()
     }.listStyle(.inset)
-  }
-
-  /// Hint shown at the scroll-bottom sentinel before the next page arrives.
-  private var scrollHint: String {
-    model.activeEngine == .redis ? "" : "Scroll down to load more"
   }
 
   private func documentHeader(for doc: BSONDocument, index: Int) -> String {
@@ -358,40 +490,78 @@ struct DocumentsView: View {
   }
 
   private func startEditing(_ row: FieldRow) {
+    guard editMode && model.canEditDocuments else { return }
     commitEditor()  // commit any in-flight edit before switching targets
     guard !row.bson.isContainer else { return }  // containers expand, not edit
     editor = ValueEditorState(docIndex: row.docIndex, path: row.path, bson: row.bson)
   }
 
+  /// Saves the edited value to the server. The editor closes right away; on
+  /// failure the row keeps its server value and the error is shown.
   private func commitEditor() {
     guard let editor, let value = editor.committedValue() else { return }  // keep open on parse failure
-    model.updateDocument(editor.docIndex, at: editor.path, to: value)
     self.editor = nil
+    Task {
+      do {
+        try await model.updateDocument(editor.docIndex, at: editor.path, to: value)
+        actionError = nil
+      } catch {
+        actionError = "Couldn't save: \(error.localizedDescription)"
+      }
+    }
   }
-  
-  private func updateMany() {
+
+  // MARK: - Update (edit mode)
+
+  /// Validates the Update text and counts the matching documents, then asks
+  /// for confirmation (see the `.alert` on `pendingUpdate`).
+  private func requestUpdate() {
     guard !isRunning else { return }
+    let filter = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
+    let update = updateText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !update.isEmpty else { return }
     isRunning = true
-    let f = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
-    let u = updateText.trimmingCharacters(in: .whitespacesAndNewlines)
     Task {
       defer { isRunning = false }
       do {
-        _ = try await model.runUpdate(filter: f, update: u)
+        try model.validateUpdate(update)
+        let count = try await model.countMatching(filter: filter)
+        actionError = nil
+        pendingUpdate = PendingUpdate(filter: filter, update: update, count: count)
       } catch {
-        errorMessage = error.localizedDescription
+        actionError = "Update not run: \(error.localizedDescription)"
+      }
+    }
+  }
+
+  private func runUpdate(_ pending: PendingUpdate) {
+    isRunning = true
+    Task {
+      defer { isRunning = false }
+      do {
+        _ = try await model.runUpdate(filter: pending.filter, update: pending.update)
+        actionError = nil
+      } catch {
+        actionError = "Update failed: \(error.localizedDescription)"
       }
     }
   }
 
   // MARK: - Query execution
 
+  /// The query the bar currently describes.
+  private var pendingSpec: QuerySpec {
+    QuerySpec(filter: trimmed(filterText), sort: trimmed(sortText), projection: trimmed(projectText))
+  }
+
   private func apply() {
     debounceTask?.cancel()
-    model.currentQuery = QuerySpec(
-      filter: trimmed(filterText), sort: trimmed(sortText), projection: trimmed(projectText))
+    model.currentQuery = pendingSpec
+    runningQueries += 1
     Task {
-      do { _ = try await model.applyQuery() } catch { errorMessage = error.localizedDescription }
+      defer { runningQueries -= 1 }
+      // Failures land in `model.queryError`, which the pane renders.
+      _ = try? await model.applyQuery()
     }
   }
 
@@ -423,8 +593,12 @@ struct DocumentsView: View {
   private static let quickSearchMarker = "$or"
 
   /// Writes/replaces the "search all text fields" chip and applies it.
+  /// Emptying the box removes the chip again.
   private func applyQuickSearch() {
+    quickSearchTask?.cancel()
     let text = quickSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+    let hadChip = filterRules.contains { $0.field == Self.quickSearchMarker }
+    guard !text.isEmpty || hadChip else { return }
     filterRules.removeAll { $0.field == Self.quickSearchMarker }
     guard !text.isEmpty else {
       applyRules()
@@ -528,11 +702,15 @@ struct DocumentsView: View {
     applyRules()
   }
 
+  /// Re-runs the query once typing pauses. Text written programmatically
+  /// (chips, column menus, collection reset) has usually been applied already;
+  /// comparing with `model.currentQuery` skips that duplicate run.
   private func debounceApply() {
     debounceTask?.cancel()
+    guard pendingSpec != model.currentQuery else { return }
     debounceTask = Task {
       try? await Task.sleep(for: Self.applyDelay)
-      guard !Task.isCancelled else { return }
+      guard !Task.isCancelled, pendingSpec != model.currentQuery else { return }
       apply()
     }
   }
@@ -543,11 +721,12 @@ struct DocumentsView: View {
   private static let applyDelay: Duration = .seconds(1)
 
   /// Debounced "search all text fields": typing re-runs the search one second
-  /// after the last keystroke; the Search button applies immediately.
+  /// after the last keystroke (emptying the box removes the chip); the Search
+  /// button applies immediately. Has its own task so it never cancels a
+  /// pending Filter/Sort/Project apply.
   private func debounceQuickSearch() {
-    guard !quickSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-    debounceTask?.cancel()
-    debounceTask = Task {
+    quickSearchTask?.cancel()
+    quickSearchTask = Task {
       try? await Task.sleep(for: Self.applyDelay)
       guard !Task.isCancelled else { return }
       applyQuickSearch()
@@ -583,37 +762,61 @@ private struct DocumentSection: Identifiable {
   }
 }
 
-/// Delete sheet: previews the entries the current filter would delete, then
-/// requires explicit confirmation before deleting.
+/// An Update the user still has to confirm.
+private struct PendingUpdate {
+  let filter: String
+  let update: String
+  let count: Int
+}
+
+/// Delete sheet: counts every entry the current filter matches, previews the
+/// first few hundred, then requires explicit confirmation before deleting.
 private struct DeleteSheet: View {
   @Environment(DatabaseModel.self) private var model
   @Environment(\.dismiss) private var dismiss
   let filter: String
-  @Binding var errorMessage: String?
 
   @State private var preview: [BSONDocument]?
+  /// Exact number of matches — what deleteMany will really remove.
+  @State private var total: Int?
   @State private var previewError: String?
   @State private var isDeleting = false
   @State private var confirmDelete = false
 
+  private static let previewLimit = 500
+
   private var trimmedFilter: String { filter.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+  private var totalText: String {
+    guard let total else { return "" }
+    return "\(total) \(total == 1 ? "document" : "documents")"
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text("Delete Documents").font(.headline)
-      Text(
-        trimmedFilter.isEmpty ? "Filter: (none — ALL documents match)" : "Filter: \(trimmedFilter)"
-      ).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+      if trimmedFilter.isEmpty {
+        Label(
+          "No filter is set — EVERY document in \(model.selectedCollection ?? "the collection") matches.",
+          systemImage: "exclamationmark.triangle.fill"
+        ).font(.callout).foregroundStyle(.red)
+      } else {
+        Text("Filter: \(trimmedFilter)").font(.caption).foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      }
 
       Group {
         if let error = previewError {
           Text(error).font(.caption).foregroundStyle(.red)
-        } else if let preview {
-          if preview.isEmpty {
+        } else if let preview, let total {
+          if total == 0 {
             Text("No documents match this filter.").font(.caption).foregroundStyle(.secondary)
           } else {
-            Text("\(preview.count) document(s) will be deleted:").font(.caption).foregroundStyle(
-              .secondary)
+            Text(
+              total > preview.count
+                ? "\(totalText) will be deleted. Showing the first \(preview.count):"
+                : "\(totalText) will be deleted:"
+            ).font(.caption).foregroundStyle(.secondary)
             ScrollView {
               LazyVStack(alignment: .leading, spacing: 2) {
                 ForEach(preview.indices, id: \.self) { i in
@@ -631,11 +834,11 @@ private struct DeleteSheet: View {
       HStack {
         Spacer()
         Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-        Button("Delete \(preview?.count ?? 0)", role: .destructive) { confirmDelete = true }
-          .disabled(isDeleting || preview == nil || preview!.isEmpty)
+        Button(total.map { "Delete \($0)" } ?? "Delete", role: .destructive) { confirmDelete = true }
+          .disabled(isDeleting || total == nil || total == 0)
       }
     }.padding().frame(width: 540).task { await loadPreview() }.alert(
-      "Delete \(preview?.count ?? 0) document(s)?", isPresented: $confirmDelete
+      "Delete \(totalText)?", isPresented: $confirmDelete
     ) {
       Button("Delete", role: .destructive) { Task { await delete() } }
       Button("Cancel", role: .cancel) {}
@@ -645,7 +848,10 @@ private struct DeleteSheet: View {
   }
 
   private func loadPreview() async {
-    do { preview = try await model.previewDelete(filter: trimmedFilter, limit: 500) } catch {
+    do {
+      total = try await model.countMatching(filter: trimmedFilter)
+      preview = try await model.previewDelete(filter: trimmedFilter, limit: Self.previewLimit)
+    } catch {
       previewError = error.localizedDescription
     }
   }
