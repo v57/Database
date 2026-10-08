@@ -79,8 +79,10 @@ struct TableDocumentsView: View {
   let sortDirections: [String: SortText.Direction]
   /// Hidden columns, DERIVED from the Projection text by the owner.
   let hiddenFields: Set<String>
-  /// Every column gesture funnels through this one callback.
-  let onColumnAction: (ColumnAction) -> Void
+  /// Every column gesture funnels through this one callback. nil when the
+  /// rows aren't a query the column UI can rewrite (aggregation output): the
+  /// headers are then plain titles.
+  let onColumnAction: ((ColumnAction) -> Void)?
 
   /// Widths the user dragged, by column name.
   @State private var columnWidths: [String: CGFloat] = [:]
@@ -132,17 +134,21 @@ struct TableDocumentsView: View {
       ForEach(cols) { column in
         columnDivider
         HStack(spacing: 2) {
-          // The whole title is one click target: clicking cycles this column's
-          // sort. The chevron menu keeps the other gestures (search/hide/…).
-          Button {
-            onColumnAction(.cycleSort(column.name))
-          } label: {
-            HStack(spacing: 3) {
-              Text(column.name).font(.caption).bold().lineLimit(1).truncationMode(.tail)
-              sortArrow(column.name)
-            }
-          }.buttonStyle(.plain).help("Sort by \(column.name) — click to cycle asc/desc/off")
-          columnMenu(column.name)
+          if let onColumnAction {
+            // The whole title is one click target: clicking cycles this column's
+            // sort. The chevron menu keeps the other gestures (search/hide/…).
+            Button {
+              onColumnAction(.cycleSort(column.name))
+            } label: {
+              HStack(spacing: 3) {
+                Text(column.name).font(.caption).bold().lineLimit(1).truncationMode(.tail)
+                sortArrow(column.name)
+              }
+            }.buttonStyle(.plain).help("Sort by \(column.name) — click to cycle asc/desc/off")
+            columnMenu(column.name, onColumnAction: onColumnAction)
+          } else {
+            Text(column.name).font(.caption).bold().lineLimit(1).truncationMode(.tail)
+          }
         }.padding(.horizontal, 6).frame(width: width(of: column.name), alignment: .leading)
           .overlay(alignment: .trailing) { resizeHandle(column.name) }
       }
@@ -184,7 +190,9 @@ struct TableDocumentsView: View {
 
   /// Per-column menu. Every item reports a ColumnAction; DocumentsView turns it
   /// into Sort/Project/Filter text. Values come from the loaded rows (page-local).
-  private func columnMenu(_ name: String) -> some View {
+  private func columnMenu(_ name: String, onColumnAction: @escaping (ColumnAction) -> Void)
+    -> some View
+  {
     let info = fields.first { $0.name == name }
     let direction = sortDirections[name]
     return Menu {

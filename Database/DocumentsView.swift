@@ -70,6 +70,13 @@ struct DocumentsView: View {
   /// DERIVED from these (`KeyGlob.query`), so the mode really filters.
   @State private var redisKeyText = ""
   @State private var redisMatch: KeyGlob.Match = .contains
+  /// Find (Filter/Sort/Project bar) or Aggregate (pipeline builder). Changed
+  /// only through `switchMode`, which re-runs the matching query.
+  @State private var queryMode = QueryMode.find
+  /// The aggregation builder's stages, and the stages that produced the shown
+  /// results (for the Run button's "edited" state).
+  @State private var pipelineStages: [PipelineStage] = []
+  @State private var appliedStages: [PipelineStage] = []
   /// Fields/kinds/sample values of the loaded rows, rebuilt only when the
   /// documents CHANGE. Deriving it per body evaluation re-walked every loaded
   /// row (chip bar, Fields menu, searchable fields, table headers all read it)
@@ -100,7 +107,7 @@ struct DocumentsView: View {
           } description: {
             Text(error).textSelection(.enabled)
           } actions: {
-            if !model.currentQuery.isEmpty { Button("Clear Query") { clearQuery() } }
+            if isQueryActive { Button(isAggregating ? "Clear Pipeline" : "Clear Query") { clearQuery() } }
             Button("Retry") { refresh() }
           }
         } else if model.documents.isEmpty {
@@ -109,7 +116,7 @@ struct DocumentsView: View {
           } description: {
             Text(emptySummary)
           } actions: {
-            if !model.currentQuery.isEmpty { Button("Clear Query") { clearQuery() } }
+            if isQueryActive { Button(isAggregating ? "Clear Pipeline" : "Clear Query") { clearQuery() } }
           }
         } else {
           // Results of a query that has since failed stay visible but dimmed;
@@ -126,7 +133,7 @@ struct DocumentsView: View {
         if model.selectedCollection != nil && model.isSessionActive {
           // Writes (Edit/Update/Delete) only exist for MongoDB; SQL rows and
           // Redis keys are read-only, so the controls are not offered there.
-          if model.canEditDocuments {
+          if model.canEditDocuments && !isAggregating {
             if editMode {
               Button {
                 showDeleteSheet = true
@@ -153,6 +160,13 @@ struct DocumentsView: View {
             // Edit + Refresh + a three-segment picker overflowed the iPhone
             // toolbar; one menu button shows the current format instead.
             Menu {
+              if model.canAggregate {
+                Picker("Query Mode", selection: queryModeBinding) {
+                  ForEach(QueryMode.allCases) { mode in
+                    Label(mode.name, systemImage: mode.symbol).tag(mode)
+                  }
+                }
+              }
               Picker("Display Format", selection: displayFormatBinding) {
                 ForEach(DisplayFormat.allCases) { format in
                   Label(format.name, systemImage: format.symbol).tag(format)
@@ -162,6 +176,15 @@ struct DocumentsView: View {
               Label("Display Format: \(displayFormat.name)", systemImage: displayFormat.symbol)
             }
           } else {
+            if model.canAggregate {
+              Picker("Query Mode", selection: queryModeBinding) {
+                ForEach(QueryMode.allCases) { mode in
+                  Label(mode.name, systemImage: mode.symbol).tag(mode)
+                }
+              }
+              .pickerStyle(.segmented)
+              .help("Find with Filter/Sort/Project, or build an aggregation pipeline")
+            }
             Picker("Display Format", selection: displayFormatBinding) {
               ForEach(DisplayFormat.allCases) { format in
                 Image(systemName: format.symbol).accessibilityLabel(format.name).tag(format)
@@ -239,6 +262,15 @@ struct DocumentsView: View {
       filterText = model.currentQuery.filter ?? ""
       sortText = model.currentQuery.sort ?? ""
       projectText = model.currentQuery.projection ?? ""
+      // A pane re-created while a pipeline drives the list (compact
+      // navigation) shows that pipeline again rather than a stale Find bar.
+      if let pipeline = model.currentPipeline {
+        queryMode = .aggregate
+        pipelineStages = pipeline.compactMap { stage in
+          stage.keys.first.flatMap { name in stage[name].map { PipelineStage(name: name, value: $0) } }
+        }
+        appliedStages = pipelineStages
+      }
       catalog = FieldCatalog.fields(in: model.documents)
     }
   }
@@ -263,6 +295,8 @@ struct DocumentsView: View {
     quickSearch = ""
     quickSearchFields = []
     redisKeyText = ""
+    pipelineStages = []
+    appliedStages = []
     editor = nil
     expandedKeys = []
     actionError = nil
@@ -271,8 +305,14 @@ struct DocumentsView: View {
     catalog = FieldCatalog.fields(in: model.documents)
   }
 
-  /// Clears filter/sort/projection (and their chips) and re-runs the query.
+  /// Clears filter/sort/projection (and their chips) and re-runs the query;
+  /// in Aggregate mode, empties the pipeline instead.
   private func clearQuery() {
+    if isAggregating {
+      pipelineStages = []
+      runPipeline()
+      return
+    }
     quickSearchTask?.cancel()
     filterRules = []
     renderedRules = []
@@ -308,9 +348,9 @@ struct DocumentsView: View {
       TableDocumentsView(
         documents: model.documents,
         fields: catalog,
-        sortDirections: sortDirections,
-        hiddenFields: hiddenFields,
-        onColumnAction: handle)
+        sortDirections: isAggregating ? [:] : sortDirections,
+        hiddenFields: isAggregating ? [] : hiddenFields,
+        onColumnAction: columnActionHandler)
     case .json: JSONDocumentsView(documents: model.documents, header: documentHeader)
     }
   }
@@ -323,7 +363,14 @@ struct DocumentsView: View {
       // offered (text or glob → SCAN MATCH). MongoDB and SQL share the JSON
       // query dialect; SQL also accepts raw fragments — Filter→WHERE,
       // Sort→ORDER BY, JSON Project→column list.
-      if model.activeEngine == .redis {
+      if isAggregating {
+        AggregationBuilderView(
+          stages: $pipelineStages,
+          fields: catalog,
+          isRunning: runningQueries > 0,
+          hasUnappliedChanges: pipelineStages != appliedStages,
+          onRun: { runPipeline(throughStage: $0) })
+      } else if model.activeEngine == .redis {
         RedisKeyFilterView(
           match: $redisMatch,
           text: $redisKeyText,
@@ -578,7 +625,7 @@ struct DocumentsView: View {
               keyMenuState: KeyMenuState(
                 sortDirection: SortText.direction(of: row.queryPath ?? row.key, in: sortText),
                 isHidden: hiddenFields.contains(row.key)),
-              onColumnAction: handle
+              onColumnAction: columnActionHandler
             )
           }
           if editMode && model.canEditDocuments {
@@ -905,7 +952,67 @@ struct DocumentsView: View {
     return t.isEmpty ? nil : t
   }
 
-  private func refresh() { apply() }
+  private func refresh() {
+    if isAggregating { runPipeline() } else { apply() }
+  }
+
+  // MARK: - Aggregation
+
+  /// Column/key menus rewrite the Find bar's text, which doesn't drive
+  /// aggregation output — so they're off while aggregating.
+  private var columnActionHandler: ((ColumnAction) -> Void)? {
+    guard !isAggregating else { return nil }
+    return { handle($0) }
+  }
+
+  /// The pipeline builder replaces the Find bar (never for Redis).
+  private var isAggregating: Bool { queryMode == .aggregate && model.canAggregate }
+
+  /// Something restricts the shown results (offers "Clear" in empty states).
+  private var isQueryActive: Bool {
+    isAggregating ? !pipelineStages.isEmpty : !model.currentQuery.isEmpty
+  }
+
+  private var queryModeBinding: Binding<QueryMode> {
+    Binding(get: { queryMode }, set: { switchMode(to: $0) })
+  }
+
+  /// Switches the query surface and re-runs what it now shows, so the results
+  /// always match the visible controls. An empty pipeline starts from the Find
+  /// bar's query; going back to Find drops the pipeline.
+  private func switchMode(to mode: QueryMode) {
+    guard mode != queryMode else { return }
+    queryMode = mode
+    editMode = false
+    editor = nil
+    switch mode {
+    case .aggregate:
+      if pipelineStages.isEmpty {
+        pipelineStages = AggregationPipeline.stages(
+          filter: trimmed(filterText), sort: trimmed(sortText), projection: trimmed(projectText))
+      }
+      runPipeline()
+    case .find:
+      appliedStages = []
+      model.currentPipeline = nil
+      apply()
+    }
+  }
+
+  /// Runs the builder's pipeline — every enabled stage, or only up to
+  /// `throughStage`. A stage that doesn't parse is flagged on its card and
+  /// nothing runs; server/compile failures land in `model.queryError`.
+  private func runPipeline(throughStage: Int? = nil) {
+    debounceTask?.cancel()
+    let selected = throughStage.map { Array(pipelineStages.prefix($0 + 1)) } ?? pipelineStages
+    guard let documents = try? AggregationPipeline.documents(selected) else { return }
+    appliedStages = selected
+    runningQueries += 1
+    Task {
+      defer { runningQueries -= 1 }
+      _ = try? await model.applyPipeline(documents)
+    }
+  }
 }
 
 /// Identifiable wrapper so the "Search…" fragment box can be a sheet item.

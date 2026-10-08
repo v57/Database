@@ -48,6 +48,10 @@ import SwiftData
   var selectedDocument: Document?
   /// The active query (filter/sort/projection) driving the document list.
   var currentQuery = QuerySpec(filter: nil, sort: nil, projection: nil)
+  /// The aggregation pipeline driving the document list INSTEAD of
+  /// `currentQuery` (the pane's Aggregate mode), or nil in Find mode. SQL
+  /// engines compile it with SQLPipelineCompiler.
+  var currentPipeline: [Document]?
   /// The last load/query failure for the selected collection, shown in the
   /// documents pane; nil after the next successful load. While set,
   /// `documents` may still hold the previous query's results (the pane marks
@@ -99,8 +103,12 @@ import SwiftData
   var isSessionActive: Bool { session != nil || alternateSession != nil }
 
   /// Inline edits, Add Field, Update and Delete write back to the server only
-  /// for MongoDB; SQL rows and Redis keys are read-only in the UI.
-  var canEditDocuments: Bool { session != nil }
+  /// for MongoDB; SQL rows and Redis keys are read-only in the UI. Aggregation
+  /// output isn't the collection's documents, so it is read-only too.
+  var canEditDocuments: Bool { session != nil && currentPipeline == nil }
+
+  /// Every engine with a query language can aggregate; Redis can't.
+  var canAggregate: Bool { activeEngine != .redis && activeEngine != nil }
 
   /// What the sidebar/pane calls the things listed under a database.
   var containerNoun: (singular: String, plural: String) {
@@ -257,6 +265,7 @@ import SwiftData
     documents = []
     selectedDocument = nil
     currentQuery = QuerySpec(filter: nil, sort: nil, projection: nil)
+    currentPipeline = nil
     queryError = nil
     redisEntries = []
     loadedCount = 0
@@ -460,7 +469,10 @@ import SwiftData
     // A query typed for one collection rarely fits another (SQL: unknown
     // columns; Mongo: silently empty results), so each collection opens
     // unfiltered. The pane clears its query bar on the same change.
-    if isNewTarget { currentQuery = QuerySpec(filter: nil, sort: nil, projection: nil) }
+    if isNewTarget {
+      currentQuery = QuerySpec(filter: nil, sort: nil, projection: nil)
+      currentPipeline = nil
+    }
     // Never leave the previous collection's rows on screen under the new
     // collection's name — clear them before loading.
     if isNewTarget { documents = [] }
@@ -673,7 +685,9 @@ import SwiftData
   private func runCurrentQuery(generation: Int) async throws -> [Document] {
     guard let selectedCollection else { throw MongoDBError.notConnected }
     let docs: [Document]
-    if let session {
+    if let pipeline = currentPipeline {
+      docs = try await pipelinePage(pipeline, in: selectedCollection, skip: 0, limit: pageSize)
+    } else if let session {
       docs = try await findCurrentMongo(in: selectedCollection, session: session, limit: pageSize)
     } else if case .postgresql(let pg) = alternateSession {
       let rows = try await pg.select(sql: try selectSQL(in: selectedCollection), limit: pageSize)
@@ -724,7 +738,9 @@ import SwiftData
     do {
       let offset = loadedCount
       let page: [Document]
-      if let session {
+      if let pipeline = currentPipeline {
+        page = try await pipelinePage(pipeline, in: selectedCollection, skip: offset, limit: pageSize)
+      } else if let session {
         page = try await findCurrentMongo(
           in: selectedCollection, session: session, skip: offset, limit: pageSize)
       } else if case .postgresql(let pg) = alternateSession {
@@ -754,7 +770,9 @@ import SwiftData
   /// WITHOUT touching `documents` (the caller assigns it). Drives the initial
   /// load on collection select and the post-mutation refresh.
   private func loadFirstPage(collection: String) async throws -> [Document] {
-    if let session {
+    if let pipeline = currentPipeline {
+      return try await pipelinePage(pipeline, in: collection, skip: 0, limit: pageSize)
+    } else if let session {
       return try await findCurrentMongo(in: collection, session: session, limit: pageSize)
     } else if case .postgresql(let pg) = alternateSession {
       let rows = try await pg.select(sql: try selectSQL(in: collection), limit: pageSize)
@@ -809,8 +827,7 @@ import SwiftData
   /// identical — only the FROM-table quoting differs (schema.table splits
   /// into two quoted identifiers, not one).
   private func postgresSelectSQL(in collection: String) throws -> String {
-    let table = collection.split(separator: ".").map { Self.quotedIdentifier(String($0)) }
-      .joined(separator: ".")
+    let table = Self.postgresTable(collection)
     let query = try SQLQueryCompiler.compile(
       filter: currentQuery.filter, sort: currentQuery.sort, projection: currentQuery.projection)
     var sql = "SELECT \(query.columns) FROM \(table)"
@@ -819,7 +836,75 @@ import SwiftData
     return sql
   }
 
+  /// `schema.table` as two quoted identifiers (PostgreSQL's FROM target).
+  private static func postgresTable(_ collection: String) -> String {
+    collection.split(separator: ".").map { quotedIdentifier(String($0)) }.joined(separator: ".")
+  }
 
+  // MARK: - Aggregation
+
+  /// Runs `pipeline` against the selected collection/table (Aggregate mode)
+  /// and shows its output; it stays the list's source — refresh, load more —
+  /// until Find mode clears `currentPipeline`.
+  func applyPipeline(_ pipeline: [Document]) async throws -> [Document] {
+    currentPipeline = pipeline
+    return try await applyQuery()
+  }
+
+  /// The SQL `pipeline` compiles to for the active SQL engine (the builder's
+  /// SQL preview and "Copy SQL"); nil for MongoDB, which runs stages as-is.
+  func pipelineSQL(_ pipeline: [Document]) throws -> String? {
+    guard let selectedCollection else { return nil }
+    switch activeEngine {
+    case .postgresql:
+      return try SQLPipelineCompiler.compile(
+        pipeline, from: Self.postgresTable(selectedCollection), flavor: .postgresql)
+    case .sqlite:
+      return try SQLPipelineCompiler.compile(
+        pipeline, from: Self.quotedIdentifier(selectedCollection), flavor: .sqlite)
+    case .mongodb, .redis, nil:
+      return nil
+    }
+  }
+
+  /// One page of the pipeline's output: the page window is appended as
+  /// `$skip`/`$limit` stages, so paging stays correct whatever the pipeline
+  /// does (on SQL engines the compiler folds them into LIMIT/OFFSET).
+  private func pipelinePage(_ pipeline: [Document], in collection: String, skip: Int, limit: Int)
+    async throws -> [Document]
+  {
+    var paged = pipeline
+    if skip > 0 { paged.append(["$skip": .int64(Int64(skip))]) }
+    paged.append(["$limit": .int64(Int64(limit))])
+    if let session {
+      // The builder reads; a pipeline that writes ($out/$merge) isn't run.
+      if let write = pipeline.compactMap(\.keys.first).first(where: AggregationPipeline.writeStages.contains) {
+        throw PipelineRunError.writeStage(write)
+      }
+      return try await session.aggregate(in: collection, pipeline: paged)
+    } else if case .postgresql(let pg) = alternateSession {
+      let sql = try SQLPipelineCompiler.compile(
+        paged, from: Self.postgresTable(collection), flavor: .postgresql)
+      return try await pg.select(sql: sql).map { Self.document(from: $0) }
+    } else if case .sqlite(let sqlite) = alternateSession {
+      let sql = try SQLPipelineCompiler.compile(
+        paged, from: Self.quotedIdentifier(collection), flavor: .sqlite)
+      return try await sqlite.select(sql: sql).map { Self.document(from: $0) }
+    }
+    throw PipelineRunError.unsupportedEngine
+  }
+
+  enum PipelineRunError: LocalizedError {
+    case writeStage(String), unsupportedEngine
+
+    var errorDescription: String? {
+      switch self {
+      case .writeStage(let stage):
+        "\(stage) writes to the database, so the aggregation builder doesn't run it. Disable the stage to run the rest."
+      case .unsupportedEngine: "This database doesn't support aggregation pipelines."
+      }
+    }
+  }
 
   /// MongoDB documents via the current query bar: filter/sort/projection are
   /// parsed as MongoDB query syntax. Does NOT touch the display list.
