@@ -24,9 +24,10 @@ public final class PostgresConnection {
   }
   private let handle = ConnectionHandle()
 
-  /// Database selected via use(database:). PostgreSQL cannot switch databases
-  /// on an open wire connection, so this records the selection for the UI;
-  /// queries address tables through qualified names (schema.table).
+  /// Database the open wire connection is attached to. PostgreSQL cannot
+  /// switch databases on an open connection, so `use(database:)` reconnects
+  /// to the new database — otherwise every "database" in the UI listed and
+  /// queried the tables of the one it first connected to.
   public private(set) var currentDatabase: String?
 
   /// Every blocking C call is dispatched here so the MainActor never blocks.
@@ -60,7 +61,16 @@ public final class PostgresConnection {
     guard config.isValid else {
       throw PostgreSQLError.invalidConfig("host must not be empty")
     }
-    let conninfo = Self.conninfo(config: config)
+    let database = config.defaultDatabase ?? "postgres"
+    try await open(database: database)
+    currentDatabase = database
+  }
+
+  /// Opens a connection to `database` and swaps it in, closing the previous
+  /// one only after the new one is verified (a failed switch keeps the old
+  /// session usable).
+  private func open(database: String) async throws {
+    let conninfo = Self.conninfo(config: config, database: database)
     let handle = self.handle
     try await runOnQueue { () -> Void in
       guard let c = PQconnectdb(conninfo) else {
@@ -78,6 +88,7 @@ public final class PostgresConnection {
       let ok = PQresultStatus(res) == PGRES_TUPLES_OK
       PQclear(res)
       guard ok else { throw PostgreSQLError.server("SELECT 1 failed") }
+      if let previous = handle.conn { PQfinish(previous) }
       handle.conn = c
       success = true
     }
@@ -105,6 +116,8 @@ public final class PostgresConnection {
   /// Switches the active database (UI selection; see `currentDatabase`).
   public func use(database: String) async throws {
     guard handle.conn != nil else { throw PostgreSQLError.notConnected }
+    guard database != currentDatabase else { return }
+    try await open(database: database)
     currentDatabase = database
   }
 
@@ -326,15 +339,15 @@ public final class PostgresConnection {
   // MARK: - conninfo
 
   /// Builds a libpq conninfo string from the config: host/port/username
-  /// (default "postgres")/password/dbname (default "postgres"). libpq handles
+  /// (default "postgres")/password, attached to `database`. libpq handles
   /// SCRAM-SHA-256/MD5 natively when a password is supplied.
-  private static func conninfo(config: PostgresConnectionConfig) -> String {
+  private static func conninfo(config: PostgresConnectionConfig, database: String) -> String {
     var parts: [String] = []
     parts.append("host=\(connectionKeywordValue(config.host))")
     parts.append("port=\(config.port)")
     parts.append("user=\(connectionKeywordValue(config.username ?? "postgres"))")
     if let p = config.password { parts.append("password=\(connectionKeywordValue(p))") }
-    parts.append("dbname=\(connectionKeywordValue(config.defaultDatabase ?? "postgres"))")
+    parts.append("dbname=\(connectionKeywordValue(database))")
     parts.append("connect_timeout=5")
     parts.append("sslmode=disable")
     return parts.joined(separator: " ")
