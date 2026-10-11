@@ -1,38 +1,36 @@
 #!/usr/bin/env bash
 #
-# build-c-drivers.sh — Cross-compile the C/C++ client libraries for the Database
-# app's engines into a SINGLE Cdrivers.xcframework that a SwiftPM binaryTarget
-# can consume. Libraries built (static-only) for every Apple slice:
+# build-c-drivers.sh — Cross-compile the C client libraries for the Database
+# app's engines into one XCFramework per library, each a SwiftPM binaryTarget.
+# Libraries built (static-only) for every Apple slice:
 #
 #   iOS device (arm64), iOS simulator (arm64 + x86_64), macOS (arm64)
 #
-#   MongoDB   -> libmongoc + libbson      (mongo-c-driver, CMake)
-#   PostgreSQL-> libpq + support libs      (postgresql, autoconf)
-#   Redis     -> hiredis                   (hiredis, raw clang)
-#   SSH       -> libssh2                   (from the sibling Shell repo's XCFramework)
+#   CMongoC.xcframework     -> libmongoc + libbson   (mongo-c-driver, CMake)
+#   CPostgreSQL.xcframework -> libpq + support libs  (postgresql, autoconf)
+#   CHiredis.xcframework    -> hiredis               (hiredis, raw clang)
 #
-# WHY ONE MERGED XCFRAMEWORK: SwiftPM 6.4 cannot host two or more raw C-module
-# binaryTargets in one build graph — each ships a Headers/module.modulemap that
-# SwiftPM flattens into the SAME Build/Products/<arch>/include/module.modulemap,
-# colliding ("Multiple commands produce .../include/module.modulemap"). Merging
-# all libraries into ONE XCFramework with ONE modulemap (declaring modules
-# CMongoC / CPostgreSQL / CHiredis / CLibssh2)
-# sidesteps the collision entirely while the Swift sources keep importing those
-# exact module names.
+# HEADER LAYOUT: Xcode and SwiftPM copy every library XCFramework's Headers/
+# into ONE shared Build/Products/<config>/include/ folder. Two modulemaps at
+# Headers/module.modulemap would land on the same path ("Multiple commands
+# produce .../include/module.modulemap"), so each XCFramework keeps its
+# modulemap in a folder named after its module (Headers/CMongoC/module.modulemap,
+# pointing at "../mongoc/mongoc.h") and its headers in a folder of their own.
+# Clang finds a module's map in <include>/<Module>/, and the libraries' own
+# <bson/bson.h>-style includes still resolve from <include>.
 #
 # PREREQUISITES:
 #   - Xcode 16+ (xcrun --sdk iphoneos / iphonesimulator / macosx)
 #   - cmake, autoconf, libtool, make, perl   (brew install cmake autoconf)
 #   - Internet (sources downloaded once; cached in build/.cache)
-#   - The sibling Shell repo's libssh2 XCFramework (override $LIBSSH2_DIR)
 #
 # USAGE:
-#   ./build-c-drivers.sh               # build + merge all libraries
-#   ./build-c-drivers.sh clean         # remove Cdrivers.xcframework + slice outputs
+#   ./build-c-drivers.sh               # build + package all libraries
+#   ./build-c-drivers.sh clean         # remove the XCFrameworks + slice outputs
 #
 # OUTPUT (committed):
-#   Binary/C-drivers/Cdrivers.xcframework   -> consumed via .binaryTarget in Package.swift
-#   Binary/C-drivers/build/                  -> scratch (sources, per-slice .a, headers)
+#   Binary/C-drivers/C*.xcframework   -> consumed via .binaryTarget in Package.swift
+#   Binary/C-drivers/build/           -> scratch (sources, per-slice .a, headers)
 #
 set -euo pipefail
 
@@ -120,6 +118,13 @@ build_hiredis() {
     "$BUILD_DIR/slices/$s/sim-arm64/$LIBNAME" \
     "$BUILD_DIR/slices/$s/sim-x86/$LIBNAME"
 
+  # Public headers in their own folder; hiredis.h includes its siblings with
+  # quotes. hiredis_ssl.h is left out: the facade is plaintext.
+  local hdr="$BUILD_DIR/headers/CHiredis"
+  rmr "$hdr"; mkdir -p "$hdr/hiredis"
+  cp "$src"/*.h "$hdr/hiredis/"
+  rm -f "$hdr/hiredis/hiredis_ssl.h"
+  write_modulemap "$hdr" CHiredis hiredis/hiredis.h
   info "hiredis headers staged"
 }
 
@@ -185,10 +190,11 @@ build_mongoc() {
   # headers: cmake install emits the per-build config headers + public headers
   cmake --install "$BUILD_DIR/slices/$s/device" --prefix "$BUILD_DIR/mongoc-install" >/dev/null 2>&1
   local insthdr="$BUILD_DIR/mongoc-install/include"
-  local hdr="$BUILD_DIR/headers"
+  local hdr="$BUILD_DIR/headers/CMongoC"
   rmr "$hdr"; mkdir -p "$hdr"/mongoc "$hdr"/bson
   cp "$insthdr"/mongoc-*/mongoc/*.h "$hdr/mongoc/"
   cp "$insthdr"/bson-*/bson/*.h "$hdr/bson/"
+  write_modulemap "$hdr" CMongoC mongoc/mongoc.h bson/bson.h
   info "mongoc headers staged"
 }
 
@@ -258,102 +264,69 @@ build_libpq() {
     "$BUILD_DIR/slices/$s/sim-arm64/$LIBNAME" \
     "$BUILD_DIR/slices/$s/sim-x86/$LIBNAME"
 
-  # libpq headers: public + per-build generated pg_config*.h
-  mkdir -p "$BUILD_DIR/headers"
-  cp "$src/src/interfaces/libpq/libpq-fe.h" "$BUILD_DIR/headers/"
-  cp "$src/src/interfaces/libpq/libpq-events.h" "$BUILD_DIR/headers/"
-  cp "$src/src/include/postgres_ext.h" "$BUILD_DIR/headers/"
-  cp "$src/src/include/pg_config.h" "$BUILD_DIR/headers/" 2>/dev/null || true
-  cp "$src/src/include/pg_config_manual.h" "$BUILD_DIR/headers/" 2>/dev/null || true
-  cp "$src/src/include/pg_config_os.h" "$BUILD_DIR/headers/" 2>/dev/null || true
+  # libpq headers: public + per-build generated pg_config*.h, in their own
+  # folder (libpq-fe.h includes postgres_ext.h with quotes).
+  local hdr="$BUILD_DIR/headers/CPostgreSQL"
+  rmr "$hdr"; mkdir -p "$hdr/libpq"
+  cp "$src/src/interfaces/libpq/libpq-fe.h" "$hdr/libpq/"
+  cp "$src/src/interfaces/libpq/libpq-events.h" "$hdr/libpq/"
+  cp "$src/src/include/postgres_ext.h" "$hdr/libpq/"
+  cp "$src/src/include/pg_config.h" "$hdr/libpq/" 2>/dev/null || true
+  cp "$src/src/include/pg_config_manual.h" "$hdr/libpq/" 2>/dev/null || true
+  cp "$src/src/include/pg_config_os.h" "$hdr/libpq/" 2>/dev/null || true
+  write_modulemap "$hdr" CPostgreSQL libpq/libpq-fe.h
   info "libpq headers staged"
 }
 
 # =====================================================================================
-package_cdrivers() {
-  local out="$PREFIX_DIR/Cdrivers.xcframework"
-  local merge="$BUILD_DIR/merge"
-  rmr "$merge"; mkdir -p "$merge"/{device,sim,macos}
-  local hdr="$BUILD_DIR/headers"
-
-  # libssh2 slice archives (from the Shell repo's Binary/SSH-libssh2 build-ssh.sh).
-  local libssh2_dir="${LIBSSH2_DIR:-/Users/v57/Projects/Shell/Binary/SSH-libssh2/Libssh2.xcframework}"
-  local ls_dev="$libssh2_dir/ios-arm64/libssh2_all.a"
-  local ls_sim="$libssh2_dir/ios-arm64_x86_64-simulator/libssh2_sim.a"
-  local ls_mac="$libssh2_dir/macos-arm64/libssh2_all.a"
-  [ -f "$ls_dev" ] && [ -f "$ls_sim" ] && [ -f "$ls_mac" ] \
-    || die "libssh2 slice archives missing under $libssh2_dir (build with the Shell repo's build-ssh.sh)"
-
-  info "merging archives + packaging Cdrivers.xcframework"
-  libtool -static -o "$merge/device/libcdrivers_all.a" \
-    "$BUILD_DIR/slices/libmongoc/device/libmongoc_combined.a" \
-    "$BUILD_DIR/slices/libpq/device/libpq.a" \
-    "$BUILD_DIR/slices/libhiredis/device/libhiredis.a" \
-    "$ls_dev" \
-
-  libtool -static -o "$merge/sim/libcdrivers_all.a" \
-    "$BUILD_DIR/slices/libmongoc/sim/libmongoc_combined.a" \
-    "$BUILD_DIR/slices/libpq/sim/libpq.a" \
-    "$BUILD_DIR/slices/libhiredis/sim/libhiredis.a" \
-    "$ls_sim" \
-
-  libtool -static -o "$merge/macos/libcdrivers_all.a" \
-    "$BUILD_DIR/slices/libmongoc/macos/libmongoc_combined.a" \
-    "$BUILD_DIR/slices/libpq/macos/libpq.a" \
-    "$BUILD_DIR/slices/libhiredis/macos/libhiredis.a" \
-    "$ls_mac" \
-
-  # hiredis core headers live in the extracted source; stage them (already staged
-  # by build_mongoc into headers/ too) + write ONE modulemap declaring all modules.
-  local hsrc="$BUILD_DIR/hiredis-1.4.1"
-  cp "$hsrc"/*.h "$hdr/" 2>/dev/null
-  rm -f "$hdr/hiredis_ssl.h"
-  # libssh2 public headers (self-contained: only stddef/string/sys/stdint).
-  cp "$libssh2_dir/macos-arm64/Headers/libssh2.h" \
-     "$libssh2_dir/macos-arm64/Headers/libssh2_publickey.h" \
-     "$libssh2_dir/macos-arm64/Headers/libssh2_sftp.h" "$hdr/" 2>/dev/null
-  cat > "$hdr/module.modulemap" <<'EOF'
-module CMongoC [system] {
-    header "mongoc/mongoc.h"
-    header "bson/bson.h"
-    export *
+# Writes <hdr>/<Module>/module.modulemap declaring the given headers (paths
+# relative to <hdr>). See HEADER LAYOUT above for why it sits in a subfolder.
+write_modulemap() { # $1=headers dir  $2=module  rest=headers
+  local hdr="$1" module="$2"; shift 2
+  mkdir -p "$hdr/$module"
+  {
+    echo "module $module [system] {"
+    for h in "$@"; do echo "    header \"../$h\""; done
+    echo "    export *"
+    echo "}"
+  } > "$hdr/$module/module.modulemap"
 }
-module CPostgreSQL [system] {
-    header "libpq-fe.h"
-    export *
-}
-module CHiredis [system] {
-    header "hiredis.h"
-    export *
-}
-module CLibssh2 [system] {
-    header "libssh2.h"
-    export *
-}
-EOF
+
+# Packages one library's device / simulator / macOS archives with its staged
+# headers into <PREFIX_DIR>/<Module>.xcframework.
+package_xcframework() { # $1=module  $2=slice dir under slices/  $3=archive name
+  local module="$1" s="$2" lib="$3"
+  local out="$PREFIX_DIR/$module.xcframework"
+  local hdr="$BUILD_DIR/headers/$module"
+  info "packaging $module.xcframework"
 
   # Replace the existing xcframework (move aside first; cannot rm a dir with -f).
   if [ -d "$out" ]; then
     local old="$out.old.$$"
-    mv "$out" "$old" 2>/dev/null || die "cannot stage old xcframework"
+    mv "$out" "$old" 2>/dev/null || die "cannot stage old $module.xcframework"
     rmr "$old"
   fi
   xcodebuild -create-xcframework \
-    -library "$merge/device/libcdrivers_all.a" -headers "$hdr" \
-    -library "$merge/sim/libcdrivers_all.a"     -headers "$hdr" \
-    -library "$merge/macos/libcdrivers_all.a"   -headers "$hdr" \
+    -library "$BUILD_DIR/slices/$s/device/$lib" -headers "$hdr" \
+    -library "$BUILD_DIR/slices/$s/sim/$lib"    -headers "$hdr" \
+    -library "$BUILD_DIR/slices/$s/macos/$lib"  -headers "$hdr" \
     -output "$out" 2>&1 | tail -2
-  info "Cdrivers.xcframework written"
+}
+
+package_all() {
+  package_xcframework CMongoC libmongoc libmongoc_combined.a
+  package_xcframework CPostgreSQL libpq libpq.a
+  package_xcframework CHiredis libhiredis libhiredis.a
 }
 
 # --- main --------------------------------------------------------------------------
 main() {
   local want="${1:-all}"
   case "$want" in
-    clean) rmr "$PREFIX_DIR"/*.xcframework "$BUILD_DIR"/slices "$BUILD_DIR"/merge "$BUILD_DIR"/headers; info "cleaned";;
-    all)   build_mongoc; build_libpq; build_hiredis; package_cdrivers;;
+    clean) rmr "$PREFIX_DIR"/*.xcframework "$BUILD_DIR"/slices "$BUILD_DIR"/headers; info "cleaned";;
+    all)   build_mongoc; build_libpq; build_hiredis; package_all;;
     *)     die "unknown '$want' (all|clean)";;
   esac
-  info "done. XCFramework: $PREFIX_DIR/Cdrivers.xcframework"
+  info "done. XCFrameworks: $PREFIX_DIR/C*.xcframework"
 }
 main "$@"
