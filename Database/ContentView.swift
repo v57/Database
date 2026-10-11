@@ -39,8 +39,16 @@ import SwiftUI
   }
 
   var body: some Scene {
-    WindowGroup { ContentView(model: model, container: container) }.commands {
+    WindowGroup {
+      ContentView(model: model, container: container)
+#if os(macOS)
+        .modifier(UpdateAlerts())
+#endif
+    }.commands {
       NewConnectionCommands()
+#if os(macOS)
+      UpdateCommands()
+#endif
     }
   }
 }
