@@ -1,3 +1,4 @@
+import Database
 import MongoDB
 import PostgreSQL
 import Redis
@@ -72,7 +73,7 @@ struct ConnectionsSidebarView: View {
       }
       Button("OK", role: .cancel) { clearConnectionError() }
     } message: { message in
-      Text(message)
+      Text(Self.alertText(FriendlyError(message, while: .connecting)))
     }.onChange(of: selection) { _, newValue in selectionChanged(to: newValue) }.task(id: selection)
     {
       await connectSelectedRecord()
@@ -95,7 +96,13 @@ struct ConnectionsSidebarView: View {
   private var connectionsSection: some View {
     Section {
       if records.isEmpty {
-        Text("No saved connections — use + to add one.").foregroundStyle(.secondary)
+        if isCompact {
+          // iPhone shows the sidebar first, so the welcome choices live here.
+          WelcomeActions().listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+            .listRowBackground(Color.clear)
+        } else {
+          Text("No saved connections yet.").foregroundStyle(.secondary)
+        }
       }
       ForEach(records) { record in
         let active = isActive(record)
@@ -130,8 +137,26 @@ struct ConnectionsSidebarView: View {
     }
   }
 
-  private var databasesSection: some View {
-    Section(model.activeEngine == .redis ? "Databases (indexes)" : "Databases") {
+  @ViewBuilder private var databasesSection: some View {
+    if let only = singleFileDatabase {
+      // A SQLite file has one database, "main": list its tables directly
+      // rather than under a name that means nothing to most people.
+      Section("Tables") { collectionChildren(for: only) }
+    } else {
+      databasesList
+    }
+  }
+
+  /// The one database of a SQLite file, while no database search is typed.
+  private var singleFileDatabase: String? {
+    guard model.activeEngine == .sqlite, model.databases.count == 1,
+      !model.searchTerms.hasDatabaseTerms
+    else { return nil }
+    return model.databases.first
+  }
+
+  private var databasesList: some View {
+    Section(model.activeEngine == .redis ? "Databases (numbered)" : "Databases") {
       if visibleDatabases.isEmpty { emptyDatabasesText.foregroundStyle(.secondary) }
       ForEach(visibleDatabases, id: \.self) { db in
         // While searching: force-expand every database that has matches
@@ -151,6 +176,7 @@ struct ConnectionsSidebarView: View {
   /// $database"); before connecting there is nothing to search yet.
   private var searchPrompt: String {
     guard model.isSessionActive else { return "Connect to search" }
+    if singleFileDatabase != nil { return "Search \(model.containerNoun.plural)" }
     return "\(model.containerNoun.plural.capitalized) or $database"
   }
 
@@ -343,8 +369,19 @@ struct ConnectionsSidebarView: View {
     failedRecordID.flatMap { id in records.first { $0.id == id } }
   }
 
+  /// "Can't reach the server" — the plain cause, not just "couldn't connect".
   private var connectionErrorTitle: String {
-    failedRecord.map { "Couldn’t connect to “\($0.name)”" } ?? "Couldn’t Connect"
+    let cause = model.connectionError.map { FriendlyError($0, while: .connecting).title }
+    if let cause, let record = failedRecord { return "\(record.name): \(cause)" }
+    return cause ?? "Couldn’t Connect"
+  }
+
+  /// The alert body: what happened, what to try, then the original message.
+  private static func alertText(_ error: FriendlyError) -> String {
+    var parts = [error.message]
+    if let suggestion = error.suggestion { parts.append(suggestion) }
+    if !error.detailsRepeatMessage { parts.append("Details: \(error.details)") }
+    return parts.joined(separator: "\n\n")
   }
 
   private var connectionErrorBinding: Binding<Bool> {

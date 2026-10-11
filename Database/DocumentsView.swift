@@ -1,30 +1,45 @@
+import Database
 import MongoDB
 import Redis
 import SwiftUI
 
-/// Merged item-list + preview screen: documents render as $key/$value cell
-/// rows. Strings are one line and objects/arrays collapse by default; a click
-/// expands a value across every entry with the same key. Double-clicking a
-/// value cell turns it into an inline editor with a type picker. Values are
-/// color-coded: .primary for strings, .blue otherwise.
+/// Merged item-list + preview screen. The toolbar's segmented picker switches
+/// the display format: Table (spreadsheet grid, the default), List ($key/$value
+/// rows that expand and edit inline) or JSON (pretty-printed text).
 ///
-/// A persistent query bar (search/sort/project) sits above the list; the Edit
-/// button toggles add-field rows; Delete previews matches and confirms. The
-/// toolbar's segmented picker switches the display format: List (below),
-/// Table (spreadsheet grid) or JSON (pretty-printed text).
+/// Above the results sits a query bar. By default it is the simple one —
+/// search, filter chips, sort and field menus — that needs no query syntax;
+/// the Query Editor toggle adds the Filter/Sort/Project text fields, the
+/// aggregation builder and the filter-wide Edit mode. Selecting a record
+/// shows it in the inspector, from where it can be edited or deleted with a
+/// review step and Undo.
 struct DocumentsView: View {
   @Environment(DatabaseModel.self) private var model
   @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-  @AppStorage("documentDisplayFormat") private var storedDisplayFormat = DisplayFormat.list.rawValue
+  @AppStorage("documentDisplayFormat") private var storedDisplayFormat = DisplayFormat.table.rawValue
+  /// Power tools: the query text fields, aggregation and Edit mode.
+  @AppStorage("showsQueryEditor") private var showsQueryEditor = false
 
   @State private var showDeleteSheet = false
   /// Failure of a user action that isn't a query (saving an edit, Update):
   /// shown in the query bar. Query failures live in `model.queryError`.
-  @State private var actionError: String?
+  @State private var actionError: FriendlyError?
   @State private var editor: ValueEditorState?
   /// Field keys currently expanded (applies to every entry with that key).
   @State private var expandedKeys: Set<String> = []
+
+  /// The record shown in the inspector (an index into `model.documents`).
+  @State private var selectedRecord: Int?
+  @State private var showsInspector = false
+  @State private var recordEditor: RecordEditorTarget?
+  /// A single record awaiting delete confirmation.
+  @State private var recordPendingDeletion: Int?
+  /// The same two, started from the inspector: on iPhone the inspector is
+  /// itself a sheet, so its editor and confirmation must be presented from
+  /// inside it.
+  @State private var inspectorEditor: RecordEditorTarget?
+  @State private var inspectorDeletion: Int?
 
   /// Persistent query bar contents.
   @State private var filterText = ""
@@ -85,7 +100,7 @@ struct DocumentsView: View {
 
   // Split into separately type-checked pieces: as one modifier chain the body
   // exceeded the type checker's time limit.
-  var body: some View { syncingQueryBar(dialogs(chrome)) }
+  var body: some View { syncingQueryBar(dialogs(inspecting(chrome))) }
 
   /// The pane with its query bar, toolbar and titles.
   private var chrome: some View {
@@ -93,7 +108,11 @@ struct DocumentsView: View {
       if model.selectedCollection != nil && model.isSessionActive {
         queryBar
       }
-    }.toolbar { toolbarItems }
+    }
+    .safeAreaInset(edge: .bottom) {
+      if let change = model.lastChange { UndoBar(change: change, onUndo: undo) }
+    }
+    .toolbar { toolbarItems }
     .subtitle(subtitle)
 #if os(iOS)
     // A large title sat in an empty band above the query bar.
@@ -108,25 +127,30 @@ struct DocumentsView: View {
       if model.isConnecting {
         ProgressView("Connecting…").frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
-        ContentUnavailableView(
-          "Not Connected", systemImage: "cylinder.split.1x2",
-          description: Text("Choose a saved connection in the sidebar, or add one with +."))
+        WelcomeView()
       }
     } else if model.selectedCollection == nil {
       let noun = model.containerNoun.singular
       ContentUnavailableView(
         "No \(noun.capitalized) Selected", systemImage: "shippingbox",
-        description: Text("Select a \(noun) in the sidebar."))
+        description: Text("Choose a \(noun) in the sidebar to see what’s in it."))
     } else if model.documents.isEmpty && model.isLoadingDocuments {
       ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
     } else if model.documents.isEmpty, let error = model.queryError {
+      let friendly = FriendlyError(error, while: .loading)
       ContentUnavailableView {
-        Label("Couldn't Load \(model.itemNoun.plural.capitalized)", systemImage: "exclamationmark.triangle")
+        Label(friendly.title, systemImage: "exclamationmark.triangle")
       } description: {
-        Text(error).textSelection(.enabled)
+        VStack(spacing: 6) {
+          if friendly.message != friendly.title { Text(friendly.message) }
+          if let suggestion = friendly.suggestion { Text(suggestion) }
+          if !friendly.detailsRepeatMessage {
+            Text(friendly.details).font(.caption.monospaced()).textSelection(.enabled)
+          }
+        }
       } actions: {
-        if isQueryActive { Button(isAggregating ? "Clear Pipeline" : "Clear Query") { clearQuery() } }
-        Button("Retry") { refresh() }
+        if isQueryActive { Button(isAggregating ? "Clear Pipeline" : "Clear Search & Filters") { clearQuery() } }
+        Button("Try Again") { refresh() }
       }
     } else if model.documents.isEmpty {
       ContentUnavailableView {
@@ -134,7 +158,10 @@ struct DocumentsView: View {
       } description: {
         Text(emptySummary)
       } actions: {
-        if isQueryActive { Button(isAggregating ? "Clear Pipeline" : "Clear Query") { clearQuery() } }
+        if isQueryActive { Button(isAggregating ? "Clear Pipeline" : "Clear Search & Filters") { clearQuery() } }
+        if model.canEditDocuments && !isAggregating {
+          Button("Add \(model.itemNoun.singular.capitalized)…") { recordEditor = RecordEditorTarget(mode: .add) }
+        }
       }
     } else {
       // Results of a query that has since failed stay visible but dimmed;
@@ -146,36 +173,43 @@ struct DocumentsView: View {
   @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {
     ToolbarItemGroup {
       if model.selectedCollection != nil && model.isSessionActive {
-        // Writes (Edit/Update/Delete) only exist for MongoDB; SQL rows and
-        // Redis keys are read-only, so the controls are not offered there.
         if model.canEditDocuments && !isAggregating {
-          if editMode {
+          Button {
+            recordEditor = RecordEditorTarget(mode: .add)
+          } label: {
+            Label("Add \(model.itemNoun.singular.capitalized)", systemImage: "plus")
+          }.help("Add a \(model.itemNoun.singular)")
+        }
+        // Edit mode (inline values, Add Field, filter-wide Update/Delete) is
+        // a power tool: it comes with the query editor.
+        if showsQueryEditor && model.canEditDocuments && !isAggregating {
+          if editMode && model.canBulkEdit {
             Button {
               showDeleteSheet = true
             } label: {
-              Label("Delete…", systemImage: "trash")
+              Label("Delete Matching…", systemImage: "trash")
             }.keyboardShortcut(.delete, modifiers: .command)
-              .help("Delete the documents matching the filter (⌘⌫)")
+              .help("Delete every \(model.itemNoun.singular) the filter matches (⌘⌫)")
           }
           Button {
             editMode.toggle()
             if !editMode { editor = nil }
           } label: {
             Label(editMode ? "Done" : "Edit", systemImage: editMode ? "checkmark" : "pencil")
-          }.help(editMode ? "Leave edit mode" : "Edit values, add fields, update or delete documents")
+          }.help(editMode ? "Leave edit mode" : "Edit values in place, add fields, update or delete in bulk")
         }
 
         Button {
           refresh()
         } label: {
           Label("Refresh", systemImage: "arrow.clockwise")
-        }.keyboardShortcut("r", modifiers: .command).help("Re-run the query (⌘R)")
+        }.keyboardShortcut("r", modifiers: .command).help("Load the latest data (⌘R)")
 
         if isCompact {
           // Edit + Refresh + a three-segment picker overflowed the iPhone
           // toolbar; one menu button shows the current format instead.
           Menu {
-            if model.canAggregate {
+            if model.canAggregate && (showsQueryEditor || isAggregating) {
               Picker("Query Mode", selection: queryModeBinding) {
                 ForEach(QueryMode.allCases) { mode in
                   Label(mode.name, systemImage: mode.symbol).tag(mode)
@@ -187,11 +221,16 @@ struct DocumentsView: View {
                 Label(format.name, systemImage: format.symbol).tag(format)
               }
             }
+            if model.activeEngine != .redis {
+              Toggle(isOn: queryEditorBinding) {
+                Label("Query Editor", systemImage: "curlybraces")
+              }
+            }
           } label: {
             Label("Display Format: \(displayFormat.name)", systemImage: displayFormat.symbol)
           }
         } else {
-          if model.canAggregate {
+          if model.canAggregate && (showsQueryEditor || isAggregating) {
             Picker("Query Mode", selection: queryModeBinding) {
               ForEach(QueryMode.allCases) { mode in
                 Label(mode.name, systemImage: mode.symbol).tag(mode)
@@ -206,8 +245,101 @@ struct DocumentsView: View {
             }
           }
           .pickerStyle(.segmented)
-          .help("Display format: List / Table / JSON")
+          .help("Show as a table, a list of fields, or JSON")
+          if model.activeEngine != .redis {
+            Toggle(isOn: queryEditorBinding) {
+              Label("Query Editor", systemImage: "curlybraces")
+            }
+            .help(showsQueryEditor
+              ? "Hide the query editor" : "Show the query editor, aggregation and bulk editing")
+          }
+          Button {
+            showsInspector.toggle()
+          } label: {
+            Label("Details", systemImage: "sidebar.trailing")
+          }.help(showsInspector ? "Hide record details" : "Show the selected record’s details")
         }
+      }
+    }
+  }
+
+  /// Turning the query editor off also leaves Aggregate mode and Edit mode,
+  /// whose controls go away with it.
+  private var queryEditorBinding: Binding<Bool> {
+    Binding(
+      get: { showsQueryEditor },
+      set: { shows in
+        showsQueryEditor = shows
+        if !shows {
+          editMode = false
+          editor = nil
+          if isAggregating { switchMode(to: .find) }
+        }
+      })
+  }
+
+  // MARK: - Record inspector and actions
+
+  /// The selected record's details: an inspector column on wide layouts, a
+  /// sheet on iPhone (the inspector modifier adapts by itself).
+  private func inspecting(_ content: some View) -> some View {
+    content.inspector(isPresented: $showsInspector) {
+      RecordDetailView(
+        index: selectedRecord ?? -1,
+        onSelect: { selectedRecord = $0 },
+        onEdit: { if let i = selectedRecord { inspectorEditor = RecordEditorTarget(mode: .edit(i)) } },
+        onDelete: { if let i = selectedRecord { inspectorDeletion = i } },
+        onUndo: undo
+      )
+      .modifier(
+        RecordDialogs(
+          editor: $inspectorEditor, deletion: $inspectorDeletion, fields: catalog,
+          onDelete: deleteRecord))
+      .inspectorColumnWidth(min: 260, ideal: 320, max: 480)
+    }
+    .onChange(of: collectionKey) { _, _ in selectedRecord = nil }
+    .onChange(of: model.documents.count) { _, count in
+      if let index = selectedRecord, index >= count { selectedRecord = count > 0 ? count - 1 : nil }
+    }
+  }
+
+  /// What every record row offers (table context menu, list header menu).
+  private var recordActions: RecordActions {
+    RecordActions(
+      canEdit: model.canEditDocuments && !isAggregating,
+      showDetails: { index in
+        selectedRecord = index
+        showsInspector = true
+      },
+      edit: { editRecord($0) },
+      delete: { recordPendingDeletion = $0 })
+  }
+
+  private func editRecord(_ index: Int) {
+    if let blocker = model.editBlocker(forRecordAt: index) {
+      actionError = FriendlyError(title: "This \(model.itemNoun.singular) can’t be edited", message: blocker, details: blocker)
+      return
+    }
+    recordEditor = RecordEditorTarget(mode: .edit(index))
+  }
+
+  private func deleteRecord(_ index: Int) {
+    Task {
+      do {
+        try await model.deleteRecord(at: index)
+        actionError = nil
+      } catch {
+        actionError = FriendlyError(error, while: .saving)
+      }
+    }
+  }
+
+  private func undo() {
+    Task {
+      do {
+        try await model.undoLastChange()
+      } catch {
+        actionError = FriendlyError(error, while: .saving)
       }
     }
   }
@@ -215,6 +347,10 @@ struct DocumentsView: View {
   /// The pane's sheets and alerts.
   private func dialogs(_ content: some View) -> some View {
     content
+    .modifier(
+      RecordDialogs(
+        editor: $recordEditor, deletion: $recordPendingDeletion, fields: catalog,
+        onDelete: deleteRecord))
     .sheet(
       isPresented: $showDeleteSheet
     ) { DeleteSheet(filter: filterText) }.sheet(item: $searchTarget) {
@@ -348,7 +484,7 @@ struct DocumentsView: View {
   // MARK: - Display format
 
   private var displayFormat: DisplayFormat {
-    DisplayFormat(rawValue: storedDisplayFormat) ?? .list
+    DisplayFormat(rawValue: storedDisplayFormat) ?? .table
   }
 
   private var displayFormatBinding: Binding<DisplayFormat> {
@@ -370,7 +506,9 @@ struct DocumentsView: View {
         fields: catalog,
         sortDirections: isAggregating ? [:] : sortDirections,
         hiddenFields: isAggregating ? [] : hiddenFields,
-        onColumnAction: columnActionHandler)
+        onColumnAction: columnActionHandler,
+        selection: $selectedRecord,
+        recordActions: recordActions)
     case .json: JSONDocumentsView(documents: model.documents, header: documentHeader)
     }
   }
@@ -403,49 +541,14 @@ struct DocumentsView: View {
             filterText = KeyGlob.query(redisKeyText, match: redisMatch) ?? ""
           })
       } else if let dialect = FilterEngine.dialect(for: model.activeEngine) {
-        FilterBuilderView(
-          fields: catalog,
-          rules: $filterRules,
-          editing: $editingRule,
-          isCreating: $isCreatingRule,
-          dialect: dialect,
-          onChange: { applyRules() })
-        if chipsOutOfSync {
-          HStack(alignment: .firstTextBaseline) {
-            Label(
-              "The Filter was edited by hand, so the chips no longer apply.",
-              systemImage: "exclamationmark.triangle"
-            ).font(.caption).foregroundStyle(.orange)
-            Button("Clear Chips") {
-              filterRules = []
-              applyRules()
-            }.font(.caption).buttonStyle(.borderless)
-          }
-        }
-        if !searchableFields.isEmpty || !quickSearch.isEmpty { quickSearchRow }
-        queryField("Filter", text: $filterText, prompt: filterPrompt) { runControl }
-        if isCompact {
-          if showsQueryOptions || !sortText.isEmpty || !projectText.isEmpty {
-            queryField("Sort", text: $sortText, prompt: sortPrompt)
-            queryField("Project", text: $projectText, prompt: projectPrompt)
-            if !allFields.isEmpty { fieldsRow }
-          } else {
-            HStack(spacing: 6) {
-              Spacer().frame(width: Self.queryLabelWidth)
-              Button("Sort, Project & Fields…", systemImage: "slider.horizontal.3") {
-                showsQueryOptions = true
-              }.font(.caption).buttonStyle(.borderless)
-            }
-          }
-        } else {
-          HStack(alignment: .center, spacing: 12) {
-            queryField("Sort", text: $sortText, prompt: sortPrompt)
-            queryField("Project", text: $projectText, prompt: projectPrompt)
-          }
-          if !allFields.isEmpty { fieldsRow }
+        simpleControls(dialect)
+        if showsQueryEditor {
+          queryEditor
+        } else if let typed = handTypedFilter {
+          customQueryNotice(typed)
         }
       }
-      if editMode && model.canEditDocuments {
+      if editMode && model.canEditDocuments && showsQueryEditor {
         if displayFormat != .list {
           // Table/JSON are read-only renderers; say where editing happens.
           HStack(alignment: .firstTextBaseline) {
@@ -455,19 +558,22 @@ struct DocumentsView: View {
               .font(.caption).buttonStyle(.borderless)
           }
         }
-        updateRow
+        if model.canBulkEdit { updateRow }
       }
       if let error = model.queryError, !model.documents.isEmpty {
-        Label(
-          "Query failed: \(error) — showing the previous results", systemImage: "exclamationmark.triangle"
-        ).font(.callout).foregroundStyle(.red).textSelection(.enabled)
-          .fixedSize(horizontal: false, vertical: true)
+        let friendly = FriendlyError(error, while: .loading)
+        VStack(alignment: .leading, spacing: 2) {
+          Label("\(friendly.title). Showing the previous results.", systemImage: "exclamationmark.triangle")
+            .font(.callout).foregroundStyle(.red)
+          Text(friendly.suggestion.map { "\(friendly.details) — \($0)" } ?? friendly.details)
+            .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+        }
+        .fixedSize(horizontal: false, vertical: true)
       }
       if let actionError {
-        HStack(alignment: .firstTextBaseline) {
-          Label(actionError, systemImage: "exclamationmark.triangle").font(.callout)
-            .foregroundStyle(.red).textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .top) {
+          FriendlyErrorView(error: actionError).font(.callout)
+          Spacer(minLength: 0)
           Button("Dismiss", systemImage: "xmark.circle") { self.actionError = nil }
             .buttonStyle(.plain).labelStyle(.iconOnly).foregroundStyle(.secondary)
         }
@@ -475,6 +581,85 @@ struct DocumentsView: View {
     }.padding(8).background(.bar)
       .plainTextEntry()
       .textFieldStyle(.roundedBorder)
+  }
+
+  /// The controls that need no query syntax: search, sort and field menus,
+  /// and the filter chips.
+  private func simpleControls(_ dialect: FilterDialect) -> some View {
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 8) {
+        searchField
+        sortMenu
+        fieldsMenu
+        Spacer(minLength: 0)
+        if showsQueryEditor && !isCompact { runControl }
+      }
+      FilterBuilderView(
+        fields: catalog,
+        rules: $filterRules,
+        editing: $editingRule,
+        isCreating: $isCreatingRule,
+        dialect: dialect,
+        onChange: { applyRules() }
+      ).padding(.horizontal, -8)
+    }
+  }
+
+  /// The Filter/Sort/Project text fields (Query Editor on).
+  @ViewBuilder private var queryEditor: some View {
+    if chipsOutOfSync {
+      HStack(alignment: .firstTextBaseline) {
+        Label(
+          "The Filter was edited by hand, so the chips no longer apply.",
+          systemImage: "exclamationmark.triangle"
+        ).font(.caption).foregroundStyle(.orange)
+        Button("Clear Chips") {
+          filterRules = []
+          applyRules()
+        }.font(.caption).buttonStyle(.borderless)
+      }
+    }
+    queryField("Filter", text: $filterText, prompt: filterPrompt) {
+      if isCompact { runControl }
+    }
+    if isCompact {
+      if showsQueryOptions || !sortText.isEmpty || !projectText.isEmpty {
+        queryField("Sort", text: $sortText, prompt: sortPrompt)
+        queryField("Project", text: $projectText, prompt: projectPrompt)
+      } else {
+        HStack(spacing: 6) {
+          Spacer().frame(width: Self.queryLabelWidth)
+          Button("Sort & Project…", systemImage: "slider.horizontal.3") {
+            showsQueryOptions = true
+          }.font(.caption).buttonStyle(.borderless)
+        }
+      }
+    } else {
+      HStack(alignment: .center, spacing: 12) {
+        queryField("Sort", text: $sortText, prompt: sortPrompt)
+        queryField("Project", text: $projectText, prompt: projectPrompt)
+      }
+    }
+  }
+
+  /// Filter text typed in the query editor, which the chips don't show.
+  private var handTypedFilter: String? {
+    guard let text = trimmed(filterText), text != lastRenderedFilter else { return nil }
+    return text
+  }
+
+  /// With the editor hidden, a typed filter would silently narrow the
+  /// results; say it's there and offer to show or clear it.
+  private func customQueryNotice(_ filter: String) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Label("A typed filter is applied: \(filter)", systemImage: "curlybraces")
+        .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+      Button("Show") { showsQueryEditor = true }.font(.caption).buttonStyle(.borderless)
+      Button("Clear") {
+        filterText = ""
+        apply()
+      }.font(.caption).buttonStyle(.borderless)
+    }
   }
 
   /// One labelled query field. The visible caption keeps Filter/Sort/Project
@@ -543,49 +728,113 @@ struct DocumentsView: View {
     }
   }
 
-  /// "Search all text fields" box: writes ONE `$or` chip over every string field
-  /// of the loaded rows, so a search is still a chip that can be removed again.
-  private var quickSearchRow: some View {
-    HStack(spacing: 6) {
-      Spacer().frame(width: Self.queryLabelWidth)
-      TextField("Search all text fields", text: $quickSearch)
-        .textFieldStyle(.roundedBorder).frame(maxWidth: 260)
+  /// "Search" box: writes ONE `$or` chip over every text field of the loaded
+  /// rows, so a search is still a chip that can be removed again.
+  private var searchField: some View {
+    HStack(spacing: 4) {
+      Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+      TextField("Search", text: $quickSearch, prompt: Text(searchPrompt))
+        .textFieldStyle(.plain)
         .onChange(of: quickSearch) { _, _ in debounceQuickSearch() }
         .onSubmit { applyQuickSearch() }
       if !quickSearch.isEmpty {
-        Button("Search") { applyQuickSearch() }
-        Button("Clear Search", systemImage: "xmark.circle") {
+        Button("Clear Search", systemImage: "xmark.circle.fill") {
           quickSearch = ""
           applyQuickSearch()
-        }.buttonStyle(.plain).labelStyle(.iconOnly).help("Clear the text search")
+        }.buttonStyle(.plain).labelStyle(.iconOnly).foregroundStyle(.secondary)
+          .help("Clear the search")
       }
-      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 7).padding(.vertical, 4)
+    .background(.background, in: RoundedRectangle(cornerRadius: 7))
+    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.quaternary))
+    .frame(maxWidth: isCompact ? .infinity : 280)
+    .disabled(searchableFields.isEmpty && quickSearch.isEmpty)
+    .help(
+      searchableFields.isEmpty
+        ? "There are no text fields to search in"
+        : "Searches \(searchableFields.joined(separator: ", "))")
+  }
+
+  private var searchPrompt: String {
+    searchableFields.isEmpty ? "Search" : "Search \(model.itemNoun.plural)"
+  }
+
+  /// Sort without syntax: pick a field and an order in plain words. Writes
+  /// the Sort text, like the table's column headers.
+  private var sortMenu: some View {
+    Menu {
+      ForEach(catalog, id: \.name) { field in
+        Menu(field.name) {
+          let words = Self.orderWords(for: field.kind)
+          Button(words.ascending) { writeSort([SortKey(field: field.name, ascending: true)]) }
+          Button(words.descending) { writeSort([SortKey(field: field.name, ascending: false)]) }
+        }
+      }
+      if !sortKeys.isEmpty {
+        Divider()
+        Button("Don’t Sort", systemImage: "xmark.circle") { writeSortIfPossible([]) }
+      }
+    } label: {
+      Label(sortSummary, systemImage: "arrow.up.arrow.down")
+        .iconOnlyLabel(isCompact && sortKeys.isEmpty)
+    }
+    .fixedSize()
+    .disabled(catalog.isEmpty)
+    .help("Choose the order of the \(model.itemNoun.plural)")
+  }
+
+  /// "Sort" or "year, newest first".
+  private var sortSummary: String {
+    guard let first = sortKeys.first else { return "Sort" }
+    let kind = catalog.first { $0.name == first.field }?.kind ?? .mixed
+    let words = Self.orderWords(for: kind)
+    let more = sortKeys.count > 1 ? " +\(sortKeys.count - 1)" : ""
+    return "\(first.field), \((first.ascending ? words.ascending : words.descending).lowercased())\(more)"
+  }
+
+  /// How a person says "ascending/descending" for a kind of value.
+  private static func orderWords(for kind: FieldKind) -> (ascending: String, descending: String) {
+    switch kind {
+    case .string: ("A to Z", "Z to A")
+    case .number: ("Smallest First", "Largest First")
+    case .date: ("Oldest First", "Newest First")
+    case .boolean: ("No First", "Yes First")
+    default: ("Ascending", "Descending")
     }
   }
 
+  private func writeSortIfPossible(_ keys: [SortKey]) {
+    guard let dialect = FilterEngine.dialect(for: model.activeEngine) else { return }
+    writeSort(keys, dialect: dialect)
+  }
+
+  private func writeSort(_ keys: [SortKey]) { writeSortIfPossible(keys) }
+
   /// Hide/show menu for every loaded field. Writes the Projection text (through
   /// `handle`), so it can un-hide a column whose header is already gone.
-  private var fieldsRow: some View {
-    HStack(spacing: 6) {
-      Spacer().frame(width: Self.queryLabelWidth)
-      Menu {
-        ForEach(allFields, id: \.self) { field in
-          Button {
-            handle(hiddenFields.contains(field) ? .show(field) : .hide(field))
-          } label: {
-            Label(field, systemImage: hiddenFields.contains(field) ? "eye.slash" : "eye")
-          }
+  private var fieldsMenu: some View {
+    Menu {
+      ForEach(allFields, id: \.self) { field in
+        Button {
+          handle(hiddenFields.contains(field) ? .show(field) : .hide(field))
+        } label: {
+          Label(field, systemImage: hiddenFields.contains(field) ? "eye.slash" : "eye")
         }
-        Divider()
-        Button("Show All Fields", systemImage: "eye") { handle(.showAllFields) }
-      } label: {
-        Label("Fields", systemImage: "eye")
-      }.fixedSize().help("Hide or show fields (writes the Project filter)")
-      if !hiddenFields.isEmpty {
-        Text("\(hiddenFields.count) hidden").font(.caption).foregroundStyle(.secondary)
       }
-      Spacer(minLength: 0)
+      Divider()
+      Button("Show All Fields", systemImage: "eye") { handle(.showAllFields) }
+        .disabled(hiddenFields.isEmpty)
+    } label: {
+      Label(
+        hiddenFields.isEmpty ? "Fields" : "\(hiddenFields.count) Hidden",
+        systemImage: hiddenFields.isEmpty ? "eye" : "eye.slash"
+      )
+      .iconOnlyLabel(isCompact && hiddenFields.isEmpty)
     }
+    .fixedSize()
+    .disabled(allFields.isEmpty)
+    .help("Hide or show fields")
   }
 
   /// Example syntax per engine: MongoDB and SQL take the JSON query dialect;
@@ -614,9 +863,10 @@ struct DocumentsView: View {
     let noun = model.itemNoun.plural
     if model.currentQuery.isEmpty {
       return model.activeEngine == .redis
-        ? "This database has no keys." : "This collection has no \(noun)."
+        ? "This database has no keys."
+        : "“\(model.selectedCollection ?? "")” has no \(noun) yet."
     }
-    return "No \(noun) match the current query."
+    return "No \(noun) match the search and filters."
   }
 
   // MARK: - Document list
@@ -639,7 +889,8 @@ struct DocumentsView: View {
           ) { row in
             KeyValueRow(
               row: row, editor: editor, expandedKeys: expandedKeys,
-              isEditable: editMode && model.canEditDocuments, onToggle: toggleExpansion,
+              isEditable: editMode && showsQueryEditor && model.canEditDocuments,
+              onToggle: toggleExpansion,
               onStartEdit: { startEditing(row) }, onCommit: commitEditor,
               onCancel: { editor = nil },
               keyMenuState: KeyMenuState(
@@ -648,21 +899,28 @@ struct DocumentsView: View {
               onColumnAction: columnActionHandler
             )
           }
-          if editMode && model.canEditDocuments {
+          if editMode && model.canBulkEdit {
             AddFieldRow(onAdd: { key, value in
               Task {
                 do {
                   try await model.addField(to: section.index, key: key, value: value)
                   actionError = nil
                 } catch {
-                  actionError = "Couldn't add “\(key)”: \(error.localizedDescription)"
+                  actionError = FriendlyError(error, while: .saving)
                 }
               }
             }).padding(.leading, 16).padding(.vertical, 2)
           }
         } header: {
-          Text(documentHeader(for: section.document, index: section.index)).font(.caption)
-            .foregroundStyle(.secondary)
+          HStack {
+            Text(documentHeader(for: section.document, index: section.index)).font(.caption)
+              .foregroundStyle(.secondary)
+            Spacer()
+            Button("Details", systemImage: "info.circle") {
+              recordActions.showDetails(section.index)
+            }.labelStyle(.iconOnly).buttonStyle(.borderless).help("Show details")
+          }
+          .contextMenu { RecordContextMenu(index: section.index, actions: recordActions) }
         }
       }
       // "Load more" sentinel: appears at the bottom while more rows exist.
@@ -688,7 +946,7 @@ struct DocumentsView: View {
   }
 
   private func startEditing(_ row: FieldRow) {
-    guard editMode && model.canEditDocuments else { return }
+    guard editMode && showsQueryEditor && model.canEditDocuments else { return }
     commitEditor()  // commit any in-flight edit before switching targets
     // Containers expand rather than edit; types without an editor stay read-only.
     guard !row.bson.isContainer, EditableType.canEdit(row.bson) else { return }
@@ -705,7 +963,7 @@ struct DocumentsView: View {
         try await model.updateDocument(editor.docIndex, at: editor.path, to: value)
         actionError = nil
       } catch {
-        actionError = "Couldn't save: \(error.localizedDescription)"
+        actionError = FriendlyError(error, while: .saving)
       }
     }
   }
@@ -728,7 +986,7 @@ struct DocumentsView: View {
         actionError = nil
         pendingUpdate = PendingUpdate(filter: filter, update: update, count: count)
       } catch {
-        actionError = "Update not run: \(error.localizedDescription)"
+        actionError = FriendlyError(error, while: .saving)
       }
     }
   }
@@ -741,7 +999,7 @@ struct DocumentsView: View {
         _ = try await model.runUpdate(filter: pending.filter, update: pending.update)
         actionError = nil
       } catch {
-        actionError = "Update failed: \(error.localizedDescription)"
+        actionError = FriendlyError(error, while: .saving)
       }
     }
   }
@@ -755,6 +1013,9 @@ struct DocumentsView: View {
 
   private func apply() {
     debounceTask?.cancel()
+    // The selection is an index: after a new query it would point at
+    // another record.
+    selectedRecord = nil
     model.currentQuery = pendingSpec
     runningQueries += 1
     Task {
@@ -1027,6 +1288,7 @@ struct DocumentsView: View {
     let selected = throughStage.map { Array(pipelineStages.prefix($0 + 1)) } ?? pipelineStages
     guard let documents = try? AggregationPipeline.documents(selected) else { return }
     appliedStages = selected
+    selectedRecord = nil
     runningQueries += 1
     Task {
       defer { runningQueries -= 1 }
@@ -1157,5 +1419,41 @@ private struct DeleteSheet: View {
       _ = try await model.runDelete(filter: trimmedFilter)
       dismiss()
     } catch { previewError = error.localizedDescription }
+  }
+}
+
+/// The record editor sheet and the single-record delete confirmation, for
+/// whichever view starts them (the pane, or the inspector).
+private struct RecordDialogs: ViewModifier {
+  @Environment(DatabaseModel.self) private var model
+  @Binding var editor: RecordEditorTarget?
+  @Binding var deletion: Int?
+  let fields: [FieldInfo]
+  let onDelete: (Int) -> Void
+
+  func body(content: Content) -> some View {
+    content
+      .sheet(item: $editor) { target in
+        RecordEditorView(target: target, fields: fields)
+      }
+      .confirmationDialog(
+        deletion.map(title) ?? "",
+        isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }),
+        titleVisibility: .visible, presenting: deletion
+      ) { index in
+        Button("Delete", role: .destructive) { onDelete(index) }
+        Button("Cancel", role: .cancel) {}
+      } message: { _ in
+        Text(
+          "It will be removed from “\(model.selectedCollection ?? "")”. You can undo this right after.")
+      }
+  }
+
+  /// "Delete “Up”?" — the record by name where it has one.
+  private func title(_ index: Int) -> String {
+    let noun = model.itemNoun.singular
+    guard model.documents.indices.contains(index), let name = RecordName.of(model.documents[index])
+    else { return "Delete this \(noun)?" }
+    return "Delete “\(name)”?"
   }
 }

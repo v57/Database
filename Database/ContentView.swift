@@ -77,7 +77,7 @@ struct ContentView: View {
   }
 
   /// Sidebar title: the active connection name, or the app name when idle.
-  private var title: String { model.connectionName ?? "Database Client" }
+  private var title: String { model.connectionName ?? "Database" }
 
   /// Detail title: the open collection/table/key, so the pane says what it
   /// shows; the connection moves into the subtitle.

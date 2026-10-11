@@ -80,3 +80,10 @@ extension View {
 #endif
   }
 }
+
+extension View {
+  /// Icon-only labels where room is short, title and icon elsewhere.
+  @ViewBuilder func iconOnlyLabel(_ iconOnly: Bool) -> some View {
+    if iconOnly { labelStyle(.iconOnly) } else { labelStyle(.titleAndIcon) }
+  }
+}

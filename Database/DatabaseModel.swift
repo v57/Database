@@ -64,6 +64,11 @@ import SwiftData
   /// current (a slower, older query or a previous collection) is dropped
   /// instead of overwriting newer results.
   private var queryGeneration = 0
+  /// Primary-key columns per SQL table ("database␟table"), looked up when a
+  /// table opens; MongoDB records are always found by `_id`.
+  private var primaryKeys: [String: [String]] = [:]
+  /// The last single-record change, offered for Undo in the documents pane.
+  var lastChange: RecordChange?
   /// Redis: keys of the selected logical database (sidebar + list source).
   var redisEntries: [RedisKeyEntry] = []
   /// Redis: detail rows of the selected key, rendered as one document.
@@ -102,10 +107,13 @@ import SwiftData
   /// True when a session of ANY engine is open (sidebar gating, status dot).
   var isSessionActive: Bool { session != nil || alternateSession != nil }
 
-  /// Inline edits, Add Field, Update and Delete write back to the server only
-  /// for MongoDB; SQL rows and Redis keys are read-only in the UI. Aggregation
-  /// output isn't the collection's documents, so it is read-only too.
-  var canEditDocuments: Bool { session != nil && currentPipeline == nil }
+  /// Single records (inline values, the record editor, delete, add) can be
+  /// changed in MongoDB collections and in SQL tables with a primary key.
+  var canEditDocuments: Bool { recordAccess.isEditable }
+
+  /// Add Field and the filter-wide Update/Delete exist only for MongoDB: SQL
+  /// columns are fixed, and a bulk SQL write is one typo away from every row.
+  var canBulkEdit: Bool { session != nil && currentPipeline == nil }
 
   /// Every engine with a query language can aggregate; Redis can't.
   var canAggregate: Bool { activeEngine != .redis && activeEngine != nil }
@@ -232,24 +240,47 @@ import SwiftData
   func connect(_ config: ConnectionConfig) async { await connect(EngineSettings.mongodb(config)) }
 
   /// Opens a SQLite file delivered by the system (Finder "Open With…", dock
-  /// drop): reuses a saved record for the same path or saves a new one, then
-  /// connects. Mirrors what the create form would do for that file.
-  func openSQLiteFile(at path: String) async {
+  /// drop) or picked on the welcome screen: reuses a saved record for the
+  /// same path or saves a new one, then connects. Mirrors what the create
+  /// form would do for that file. `bookmark` keeps an iOS Files pick openable
+  /// after a relaunch (see ConnectionRecord.fileBookmark).
+  func openSQLiteFile(at path: String, name: String? = nil, bookmark: Data? = nil) async {
     let records = (try? modelContext.fetch(FetchDescriptor<ConnectionRecord>())) ?? []
     let standardized = (path as NSString).standardizingPath
     if let existing = records.first(where: {
-      $0.engineKind == .sqlite && ($0.host as NSString).standardizingPath == standardized
+      $0.engineKind == .sqlite
+        && (($0.host as NSString).standardizingPath == standardized
+          || ConnectionRecord.rebasedIntoContainer($0.host) == standardized)
     }) {
+      existing.host = standardized
+      if let bookmark { existing.fileBookmark = bookmark }
+      try? modelContext.save()
       await connect(existing.toSettings())
       return
     }
     let filename = (path as NSString).lastPathComponent
-    let name = (filename as NSString).deletingPathExtension
+    let fileStem = (filename as NSString).deletingPathExtension
     let record = ConnectionRecord(
-      name: name.isEmpty ? filename : name, host: standardized, port: 0, engine: .sqlite)
+      name: name ?? (fileStem.isEmpty ? filename : fileStem), host: standardized, port: 0,
+      engine: .sqlite)
+    record.fileBookmark = bookmark
     modelContext.insert(record)
     try? modelContext.save()
     await connect(record.toSettings())
+  }
+
+  /// Creates the sample database on first use, saves it as a connection and
+  /// opens its movies table.
+  func openSampleDatabase() async {
+    do {
+      let url = try await SampleDatabase.url()
+      await openSQLiteFile(at: url.path, name: SampleDatabase.name)
+      if isSessionActive, let database = selectedDatabase, collections.contains("movies") {
+        await select(collection: "movies", in: database)
+      }
+    } catch {
+      connectionError = error.localizedDescription
+    }
   }
 
   func disconnect() async {
@@ -272,6 +303,8 @@ import SwiftData
     hasMore = false
     isLoadingMore = false
     loadMoreError = nil
+    lastChange = nil
+    primaryKeys = [:]
     statusMessage = ""
   }
 
@@ -472,6 +505,7 @@ import SwiftData
     if isNewTarget {
       currentQuery = QuerySpec(filter: nil, sort: nil, projection: nil)
       currentPipeline = nil
+      lastChange = nil
     }
     // Never leave the previous collection's rows on screen under the new
     // collection's name — clear them before loading.
@@ -501,6 +535,7 @@ import SwiftData
         selectedDatabase = database
         collections = collectionsByDatabase[database] ?? []
       }
+      await loadPrimaryKey(of: collection, in: database)
 
       if case .redis(let redis) = alternateSession {
         let entry = try await redis.entry(for: collection)
@@ -583,7 +618,7 @@ import SwiftData
     let f = try Self.filterDocument(fromText: filter)
     let u = try Self.updateDocument(fromText: update)
     let result = try await session.updateMany(in: selectedCollection, filter: f, update: u)
-    await refreshAfterMutation(session, selectedCollection)
+    await refreshAfterMutation()
     statusMessage = "Updated \(result.matchedCount) matched, \(result.modifiedCount) modified"
     return result
   }
@@ -593,7 +628,7 @@ import SwiftData
     guard let session, let selectedCollection else { throw MongoDBError.notConnected }
     let f = try Self.filterDocument(fromText: filter)
     let result = try await session.deleteMany(from: selectedCollection, filter: f)
-    await refreshAfterMutation(session, selectedCollection)
+    await refreshAfterMutation()
     statusMessage = "Deleted \(result.deletedCount) document(s)"
     return result
   }
@@ -604,8 +639,13 @@ import SwiftData
   /// the engine is read-only, the document has no `_id`, or the path can't be
   /// expressed as a dotted `$set` key.
   func updateDocument(_ index: Int, at path: [BSONPathSegment], to value: BSON) async throws {
-    guard let session, let selectedCollection else { throw EditError.readOnly }
     guard documents.indices.contains(index) else { return }
+    // A top-level field is a record edit: every engine, with Undo.
+    if path.count == 1, case .key(let key) = path[0] {
+      try await saveRecord(at: index, changes: [key: value])
+      return
+    }
+    guard let session, let selectedCollection else { throw EditError.readOnly }
     guard let id = documents[index]["_id"] else { throw EditError.missingID }
     let dotted = try Self.dottedPath(path)
     var filter = Document()
@@ -629,7 +669,229 @@ import SwiftData
   /// Adds a new top-level field to the document at `index` on the server.
   func addField(to index: Int, key: String, value: BSON) async throws {
     guard documents.indices.contains(index), !key.isEmpty else { return }
+    guard canBulkEdit else { throw EditError.readOnly }
     try await updateDocument(index, at: [.key(key)], to: value)
+  }
+
+  // MARK: - Record editing (MongoDB, and SQL tables with a primary key)
+
+  /// Whether the loaded records can be changed, and which fields find one.
+  var recordAccess: RecordAccess {
+    guard isSessionActive, let selectedCollection else { return .readOnly("") }
+    if currentPipeline != nil {
+      return .readOnly("These are aggregation results, not stored records, so they can’t be edited.")
+    }
+    switch alternateSession {
+    case nil: return .editable(key: ["_id"])
+    case .redis: return .readOnly("Redis keys can’t be edited here yet.")
+    case .sqlite(let sqlite) where sqlite.isReadOnly:
+      return .readOnly("This file is open read-only, so it can’t be changed.")
+    case .sqlite, .postgresql:
+      guard let key = primaryKeys[tableKey(selectedCollection, in: selectedDatabase)] else {
+        return .readOnly("Checking whether this table can be edited…")
+      }
+      return key.isEmpty
+        ? .readOnly(
+          "This table has no primary key, so its rows can’t be told apart safely. It can be viewed but not changed.")
+        : .editable(key: key)
+    }
+  }
+
+  /// The values that identify `document` (its `_id`, or its primary-key
+  /// columns), or nil when records can't be edited or a key field isn't
+  /// loaded (a projection hid it).
+  func recordKey(of document: Document) -> Document? {
+    guard case .editable(let columns) = recordAccess else { return nil }
+    var key = Document()
+    for column in columns {
+      guard let value = document[column] else { return nil }
+      key[column] = value
+    }
+    return key
+  }
+
+  /// Why the record at `index` can't be edited, or nil when it can.
+  func editBlocker(forRecordAt index: Int) -> String? {
+    switch recordAccess {
+    case .readOnly(let reason): return reason
+    case .editable:
+      guard documents.indices.contains(index) else { return "" }
+      return recordKey(of: documents[index]) == nil ? EditError.missingKey.errorDescription : nil
+    }
+  }
+
+  /// Writes `changes` (top-level fields) to the record at `index` in one
+  /// statement and remembers the old values for Undo. Key fields can't be
+  /// changed: they are how the record is found again.
+  func saveRecord(at index: Int, changes: Document) async throws {
+    guard documents.indices.contains(index) else { return }
+    let original = documents[index]
+    guard let key = recordKey(of: original) else {
+      throw canEditDocuments ? EditError.missingKey : EditError.readOnly
+    }
+    if let keyField = changes.keys.first(where: { key[$0] != nil }) {
+      throw EditError.keyField(keyField)
+    }
+    guard !changes.isEmpty else { return }
+    try await write(changes, unsetting: [], toRecordWith: key)
+    var old = Document()
+    var added: [String] = []
+    for key in changes.keys {
+      if let value = original[key] { old[key] = value } else { added.append(key) }
+    }
+    mirror(changes, removing: [], inRecordWith: key)
+    let name = RecordName.of(original).map { "“\($0)”" } ?? "the record"
+    let count = changes.count == 1 ? "“\(changes.keys[0])”" : "\(changes.count) fields"
+    remember(.saved(key: key, old: old, added: added), message: "Changed \(count) of \(name).")
+  }
+
+  /// Deletes the record at `index`. Undo puts it back unless a projection
+  /// hid some of its fields (they would be lost on the way back).
+  func deleteRecord(at index: Int) async throws {
+    guard documents.indices.contains(index), let selectedCollection else { return }
+    let record = documents[index]
+    guard let key = recordKey(of: record) else {
+      throw canEditDocuments ? EditError.missingKey : EditError.readOnly
+    }
+    let removed: Int
+    if let session {
+      removed = try await session.deleteMany(from: selectedCollection, filter: key).deletedCount
+    } else {
+      let (target, flavor) = try sqlTarget(selectedCollection)
+      removed = try await sqlWrite(SQLRowWrite.delete(from: target, key: key, flavor: flavor))
+    }
+    guard removed > 0 else { throw EditError.documentGone }
+    if let i = documents.firstIndex(where: { recordKey(of: $0) == key }) {
+      documents.remove(at: i)
+      loadedCount = max(0, loadedCount - 1)
+    }
+    selectedDocument = nil
+    let name = RecordName.of(record).map { "“\($0)”" } ?? "a record"
+    remember(
+      .deleted(record), message: "Deleted \(name).",
+      canUndo: currentQuery.projection.map { $0.trimmingCharacters(in: .whitespaces).isEmpty } ?? true)
+    statusMessage = loadedSummary()
+  }
+
+  /// Adds a record with `values` (fields left out get the column default),
+  /// then reloads the first page so it shows up wherever it sorts.
+  func insertRecord(_ values: Document) async throws {
+    guard canEditDocuments, let selectedCollection else { throw EditError.readOnly }
+    if let session {
+      _ = try await session.insertOne(in: selectedCollection, document: values)
+    } else {
+      let (target, flavor) = try sqlTarget(selectedCollection)
+      _ = try await sqlWrite(SQLRowWrite.insert(into: target, values: values, flavor: flavor))
+    }
+    let name = RecordName.of(values).map { "“\($0)”" } ?? "a record"
+    remember(.added, message: "Added \(name).", canUndo: false)
+    await refreshAfterMutation()
+    statusMessage = loadedSummary()
+  }
+
+  /// Reverts `lastChange` while its collection is still the open one.
+  func undoLastChange() async throws {
+    guard let change = lastChange else { return }
+    lastChange = nil
+    guard change.collection == selectedCollection, change.database == selectedDatabase,
+      let selectedCollection
+    else { return }
+    switch change.kind {
+    case .saved(let key, let old, let added):
+      try await write(old, unsetting: added, toRecordWith: key)
+      mirror(old, removing: added, inRecordWith: key)
+    case .deleted(let record):
+      if let session {
+        _ = try await session.insertOne(in: selectedCollection, document: record)
+      } else {
+        let (target, flavor) = try sqlTarget(selectedCollection)
+        _ = try await sqlWrite(SQLRowWrite.insert(into: target, values: record, flavor: flavor))
+      }
+      await refreshAfterMutation()
+    case .added:
+      return
+    }
+    statusMessage = "Undone · \(loadedSummary())"
+  }
+
+  private func remember(_ kind: RecordChange.Kind, message: String, canUndo: Bool = true) {
+    lastChange = RecordChange(
+      kind: kind, database: selectedDatabase, collection: selectedCollection ?? "",
+      message: message, canUndo: canUndo)
+    statusMessage = message
+  }
+
+  /// One write to the record found by `key`. SQL has no "missing" field, so
+  /// fields to unset become NULL there.
+  private func write(_ changes: Document, unsetting removed: [String], toRecordWith key: Document)
+    async throws
+  {
+    guard let selectedCollection else { throw EditError.readOnly }
+    if let session {
+      var update = Document()
+      if !changes.isEmpty { update["$set"] = .document(changes) }
+      if !removed.isEmpty {
+        var unset = Document()
+        for field in removed { unset[field] = .string("") }
+        update["$unset"] = .document(unset)
+      }
+      guard !update.isEmpty else { return }
+      let result = try await session.updateMany(in: selectedCollection, filter: key, update: update)
+      guard result.matchedCount > 0 else { throw EditError.documentGone }
+    } else {
+      var values = changes
+      for field in removed { values[field] = .null }
+      guard !values.isEmpty else { return }
+      let (target, flavor) = try sqlTarget(selectedCollection)
+      let changed = try await sqlWrite(
+        SQLRowWrite.update(target, set: values, key: key, flavor: flavor))
+      guard changed > 0 else { throw EditError.documentGone }
+    }
+  }
+
+  /// Applies a saved change to the loaded copy of the record (found again by
+  /// key: the list may have been replaced while the write ran).
+  private func mirror(_ changes: Document, removing removed: [String], inRecordWith key: Document) {
+    guard let index = documents.firstIndex(where: { recordKey(of: $0) == key }) else { return }
+    var docs = documents
+    for (field, value) in changes.all { docs[index][field] = value }
+    for field in removed {
+      docs[index][field] = alternateSession == nil ? nil : .null
+    }
+    documents = docs
+    selectedDocument = docs[index]
+  }
+
+  private func sqlTarget(_ collection: String) throws -> (String, SQLFlavor) {
+    switch alternateSession {
+    case .postgresql: (Self.postgresTable(collection), .postgresql)
+    case .sqlite: (Self.quotedIdentifier(collection), .sqlite)
+    case .redis, nil: throw EditError.readOnly
+    }
+  }
+
+  private func sqlWrite(_ sql: String) async throws -> Int {
+    switch alternateSession {
+    case .postgresql(let pg): try await pg.write(sql: sql)
+    case .sqlite(let sqlite): try await sqlite.write(sql: sql)
+    case .redis, nil: throw EditError.readOnly
+    }
+  }
+
+  private func tableKey(_ table: String, in database: String?) -> String {
+    "\(database ?? "")\u{1F}\(table)"
+  }
+
+  /// Looks up (once per table) which columns identify a SQL row. A failed
+  /// lookup counts as "no key": the table is then shown read-only.
+  private func loadPrimaryKey(of table: String, in database: String) async {
+    let key = tableKey(table, in: database)
+    guard primaryKeys[key] == nil else { return }
+    switch alternateSession {
+    case .sqlite(let sqlite): primaryKeys[key] = (try? await sqlite.primaryKey(of: table)) ?? []
+    case .postgresql(let pg): primaryKeys[key] = (try? await pg.primaryKey(of: table)) ?? []
+    case .redis, nil: break
+    }
   }
 
   /// `[.key("a"), .index(0), .key("b")]` → `a.0.b`. Keys containing `.` or
@@ -651,11 +913,15 @@ import SwiftData
   }
 
   enum EditError: LocalizedError {
-    case readOnly, missingID, documentGone, unaddressableKey(String)
+    case readOnly, missingID, missingKey, documentGone, unaddressableKey(String), keyField(String)
 
     var errorDescription: String? {
       switch self {
-      case .readOnly: "Editing is only supported for MongoDB collections."
+      case .readOnly: "These records can’t be changed."
+      case .missingKey:
+        "The fields that identify this record are hidden, so it can’t be changed. Show all fields and try again."
+      case .keyField(let field):
+        "“\(field)” identifies this record, so it can’t be changed here."
       case .missingID: "This document has no _id, so the change can't be saved."
       case .documentGone: "The document no longer exists on the server. Refresh and try again."
       case .unaddressableKey(let key):
@@ -921,11 +1187,11 @@ import SwiftData
 
   /// Re-runs the current query from the first page so the list (and its
   /// pagination state) reflects a mutation.
-  private func refreshAfterMutation(_ session: MongoConnection, _ collection: String) async {
+  private func refreshAfterMutation() async {
+    guard let selectedCollection else { return }
     queryGeneration &+= 1
     let generation = queryGeneration
-    guard let docs = try? await findCurrentMongo(in: collection, session: session, limit: pageSize)
-    else { return }
+    guard let docs = try? await loadFirstPage(collection: selectedCollection) else { return }
     guard generation == queryGeneration else { return }
     resetPagination()
     documents = docs
@@ -1068,4 +1334,31 @@ struct SearchTerms {
     }
     collectionTerms = tokens.filter { !$0.hasPrefix("$") }
   }
+}
+
+/// Whether the open collection/table's records can be changed.
+enum RecordAccess: Equatable {
+  /// Records are found again by these fields (`_id`, or the primary key).
+  case editable(key: [String])
+  /// Why not, in plain words (empty when nothing is open).
+  case readOnly(String)
+
+  var isEditable: Bool { if case .editable = self { true } else { false } }
+}
+
+/// A single-record change the pane can undo.
+struct RecordChange {
+  enum Kind {
+    /// `old` holds the previous values; `added` the fields that didn't exist.
+    case saved(key: Document, old: Document, added: [String])
+    case deleted(Document)
+    case added
+  }
+
+  let kind: Kind
+  let database: String?
+  let collection: String
+  /// "Changed “rating” of “Up”." — shown next to Undo.
+  let message: String
+  let canUndo: Bool
 }
