@@ -250,7 +250,12 @@ struct ConnectionsSidebarView: View {
   /// only a connection row that stays selected briefly gets connected.
   private func connectSelectedRecord() async {
     guard case .connection(let id)? = selection else { return }
+    // A row that was already live is a highlight synced from the model, not
+    // a pick: don't reconnect it if the model switches away meanwhile (a
+    // file opened from Finder while this window was appearing).
+    let wasActive = records.first { $0.id == id }.map(isActive) ?? false
     do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+    guard !wasActive else { return }
     connectIfInactive(id)
   }
 

@@ -39,9 +39,14 @@ import SwiftUI
   }
 
   var body: some Scene {
-    WindowGroup { ContentView(model: model, container: container) }.commands {
-      NewConnectionCommands()
-    }
+    WindowGroup {
+      // File opens (Finder "Open With…", `open -a`) connect through
+      // AppDelegate into the shared model. Preferring an open window stops
+      // SwiftUI from spawning another for each file (it would only mirror
+      // the first); with no window open, SwiftUI still creates one.
+      ContentView(model: model, container: container).handlesExternalEvents(
+        preferring: ["*"], allowing: ["*"])
+    }.commands { NewConnectionCommands() }
   }
 }
 
