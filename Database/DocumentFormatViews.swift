@@ -161,10 +161,7 @@ struct TableDocumentsView: View {
   /// Invisible grab strip on a header's right edge: dragging it resizes the
   /// column in the header and every row together.
   private func resizeHandle(_ name: String) -> some View {
-    Color.clear.frame(width: 10).contentShape(Rectangle())
-#if os(macOS)
-      .pointerStyle(.columnResize)
-#endif
+    Color.clear.frame(width: 10).contentShape(Rectangle()).columnResizePointer()
       .gesture(
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
           .onChanged { drag in

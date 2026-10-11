@@ -83,124 +83,138 @@ struct DocumentsView: View {
   /// on each keystroke.
   @State private var catalog: [FieldInfo] = []
 
-  var body: some View {
-    VStack(spacing: 0) {
-      Group {
-        if !model.isSessionActive {
-          if model.isConnecting {
-            ProgressView("Connecting…").frame(maxWidth: .infinity, maxHeight: .infinity)
-          } else {
-            ContentUnavailableView(
-              "Not Connected", systemImage: "cylinder.split.1x2",
-              description: Text("Choose a saved connection in the sidebar, or add one with +."))
-          }
-        } else if model.selectedCollection == nil {
-          let noun = model.containerNoun.singular
-          ContentUnavailableView(
-            "No \(noun.capitalized) Selected", systemImage: "shippingbox",
-            description: Text("Select a \(noun) in the sidebar."))
-        } else if model.documents.isEmpty && model.isLoadingDocuments {
-          ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if model.documents.isEmpty, let error = model.queryError {
-          ContentUnavailableView {
-            Label("Couldn't Load \(model.itemNoun.plural.capitalized)", systemImage: "exclamationmark.triangle")
-          } description: {
-            Text(error).textSelection(.enabled)
-          } actions: {
-            if isQueryActive { Button(isAggregating ? "Clear Pipeline" : "Clear Query") { clearQuery() } }
-            Button("Retry") { refresh() }
-          }
-        } else if model.documents.isEmpty {
-          ContentUnavailableView {
-            Label(emptyTitle, systemImage: "doc.text.magnifyingglass")
-          } description: {
-            Text(emptySummary)
-          } actions: {
-            if isQueryActive { Button(isAggregating ? "Clear Pipeline" : "Clear Query") { clearQuery() } }
-          }
-        } else {
-          // Results of a query that has since failed stay visible but dimmed;
-          // the query bar says they are stale.
-          contentForFormat.opacity(model.queryError == nil ? 1 : 0.5)
-        }
-      }
-    }.frame(maxHeight: .infinity).safeAreaBar(edge: .top) {
+  // Split into separately type-checked pieces: as one modifier chain the body
+  // exceeded the type checker's time limit.
+  var body: some View { syncingQueryBar(dialogs(chrome)) }
+
+  /// The pane with its query bar, toolbar and titles.
+  private var chrome: some View {
+    paneContent.frame(maxHeight: .infinity).topBar {
       if model.selectedCollection != nil && model.isSessionActive {
         queryBar
       }
-    }.toolbar {
-      ToolbarItemGroup {
-        if model.selectedCollection != nil && model.isSessionActive {
-          // Writes (Edit/Update/Delete) only exist for MongoDB; SQL rows and
-          // Redis keys are read-only, so the controls are not offered there.
-          if model.canEditDocuments && !isAggregating {
-            if editMode {
-              Button {
-                showDeleteSheet = true
-              } label: {
-                Label("Delete…", systemImage: "trash")
-              }.keyboardShortcut(.delete, modifiers: .command)
-                .help("Delete the documents matching the filter (⌘⌫)")
-            }
+    }.toolbar { toolbarItems }
+    .subtitle(subtitle)
+#if os(iOS)
+    // A large title sat in an empty band above the query bar.
+    .navigationBarTitleDisplayMode(.inline)
+#endif
+  }
+
+  /// Whatever the pane shows under the query bar: a placeholder when there is
+  /// nothing to show yet, else the documents in the chosen format.
+  @ViewBuilder private var paneContent: some View {
+    if !model.isSessionActive {
+      if model.isConnecting {
+        ProgressView("Connecting…").frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        ContentUnavailableView(
+          "Not Connected", systemImage: "cylinder.split.1x2",
+          description: Text("Choose a saved connection in the sidebar, or add one with +."))
+      }
+    } else if model.selectedCollection == nil {
+      let noun = model.containerNoun.singular
+      ContentUnavailableView(
+        "No \(noun.capitalized) Selected", systemImage: "shippingbox",
+        description: Text("Select a \(noun) in the sidebar."))
+    } else if model.documents.isEmpty && model.isLoadingDocuments {
+      ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+    } else if model.documents.isEmpty, let error = model.queryError {
+      ContentUnavailableView {
+        Label("Couldn't Load \(model.itemNoun.plural.capitalized)", systemImage: "exclamationmark.triangle")
+      } description: {
+        Text(error).textSelection(.enabled)
+      } actions: {
+        if isQueryActive { Button(isAggregating ? "Clear Pipeline" : "Clear Query") { clearQuery() } }
+        Button("Retry") { refresh() }
+      }
+    } else if model.documents.isEmpty {
+      ContentUnavailableView {
+        Label(emptyTitle, systemImage: "doc.text.magnifyingglass")
+      } description: {
+        Text(emptySummary)
+      } actions: {
+        if isQueryActive { Button(isAggregating ? "Clear Pipeline" : "Clear Query") { clearQuery() } }
+      }
+    } else {
+      // Results of a query that has since failed stay visible but dimmed;
+      // the query bar says they are stale.
+      contentForFormat.opacity(model.queryError == nil ? 1 : 0.5)
+    }
+  }
+
+  @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {
+    ToolbarItemGroup {
+      if model.selectedCollection != nil && model.isSessionActive {
+        // Writes (Edit/Update/Delete) only exist for MongoDB; SQL rows and
+        // Redis keys are read-only, so the controls are not offered there.
+        if model.canEditDocuments && !isAggregating {
+          if editMode {
             Button {
-              editMode.toggle()
-              if !editMode { editor = nil }
+              showDeleteSheet = true
             } label: {
-              Label(editMode ? "Done" : "Edit", systemImage: editMode ? "checkmark" : "pencil")
-            }.help(editMode ? "Leave edit mode" : "Edit values, add fields, update or delete documents")
+              Label("Delete…", systemImage: "trash")
+            }.keyboardShortcut(.delete, modifiers: .command)
+              .help("Delete the documents matching the filter (⌘⌫)")
           }
-
           Button {
-            refresh()
+            editMode.toggle()
+            if !editMode { editor = nil }
           } label: {
-            Label("Refresh", systemImage: "arrow.clockwise")
-          }.keyboardShortcut("r", modifiers: .command).help("Re-run the query (⌘R)")
+            Label(editMode ? "Done" : "Edit", systemImage: editMode ? "checkmark" : "pencil")
+          }.help(editMode ? "Leave edit mode" : "Edit values, add fields, update or delete documents")
+        }
 
-          if isCompact {
-            // Edit + Refresh + a three-segment picker overflowed the iPhone
-            // toolbar; one menu button shows the current format instead.
-            Menu {
-              if model.canAggregate {
-                Picker("Query Mode", selection: queryModeBinding) {
-                  ForEach(QueryMode.allCases) { mode in
-                    Label(mode.name, systemImage: mode.symbol).tag(mode)
-                  }
-                }
-              }
-              Picker("Display Format", selection: displayFormatBinding) {
-                ForEach(DisplayFormat.allCases) { format in
-                  Label(format.name, systemImage: format.symbol).tag(format)
-                }
-              }
-            } label: {
-              Label("Display Format: \(displayFormat.name)", systemImage: displayFormat.symbol)
-            }
-          } else {
+        Button {
+          refresh()
+        } label: {
+          Label("Refresh", systemImage: "arrow.clockwise")
+        }.keyboardShortcut("r", modifiers: .command).help("Re-run the query (⌘R)")
+
+        if isCompact {
+          // Edit + Refresh + a three-segment picker overflowed the iPhone
+          // toolbar; one menu button shows the current format instead.
+          Menu {
             if model.canAggregate {
               Picker("Query Mode", selection: queryModeBinding) {
                 ForEach(QueryMode.allCases) { mode in
                   Label(mode.name, systemImage: mode.symbol).tag(mode)
                 }
               }
-              .pickerStyle(.segmented)
-              .help("Find with Filter/Sort/Project, or build an aggregation pipeline")
             }
             Picker("Display Format", selection: displayFormatBinding) {
               ForEach(DisplayFormat.allCases) { format in
-                Image(systemName: format.symbol).accessibilityLabel(format.name).tag(format)
+                Label(format.name, systemImage: format.symbol).tag(format)
+              }
+            }
+          } label: {
+            Label("Display Format: \(displayFormat.name)", systemImage: displayFormat.symbol)
+          }
+        } else {
+          if model.canAggregate {
+            Picker("Query Mode", selection: queryModeBinding) {
+              ForEach(QueryMode.allCases) { mode in
+                Label(mode.name, systemImage: mode.symbol).tag(mode)
               }
             }
             .pickerStyle(.segmented)
-            .help("Display format: List / Table / JSON")
+            .help("Find with Filter/Sort/Project, or build an aggregation pipeline")
           }
+          Picker("Display Format", selection: displayFormatBinding) {
+            ForEach(DisplayFormat.allCases) { format in
+              Image(systemName: format.symbol).accessibilityLabel(format.name).tag(format)
+            }
+          }
+          .pickerStyle(.segmented)
+          .help("Display format: List / Table / JSON")
         }
       }
     }
-    .navigationSubtitle(subtitle)
-#if os(iOS)
-    // A large title sat in an empty band above the query bar.
-    .navigationBarTitleDisplayMode(.inline)
-#endif
+  }
+
+  /// The pane's sheets and alerts.
+  private func dialogs(_ content: some View) -> some View {
+    content
     .sheet(
       isPresented: $showDeleteSheet
     ) { DeleteSheet(filter: filterText) }.sheet(item: $searchTarget) {
@@ -232,7 +246,13 @@ struct DocumentsView: View {
     } message: {
       Text(
         "Filter chips rewrite the Filter field, so “\(trimmed(filterText) ?? "")” would be replaced.")
-    }.onChange(of: model.documents) { _, documents in
+    }
+  }
+
+  /// Keeps the query bar's text, the chips and the model's query in step.
+  private func syncingQueryBar(_ content: some View) -> some View {
+    content
+    .onChange(of: model.documents) { _, documents in
       // Keep the last non-empty field list: a query with no results would
       // otherwise empty it, hiding the search box, Fields menu and chip
       // fields right when the query needs changing. A new collection resets it.
