@@ -212,6 +212,41 @@ public final class PostgresConnection {
     return 0
   }
 
+  /// Runs one INSERT/UPDATE/DELETE and returns how many rows it changed
+  /// (`PQcmdTuples`).
+  public func write(sql: String) async throws -> Int {
+    guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw PostgreSQLError.invalidQuery("Empty SQL statement")
+    }
+    let handle = self.handle
+    return try await runOnQueue { () -> Int in
+      guard let c = handle.conn else { throw PostgreSQLError.notConnected }
+      guard let res = PQexec(c, sql) else {
+        throw PostgreSQLError.server("Could not execute query")
+      }
+      defer { PQclear(res) }
+      let status = PQresultStatus(res)
+      guard status == PGRES_COMMAND_OK || status == PGRES_TUPLES_OK else {
+        throw PostgreSQLError.server(String(cString: PQresultErrorMessage(res)))
+      }
+      return Int(String(cString: PQcmdTuples(res))) ?? 0
+    }
+  }
+
+  /// The primary-key columns of `table` (`schema.table`, as `listTables`
+  /// names it) in key order; empty when the table has no primary key.
+  public func primaryKey(of table: String) async throws -> [String] {
+    let regclass = table.split(separator: ".", maxSplits: 1)
+      .map { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
+      .joined(separator: ".")
+    let literal = "'" + regclass.replacingOccurrences(of: "'", with: "''") + "'"
+    return try await strings(
+      fromSQL: "SELECT a.attname FROM pg_index i JOIN pg_attribute a "
+        + "ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) "
+        + "WHERE i.indrelid = \(literal)::regclass AND i.indisprimary "
+        + "ORDER BY array_position(i.indkey::int2[], a.attnum)")
+  }
+
   // MARK: - Internals
 
   /// Runs a single-column text query and returns all values.
