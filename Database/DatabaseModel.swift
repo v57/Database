@@ -244,7 +244,20 @@ import SwiftData
   /// same path or saves a new one, then connects. Mirrors what the create
   /// form would do for that file. `bookmark` keeps an iOS Files pick openable
   /// after a relaunch (see ConnectionRecord.fileBookmark).
-  func openSQLiteFile(at path: String, name: String? = nil, bookmark: Data? = nil) async {
+  func openSQLiteFile(
+    at path: String, name: String? = nil, bookmark: Data? = nil, table: String? = nil
+  ) async {
+    await connectSQLiteFile(at: path, name: name, bookmark: bookmark)
+    // A file someone just opened should show its data, not an empty pane:
+    // open the asked-for table, else the first one.
+    guard isSessionActive, selectedCollection == nil, let database = selectedDatabase else { return }
+    let tables = collections(for: database)
+    if let pick = table.flatMap({ tables.contains($0) ? $0 : nil }) ?? tables.first {
+      await select(collection: pick, in: database)
+    }
+  }
+
+  private func connectSQLiteFile(at path: String, name: String?, bookmark: Data?) async {
     let records = (try? modelContext.fetch(FetchDescriptor<ConnectionRecord>())) ?? []
     let standardized = (path as NSString).standardizingPath
     if let existing = records.first(where: {
@@ -274,10 +287,7 @@ import SwiftData
   func openSampleDatabase() async {
     do {
       let url = try await SampleDatabase.url()
-      await openSQLiteFile(at: url.path, name: SampleDatabase.name)
-      if isSessionActive, let database = selectedDatabase, collections.contains("movies") {
-        await select(collection: "movies", in: database)
-      }
+      await openSQLiteFile(at: url.path, name: SampleDatabase.name, table: "movies")
     } catch {
       connectionError = error.localizedDescription
     }
