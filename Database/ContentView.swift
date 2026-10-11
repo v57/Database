@@ -102,5 +102,16 @@ struct ContentView: View {
       .onChange(of: model.selectedCollection) { _, collection in
         compactColumn = collection == nil ? .sidebar : .detail
       }
+#if os(iOS)
+      // "Open in Database" from Files or a share sheet (macOS routes this
+      // through AppDelegate). The file is opened in place: its security
+      // scope is opened now and bookmarked for later launches.
+      .onOpenURL { url in
+        guard url.isFileURL else { return }
+        FileAccess.open(url)
+        let bookmark = try? url.bookmarkData()
+        Task { await model.openSQLiteFile(at: url.path, bookmark: bookmark) }
+      }
+#endif
   }
 }
