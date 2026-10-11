@@ -9,3 +9,5 @@ DerivedData/
 /KANBAN*
 /.swiftpm
 build/
+CLAUDE.md
+/.claude
