@@ -63,7 +63,37 @@ import Testing
     let error = FriendlyError(
       "PostgreSQL error: FATAL:  no pg_hba.conf entry for host \"1.2.3.4\", user \"u\", database \"d\", no encryption",
       while: .connecting)
-    #expect(error.title == "This server needs an encrypted connection")
+    #expect(error.title == EncryptionNotice.title)
+    #expect(error.requiresEncryption)
+  }
+
+  @Test func cloudHostFailuresAreExplainedAsEncryption() {
+    // Atlas without TLS just times out; the host says why.
+    let atlas = FriendlyError(
+      "MongoDB error: No suitable servers found: [socket timeout calling hello on 'ac-x.abc.mongodb.net:27017']",
+      while: .connecting, host: "cluster0-shard-00-00.abc.mongodb.net")
+    #expect(atlas.requiresEncryption)
+    #expect(atlas.details.contains("socket timeout"))
+    // The same failure on a local server stays a plain timeout.
+    let local = FriendlyError(
+      "MongoDB error: No suitable servers found: [socket timeout calling hello on 'db.local:27017']",
+      while: .connecting, host: "db.local")
+    #expect(!local.requiresEncryption)
+    #expect(local.title == "The server didn’t answer in time")
+    // Only while connecting: a query error on a cloud host is about the query.
+    #expect(
+      !FriendlyError("Invalid query: no such column: x", while: .loading, host: "x.neon.tech")
+        .requiresEncryption)
+  }
+
+  @Test func encryptedOnlyHosts() {
+    #expect(EncryptionNotice.isEncryptedOnly(host: "cluster0.abc.mongodb.net"))
+    #expect(EncryptionNotice.isEncryptedOnly(host: "DB.PROJECT.SUPABASE.CO."))
+    #expect(!EncryptionNotice.isEncryptedOnly(host: "mongodb.net.example.com"))
+    #expect(!EncryptionNotice.isEncryptedOnly(host: "localhost"))
+    // No upgrade yet: the message points at local databases, not Pro.
+    #expect(EncryptionNotice.upgradeURL == nil)
+    #expect(!EncryptionNotice.message.contains(EncryptionNotice.upgradeName))
   }
 
   @Test func sqliteFiles() {

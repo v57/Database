@@ -17,17 +17,31 @@ public struct FriendlyError: Equatable, Sendable {
   public let suggestion: String?
   /// The original message without the engine prefix.
   public let details: String
+  /// The cause is the missing TLS support (see EncryptionNotice): the UI
+  /// offers Database Pro here once it exists.
+  public let requiresEncryption: Bool
 
-  public init(title: String, message: String, suggestion: String? = nil, details: String) {
+  public init(
+    title: String, message: String, suggestion: String? = nil, details: String,
+    requiresEncryption: Bool = false
+  ) {
     self.title = title
     self.message = message
     self.suggestion = suggestion
     self.details = details
+    self.requiresEncryption = requiresEncryption
   }
 
-  /// Explains `technical` (usually `error.localizedDescription`).
-  public init(_ technical: String, while situation: Situation) {
+  /// Explains `technical` (usually `error.localizedDescription`). `host` is
+  /// the server being connected to: a failure to reach a cloud service that
+  /// only accepts encrypted connections is explained as that, since its
+  /// driver error (a timeout, a closed connection) wouldn't say so.
+  public init(_ technical: String, while situation: Situation, host: String? = nil) {
     let details = Self.cleaned(technical)
+    if situation == .connecting, let host, EncryptionNotice.isEncryptedOnly(host: host) {
+      self = Self.encryption(details)
+      return
+    }
     self = Self.rules(for: details, situation: situation)
       ?? FriendlyError(
         title: Self.fallbackTitle(situation), message: details,
@@ -36,8 +50,14 @@ public struct FriendlyError: Equatable, Sendable {
         details: details)
   }
 
-  public init(_ error: any Error, while situation: Situation) {
-    self.init(error.localizedDescription, while: situation)
+  public init(_ error: any Error, while situation: Situation, host: String? = nil) {
+    self.init(error.localizedDescription, while: situation, host: host)
+  }
+
+  private static func encryption(_ details: String) -> FriendlyError {
+    FriendlyError(
+      title: EncryptionNotice.title, message: EncryptionNotice.message, details: details,
+      requiresEncryption: true)
   }
 
   /// True when the plain message adds nothing over the original (an unknown
@@ -66,10 +86,7 @@ public struct FriendlyError: Equatable, Sendable {
     if has("no encryption", "ssl is required", "ssl required", "requires ssl", "requires tls",
       "tls required", "ssl off", "encryption is required")
     {
-      return make(
-        "This server needs an encrypted connection",
-        "Database connects without encryption (TLS), so it can’t open servers that require it yet. Most cloud database services do.",
-        "Use a database on this Mac or on your local network.")
+      return encryption(details)
     }
     if has("no pg_hba.conf entry") {
       return make(

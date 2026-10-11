@@ -46,6 +46,12 @@ struct ConnectionFormView: View {
   /// A pasted connection link; it fills in the fields below as it parses.
   @State private var linkText = ""
   @State private var linkFeedback: LinkFeedback?
+  /// The host of a pasted link that asks for encryption (sslmode=require,
+  /// rediss://, …); the notice applies while the host is still that one.
+  @State private var encryptedLinkHost: String?
+  /// The name the link last suggested; it keeps following the link (typed
+  /// or pasted in pieces) until the user writes a name of their own.
+  @State private var suggestedName: String?
   /// Set while a link switches the engine, so the engine-change handler
   /// doesn't reset the host and port the link just filled in.
   @State private var isApplyingLink = false
@@ -55,6 +61,12 @@ struct ConnectionFormView: View {
     case filled
     case warning(String)
     case error(String)
+  }
+
+  /// The host points at a cloud service that only accepts encrypted
+  /// connections: say so before the user tries (and fails) to connect.
+  private var needsEncryption: Bool {
+    !isFileBased && EncryptionNotice.isEncryptedOnly(host: host)
   }
 
   /// Outcome of the "Test Connection" button, shown inline under the buttons.
@@ -249,6 +261,9 @@ struct ConnectionFormView: View {
 #endif
           }
         }
+        if needsEncryption || (encryptedLinkHost != nil && encryptedLinkHost == host) {
+          EncryptionNoticeView()
+        }
       } header: {
         Text("Connection")
       } footer: {
@@ -423,6 +438,7 @@ struct ConnectionFormView: View {
   /// doesn't look like a link yet (no "://", not a path) is left alone.
   private func applyLink(_ text: String) {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    encryptedLinkHost = nil
     guard !trimmed.isEmpty else {
       linkFeedback = nil
       return
@@ -435,6 +451,7 @@ struct ConnectionFormView: View {
         ? .error(error.localizedDescription) : nil
       return
     }
+    encryptedLinkHost = link.requiresEncryption ? link.host : nil
     let newEngine = DatabaseEngine(link.engine)
     if newEngine != engine {
       isApplyingLink = true
@@ -448,13 +465,16 @@ struct ConnectionFormView: View {
     authSource = link.authSource ?? ""
     directConnection = link.directConnection
     fileBookmark = nil
-    if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name == suggestedName {
       name =
         newEngine == .sqlite
         ? ((link.host as NSString).lastPathComponent as NSString).deletingPathExtension
         : link.database.map { "\($0) on \(link.host)" } ?? link.host
+      suggestedName = name
     }
-    linkFeedback = link.warning.map(LinkFeedback.warning) ?? .filled
+    // The encryption notice shows under the host instead (see needsEncryption).
+    linkFeedback =
+      link.requiresEncryption ? .filled : (link.warning.map(LinkFeedback.warning) ?? .filled)
   }
 
   // MARK: - File selection (SQLite)
@@ -549,7 +569,8 @@ struct ConnectionFormView: View {
         testState = .succeeded
       } catch {
         guard !Task.isCancelled else { return }
-        testState = .failed(FriendlyError(error, while: .connecting))
+        testState = .failed(
+          FriendlyError(error, while: .connecting, host: isFileBased ? nil : host))
       }
     }
   }

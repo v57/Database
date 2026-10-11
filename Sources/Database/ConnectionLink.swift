@@ -27,6 +27,9 @@ public struct ConnectionLink: Equatable, Sendable {
   /// Something about the link this app can't honour (encryption, several
   /// servers), in plain words. The other fields are still filled in.
   public var warning: String?
+  /// The server needs an encrypted connection (the link asks for one, or the
+  /// host is a cloud service that only accepts them); `warning` explains.
+  public var requiresEncryption = false
 
   public init(engine: Engine, host: String) {
     self.engine = engine
@@ -48,8 +51,12 @@ public struct ConnectionLink: Equatable, Sendable {
     }
   }
 
-  static let encryptionWarning =
-    "This link asks for an encrypted connection, which Database doesn’t support yet. It works with servers that accept unencrypted connections, such as ones on this Mac or your local network."
+  static var encryptionWarning: String { EncryptionNotice.message }
+
+  private mutating func requireEncryption() {
+    requiresEncryption = true
+    warning = Self.encryptionWarning
+  }
 
   /// Parses `text`; surrounding whitespace and quotes are ignored.
   public static func parse(_ text: String) throws -> ConnectionLink {
@@ -78,7 +85,7 @@ public struct ConnectionLink: Equatable, Sendable {
     case "postgres", "postgresql": return try server(.postgresql, rest, srv: false)
     case "redis", "rediss":
       var link = try server(.redis, rest, srv: false)
-      if scheme == "rediss" { link.warning = encryptionWarning }
+      if scheme == "rediss" { link.requireEncryption() }
       return link
     default: throw ParseError.unknownScheme(scheme)
     }
@@ -139,10 +146,10 @@ public struct ConnectionLink: Equatable, Sendable {
       case (.mongodb, "authsource"): link.authSource = value
       case (.mongodb, "directconnection"): link.directConnection = value.lowercased() == "true"
       case (.mongodb, "tls"), (.mongodb, "ssl"):
-        if value.lowercased() == "true" { link.warning = encryptionWarning }
+        if value.lowercased() == "true" { link.requireEncryption() }
       case (.postgresql, "sslmode"):
         if ["require", "verify-ca", "verify-full"].contains(value.lowercased()) {
-          link.warning = encryptionWarning
+          link.requireEncryption()
         }
       case (.postgresql, "user"): link.username = value
       case (.postgresql, "password"): link.password = value
@@ -153,9 +160,9 @@ public struct ConnectionLink: Equatable, Sendable {
     // The username doubles as nil when the link has an empty one ("redis://:pw@host").
     if link.username?.isEmpty == true { link.username = nil }
 
-    if srv {
-      link.warning =
-        "Links starting with mongodb+srv:// (MongoDB Atlas and other cloud services) need encrypted connections, which Database doesn’t support yet."
+    if srv || EncryptionNotice.isEncryptedOnly(host: host) {
+      // mongodb+srv:// is how Atlas and other cloud services hand out links.
+      link.requireEncryption()
     } else if hostList.count > 1, link.warning == nil {
       link.warning =
         "This link lists \(hostList.count) servers. Database connects to the first one, \(host)."

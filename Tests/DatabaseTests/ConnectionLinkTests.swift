@@ -54,8 +54,17 @@ import Testing
     #expect(try ConnectionLink.parse("rediss://cache.cloud:6379").warning != nil)
     let srv = try ConnectionLink.parse("mongodb+srv://u:p@cluster0.abc.mongodb.net/test")
     #expect(srv.host == "cluster0.abc.mongodb.net")
-    #expect(srv.warning?.contains("mongodb+srv") == true)
+    #expect(srv.requiresEncryption)
+    #expect(srv.warning == EncryptionNotice.message)
     #expect(try ConnectionLink.parse("mongodb://h/?tls=true").warning != nil)
+  }
+
+  @Test func cloudHostsNeedEncryptionEvenWithoutSaying() throws {
+    let neon = try ConnectionLink.parse("postgres://me:pw@ep-cool-name-123.eu-central-1.aws.neon.tech/app")
+    #expect(neon.requiresEncryption)
+    let local = try ConnectionLink.parse("postgres://me@192.168.1.20/app")
+    #expect(!local.requiresEncryption)
+    #expect(local.warning == nil)
   }
 
   @Test func severalHostsUseTheFirst() throws {

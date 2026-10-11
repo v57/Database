@@ -1,3 +1,4 @@
+import Database
 import Foundation
 import MongoDB
 import Observation
@@ -32,6 +33,14 @@ import SwiftData
   /// The last connect failure, surfaced by the sidebar as an alert (the
   /// window subtitle alone was too easy to miss). Cleared on the next attempt.
   var connectionError: String?
+  /// The server of the failed connect, so the error can be explained by
+  /// where it pointed (a cloud service that needs encryption).
+  var connectionErrorHost: String?
+
+  /// `connectionError` in plain words.
+  var friendlyConnectionError: FriendlyError? {
+    connectionError.map { FriendlyError($0, while: .connecting, host: connectionErrorHost) }
+  }
 
   var databases: [String] = []
   var selectedDatabase: String?
@@ -208,6 +217,7 @@ import SwiftData
       // the sidebar never shows a "connected" row with no databases.
       await disconnect()
       statusMessage = "Connection failed: \(error.localizedDescription)"
+      connectionErrorHost = settings.engine == .sqlite ? nil : settings.host
       connectionError = error.localizedDescription
     }
   }
@@ -289,6 +299,7 @@ import SwiftData
       let url = try await SampleDatabase.url()
       await openSQLiteFile(at: url.path, name: SampleDatabase.name, table: "movies")
     } catch {
+      connectionErrorHost = nil
       connectionError = error.localizedDescription
     }
   }

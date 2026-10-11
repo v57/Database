@@ -23,6 +23,7 @@ struct ConnectionsSidebarView: View {
   @Environment(DatabaseModel.self) private var model
   @Environment(\.modelContext) private var modelContext
   @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+  @Environment(\.openURL) private var openURL
   @Query(sort: \ConnectionRecord.name) private var records: [ConnectionRecord]
 
   @State private var selection: SidebarItem?
@@ -65,6 +66,14 @@ struct ConnectionsSidebarView: View {
     }.alert(
       connectionErrorTitle, isPresented: connectionErrorBinding, presenting: model.connectionError
     ) { _ in
+      if model.friendlyConnectionError?.requiresEncryption == true,
+        let upgrade = EncryptionNotice.upgradeURL
+      {
+        Button("Get \(EncryptionNotice.upgradeName)") {
+          clearConnectionError()
+          openURL(upgrade)
+        }
+      }
       if let record = failedRecord {
         Button("Edit Connection…") {
           clearConnectionError()
@@ -72,8 +81,8 @@ struct ConnectionsSidebarView: View {
         }
       }
       Button("OK", role: .cancel) { clearConnectionError() }
-    } message: { message in
-      Text(Self.alertText(FriendlyError(message, while: .connecting)))
+    } message: { _ in
+      Text(model.friendlyConnectionError.map { Self.alertText($0) } ?? "")
     }.onChange(of: selection) { _, newValue in selectionChanged(to: newValue) }.task(id: selection)
     {
       await connectSelectedRecord()
@@ -371,7 +380,7 @@ struct ConnectionsSidebarView: View {
 
   /// "Can't reach the server" — the plain cause, not just "couldn't connect".
   private var connectionErrorTitle: String {
-    let cause = model.connectionError.map { FriendlyError($0, while: .connecting).title }
+    let cause = model.friendlyConnectionError?.title
     if let cause, let record = failedRecord { return "\(record.name): \(cause)" }
     return cause ?? "Couldn’t Connect"
   }
@@ -392,6 +401,7 @@ struct ConnectionsSidebarView: View {
 
   private func clearConnectionError() {
     model.connectionError = nil
+    model.connectionErrorHost = nil
     failedRecordID = nil
   }
 }

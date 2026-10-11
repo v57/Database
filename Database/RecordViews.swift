@@ -594,7 +594,8 @@ extension EditableType {
 // MARK: - Errors
 
 /// A plain-language error: what happened, what to try, and the original
-/// message folded away under Details.
+/// message folded away under Details. A missing-encryption error also
+/// offers Database Pro, once it exists.
 struct FriendlyErrorView: View {
   let error: FriendlyError
 
@@ -608,12 +609,39 @@ struct FriendlyErrorView: View {
       if let suggestion = error.suggestion {
         Text(suggestion).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
       }
+      if error.requiresEncryption { UpgradeButton() }
       if !error.detailsRepeatMessage {
         DisclosureGroup("Details") {
           Text(error.details).font(.caption.monospaced()).textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
         }.font(.caption)
       }
+    }
+  }
+}
+
+/// "Get Database Pro" — nothing until `EncryptionNotice.upgradeURL` is set.
+struct UpgradeButton: View {
+  @Environment(\.openURL) private var openURL
+
+  var body: some View {
+    if let url = EncryptionNotice.upgradeURL {
+      Button("Get \(EncryptionNotice.upgradeName)…") { openURL(url) }
+        .buttonStyle(.borderless)
+    }
+  }
+}
+
+/// The missing-encryption notice shown before connecting, when the form
+/// points at a server that requires encryption.
+struct EncryptionNoticeView: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Label(EncryptionNotice.title, systemImage: "lock.trianglebadge.exclamationmark")
+        .font(.callout.weight(.semibold)).foregroundStyle(.orange)
+      Text(EncryptionNotice.message).font(.callout).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      UpgradeButton()
     }
   }
 }
