@@ -1,7 +1,8 @@
 # macOS
 .DS_Store
 # Finder folder icon: a file named Icon plus a carriage return
-Icon[]
+Icon[
+]
 
 # Build
 .build/
@@ -13,6 +14,9 @@ xcuserdata/
 
 # Binaries: built by Scripts/build-libssh2.sh and Scripts/build-duckdb.sh, published by Scripts/release-binaries.sh
 /Binary/
+
+# App Store screenshots: kept outside git
+/AppStore/
 
 # Local test servers' SSH key (see docker-compose.yml)
 /.testing/

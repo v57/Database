@@ -31,7 +31,13 @@ struct ContentView: View {
 private struct WindowContent: View {
   @Bindable var window: WindowModel
   @Environment(AppModel.self) private var app
-  @State private var columnVisibility = NavigationSplitViewVisibility.all
+  #if DEBUG
+    // `--hide-sidebar`: iPad portrait screenshots.
+    @State private var columnVisibility: NavigationSplitViewVisibility =
+      LaunchOptions.flag("--hide-sidebar") ? .detailOnly : .all
+  #else
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
+  #endif
   @State private var compactColumn = NavigationSplitViewColumn.sidebar
 
   var body: some View {
