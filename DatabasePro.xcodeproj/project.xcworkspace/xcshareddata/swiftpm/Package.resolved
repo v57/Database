@@ -1,0 +1,15 @@
+{
+  "originHash" : "975f6c14d0b963d248297d996201bc84f8a2d5854776c160588d36ada790edb8",
+  "pins" : [
+    {
+      "identity" : "duckdb-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/duckdb/duckdb-swift",
+      "state" : {
+        "revision" : "9583f44fedc20a8e0b6151d2e43f6d850016712f",
+        "version" : "1.1.3"
+      }
+    }
+  ],
+  "version" : 3
+}
