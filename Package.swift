@@ -18,7 +18,7 @@ func binary(_ name: String, release: String, checksum: String) -> Target {
 
 // libssh2 + mbedTLS (module CLibssh2).
 let libssh2 = binary(
-  "Libssh2", release: "libssh2-1.11.1", checksum: "4496b3ce72eb7d049e5f3e37a0c13cc12df86d0cde27eba1262676de63bf4261")
+  "Libssh2", release: "libssh2-1.11.1", checksum: "b855ccebd64a0434cb1d59b1c1376676682a3fc48fde829b837881307abcea98")
 // The DuckDB C library with parquet, json and icu built in (module Cduckdb).
 let duckdb = binary(
   "Cduckdb", release: "duckdb-1.5.6", checksum: "9aa3f2c56dc5f8dfed035fa46bde1d99d3beaac8876745bace6f0fc768691aa7")
