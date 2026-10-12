@@ -21,7 +21,7 @@ let libssh2 = binary(
   "Libssh2", release: "libssh2-1.11.1", checksum: "4496b3ce72eb7d049e5f3e37a0c13cc12df86d0cde27eba1262676de63bf4261")
 // The DuckDB C library with parquet, json and icu built in (module Cduckdb).
 let duckdb = binary(
-  "Cduckdb", release: "duckdb-1.5.6", checksum: "c427c1018f67ec42ea3ce511f01ea40d7a2ac26a8819c1976a28532680c1faad")
+  "Cduckdb", release: "duckdb-1.5.6", checksum: "9aa3f2c56dc5f8dfed035fa46bde1d99d3beaac8876745bace6f0fc768691aa7")
 
 let package = Package(
   name: "DatabasePro",

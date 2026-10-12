@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Builds Binary/Cduckdb.xcframework: the DuckDB C library from an upstream release, compiled for macOS, iOS and
-# the iOS simulator, with parquet, json and icu built in. Extensions are never installed or loaded at runtime.
+# the iOS simulator (Apple silicon only), with parquet, json and icu built in. Extensions are never installed or
+# loaded at runtime.
 #
 #   Scripts/build-duckdb.sh [version]      (default below; needs cmake and ninja: brew install cmake ninja)
 #
@@ -28,7 +29,7 @@ COMMIT=$(curl -fsSL https://api.github.com/repos/duckdb/duckdb/commits/v$VERSION
 SLICES=(
   "macos-arm64 Darwin macosx arm64 14.0 osx_arm64"
   "ios-arm64 iOS iphoneos arm64 17.0 ios_arm64"
-  "ios-arm64_x86_64-simulator iOS iphonesimulator arm64;x86_64 17.0 ios_simulator"
+  "ios-arm64-simulator iOS iphonesimulator arm64 17.0 ios_simulator"
 )
 
 libs=()

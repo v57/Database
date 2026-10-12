@@ -19,7 +19,7 @@ case ${1:-} in
   duckdb)
     NAME=Cduckdb TITLE=DuckDB
     VERSION=$(cat Binary/Cduckdb.xcframework/VERSION)
-    NOTES="The DuckDB $VERSION C library for macOS, iOS and the iOS simulator, with parquet, json and icu built in and extension auto-install off, made by Scripts/build-duckdb.sh." ;;
+    NOTES="The DuckDB $VERSION C library for macOS, iOS and the iOS simulator (arm64), with parquet, json and icu built in and extension auto-install off, made by Scripts/build-duckdb.sh." ;;
   *) echo "Usage: Scripts/release-binaries.sh libssh2|duckdb"; exit 1 ;;
 esac
 [[ -d Binary/$NAME.xcframework ]] || { echo "No Binary/$NAME.xcframework: run its Scripts/build-*.sh"; exit 1; }
