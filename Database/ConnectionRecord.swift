@@ -1,3 +1,4 @@
+import Database
 import Foundation
 import MongoDB
 import PostgreSQL
@@ -25,6 +26,16 @@ enum DatabaseEngine: String, Codable, CaseIterable, Identifiable {
     }
   }
 
+  /// What the engine is, for someone choosing one for the first time.
+  var summary: String {
+    switch self {
+    case .mongodb: "MongoDB stores documents: records with their own fields, like JSON."
+    case .postgresql: "PostgreSQL stores tables of rows and columns."
+    case .redis: "Redis stores values under names (keys), often as a fast cache."
+    case .sqlite: "SQLite keeps a whole database in a single file on this device."
+    }
+  }
+
   /// Default TCP port, used to prefill the form when the engine changes.
   /// SQLite is file-based and has no port (the form hides the field).
   var defaultPort: UInt16 {
@@ -44,6 +55,17 @@ enum DatabaseEngine: String, Codable, CaseIterable, Identifiable {
     case .postgresql: "server.rack"
     case .redis: "bolt.horizontal.fill"
     case .sqlite: "internaldrive"
+    }
+  }
+}
+
+extension DatabaseEngine {
+  init(_ engine: ConnectionLink.Engine) {
+    switch engine {
+    case .mongodb: self = .mongodb
+    case .postgresql: self = .postgresql
+    case .redis: self = .redis
+    case .sqlite: self = .sqlite
     }
   }
 }
@@ -174,7 +196,7 @@ enum EngineSettings {
   /// resolved and its security scope opened, so the file stays readable after
   /// a relaunch; the resolved path wins because the app container can move.
   @MainActor var filePath: String {
-    guard let fileBookmark else { return host }
+    guard let fileBookmark else { return Self.rebasedIntoContainer(host) }
     var isStale = false
     guard
       let url = try? URL(
@@ -182,6 +204,23 @@ enum EngineSettings {
     else { return host }
     FileAccess.open(url)
     return url.path
+  }
+
+  /// iOS moves the app's data container on every reinstall/update, so a
+  /// saved absolute path to a file inside it (the sample database) goes
+  /// stale. Such a path is re-rooted in the current container.
+  static func rebasedIntoContainer(_ path: String) -> String {
+#if os(iOS)
+    guard !FileManager.default.fileExists(atPath: path),
+      let range = path.range(
+        of: "/Containers/Data/Application/[^/]+/", options: .regularExpression)
+    else { return path }
+    let rebased = (NSHomeDirectory() as NSString).appendingPathComponent(
+      String(path[range.upperBound...]))
+    return FileManager.default.fileExists(atPath: rebased) ? rebased : path
+#else
+    return path
+#endif
   }
 
   /// True when the live session in `model` was started from this record.

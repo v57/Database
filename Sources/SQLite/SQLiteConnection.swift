@@ -185,6 +185,43 @@ public final class SQLiteConnection {
     return 0
   }
 
+  /// Runs ONE INSERT/UPDATE/DELETE and returns how many rows it changed
+  /// (`sqlite3_changes`). Unlike `execute`, a string holding several
+  /// statements is rejected, so a single-row edit can never run more.
+  public func write(sql: String) async throws -> Int {
+    guard let db else { throw SQLiteError.notConnected }
+    let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { throw SQLiteError.invalidQuery("Empty SQL statement") }
+    return try trimmed.withCString { text in
+      var stmt: OpaquePointer?
+      var tail: UnsafePointer<CChar>?
+      guard sqlite3_prepare_v2(db, text, -1, &stmt, &tail) == SQLITE_OK else {
+        throw SQLiteError.invalidQuery(errorMessage(db) ?? "unknown SQLite error")
+      }
+      defer { sqlite3_finalize(stmt) }
+      let rest = tail.map { String(cString: $0) } ?? ""
+      guard rest.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.init(charactersIn: ";"))).isEmpty
+      else { throw SQLiteError.invalidQuery("Only one statement can be written at a time") }
+      let rc = sqlite3_step(stmt)
+      guard rc == SQLITE_DONE || rc == SQLITE_ROW else {
+        throw SQLiteError.invalidQuery(errorMessage(db) ?? "unknown SQLite error")
+      }
+      return Int(sqlite3_changes(db))
+    }
+  }
+
+  /// The primary-key columns of `table` in key order; empty for views and
+  /// tables without a declared key (rows of those can't be addressed safely).
+  public func primaryKey(of table: String) async throws -> [String] {
+    let literal = "'" + table.replacingOccurrences(of: "'", with: "''") + "'"
+    let rows = try await select(
+      sql: "SELECT name FROM pragma_table_info(\(literal)) WHERE pk > 0 ORDER BY pk")
+    return rows.compactMap { row in
+      if case .string(let name)? = row["name"] { return name }
+      return nil
+    }
+  }
+
   // MARK: - Internals
 
   private static func rowData(index: Int, stmt: OpaquePointer?) -> SQLiteRowData {

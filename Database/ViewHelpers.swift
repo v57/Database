@@ -30,6 +30,18 @@ extension View {
   }
 }
 
+extension View {
+  /// The ↔ resize pointer over a column edge (macOS 15+; older systems keep
+  /// the arrow, the drag still works).
+  @ViewBuilder func columnResizePointer() -> some View {
+#if os(macOS)
+    if #available(macOS 15, *) { pointerStyle(.columnResize) } else { self }
+#else
+    self
+#endif
+  }
+}
+
 extension String {
   /// The text with typographic quotes (“ ” ‘ ’) made straight, or nil when
   /// there are none. iOS Smart Punctuation curls quotes as they're typed,
@@ -45,5 +57,33 @@ extension String {
         default: character
         }
       })
+  }
+}
+
+extension View {
+  /// A bar pinned to the top edge that content scrolls under: `safeAreaBar`
+  /// where available (macOS/iOS 26), a plain safe-area inset before that.
+  @ViewBuilder func topBar(@ViewBuilder _ content: () -> some View) -> some View {
+    if #available(macOS 26, iOS 26, *) {
+      safeAreaBar(edge: .top, content: content)
+    } else {
+      safeAreaInset(edge: .top, spacing: 0, content: content)
+    }
+  }
+
+  /// Window/navigation subtitle (iOS has one from iOS 26; older iOS shows none).
+  @ViewBuilder func subtitle(_ text: String) -> some View {
+#if os(macOS)
+    navigationSubtitle(text)
+#else
+    if #available(iOS 26, *) { navigationSubtitle(text) } else { self }
+#endif
+  }
+}
+
+extension View {
+  /// Icon-only labels where room is short, title and icon elsewhere.
+  @ViewBuilder func iconOnlyLabel(_ iconOnly: Bool) -> some View {
+    if iconOnly { labelStyle(.iconOnly) } else { labelStyle(.titleAndIcon) }
   }
 }

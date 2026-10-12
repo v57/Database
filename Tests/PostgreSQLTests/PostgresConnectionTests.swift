@@ -124,4 +124,22 @@ import Testing
     let conn = PostgresConnection(config: bad)
     await #expect(throws: (any Error).self) { try await conn.connect() }
   }
+
+  @Test func primaryKeyAndSingleRowWrites() async throws {
+    let conn = try await TestEnv.connect(TestEnv.config())
+    let schema = TestEnv.freshSchemaName("rowwrite")
+    await TestEnv.dropSchema(conn, schema)
+    try await TestEnv.makeSchema(conn, schema)
+    try await conn.execute(
+      sql: "CREATE TABLE \(schema).pairs (b text, a text, n int, PRIMARY KEY (a, b))")
+    try await conn.execute(sql: "CREATE TABLE \(schema).loose (n int)")
+    #expect(try await conn.primaryKey(of: "\(schema).pairs") == ["a", "b"])
+    #expect(try await conn.primaryKey(of: "\(schema).loose") == [])
+    try await conn.execute(sql: "INSERT INTO \(schema).pairs VALUES ('x', 'y', 1), ('z', 'y', 2)")
+    #expect(try await conn.write(sql: "UPDATE \(schema).pairs SET n = 5 WHERE a = 'y' AND b = 'x'") == 1)
+    #expect(try await conn.write(sql: "DELETE FROM \(schema).pairs WHERE a = 'nope'") == 0)
+
+    await TestEnv.dropSchema(conn, schema)
+    await conn.disconnect()
+  }
 }

@@ -83,12 +83,17 @@ struct TableDocumentsView: View {
   /// rows aren't a query the column UI can rewrite (aggregation output): the
   /// headers are then plain titles.
   let onColumnAction: ((ColumnAction) -> Void)?
+  /// The selected row (shown in the pane's inspector).
+  @Binding var selection: Int?
+  /// Details/Edit/Delete for a row (its context menu and double-click).
+  let recordActions: RecordActions
+
+  @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
   /// Widths the user dragged, by column name.
   @State private var columnWidths: [String: CGFloat] = [:]
   /// The column being resized and its width when the drag began.
   @State private var resizing: (name: String, startWidth: CGFloat)?
-  @State private var selectedRow: Int?
 
   private func width(of name: String) -> CGFloat {
     columnWidths[name] ?? Self.defaultWidth(for: fields.first { $0.name == name }?.kind)
@@ -161,10 +166,7 @@ struct TableDocumentsView: View {
   /// Invisible grab strip on a header's right edge: dragging it resizes the
   /// column in the header and every row together.
   private func resizeHandle(_ name: String) -> some View {
-    Color.clear.frame(width: 10).contentShape(Rectangle())
-#if os(macOS)
-      .pointerStyle(.columnResize)
-#endif
+    Color.clear.frame(width: 10).contentShape(Rectangle()).columnResizePointer()
       .gesture(
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
           .onChanged { drag in
@@ -247,13 +249,13 @@ struct TableDocumentsView: View {
       if let value = doc[column.name] {
         // Strings read as plain text, as in the List format; only nested
         // documents/arrays use (escaped) JSON.
-        let text = value.isContainer ? JSONText.compact(value) : BSONSupport.displayString(value)
+        let text = value.isContainer ? JSONText.compact(value) : ReadableValue.cellText(value)
         displays.append(DisplayCell(text: text, isString: value.isString))
       } else {
         displays.append(DisplayCell(text: "—", isString: nil))
       }
     }
-    let isSelected = selectedRow == row.id
+    let isSelected = selection == row.id
     return HStack(spacing: 0) {
       Text("\(row.id + 1)").font(.caption.monospacedDigit())
         .foregroundStyle(.secondary).frame(width: Self.indexWidth, alignment: .center)
@@ -261,6 +263,8 @@ struct TableDocumentsView: View {
         columnDivider
         cellView(displays[column.id], width: width(of: column.name))
           .contextMenu {
+            RecordContextMenu(index: row.id, actions: recordActions)
+            Divider()
             if displays[column.id].isString != nil {
               Button("Copy Value", systemImage: "doc.on.doc") {
                 Clipboard.copy(displays[column.id].text)
@@ -282,8 +286,18 @@ struct TableDocumentsView: View {
     }
     .overlay(alignment: .bottom) { Divider().opacity(0.5) }
     .contentShape(Rectangle())
-    .onTapGesture { selectedRow = isSelected ? nil : row.id }
+    // Double-click (macOS) or a tap on a selected row (iOS) opens details.
+    .onTapGesture(count: 2) { recordActions.showDetails(row.id) }
+    .onTapGesture {
+      selection = row.id
+#if os(iOS)
+      // iPhone has no inspector column: a tap opens the details sheet; on
+      // iPad a second tap does.
+      if isSelected || horizontalSizeClass == .compact { recordActions.showDetails(row.id) }
+#endif
+    }
     .accessibilityAddTraits(isSelected ? .isSelected : [])
+    .accessibilityAction(named: "Show Details") { recordActions.showDetails(row.id) }
   }
 
   /// One table cell (text + how to color it). `isString` nil = key missing.
@@ -309,6 +323,59 @@ struct TableDocumentsView: View {
 
   private var columnDivider: some View {
     Rectangle().fill(.quaternary).frame(width: 1).frame(maxHeight: .infinity)
+  }
+}
+
+// MARK: - Record actions
+
+/// What a record row offers, shared by the Table and List formats.
+struct RecordActions {
+  /// Edit/Delete are possible for this collection at all (each record may
+  /// still be blocked, e.g. by a hidden key field; the pane explains).
+  let canEdit: Bool
+  let showDetails: (Int) -> Void
+  let edit: (Int) -> Void
+  let delete: (Int) -> Void
+}
+
+/// Show Details / Edit… / Delete… for one record.
+struct RecordContextMenu: View {
+  let index: Int
+  let actions: RecordActions
+
+  var body: some View {
+    Button("Show Details", systemImage: "info.circle") { actions.showDetails(index) }
+    if actions.canEdit {
+      Button("Edit…", systemImage: "pencil") { actions.edit(index) }
+      Button("Delete…", systemImage: "trash", role: .destructive) { actions.delete(index) }
+    }
+  }
+}
+
+/// "Changed “rating” of “Up”.  [Undo]" after a record change; stays until
+/// dismissed, another change replaces it, or another collection opens.
+struct UndoBar: View {
+  @Environment(DatabaseModel.self) private var model
+  let change: RecordChange
+  let onUndo: () -> Void
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityHidden(true)
+      Text(change.message).lineLimit(2)
+      Spacer(minLength: 8)
+      if change.canUndo {
+        Button("Undo", action: onUndo).keyboardShortcut("z", modifiers: .command)
+      }
+      Button("Dismiss", systemImage: "xmark") { model.lastChange = nil }
+        .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.secondary)
+    }
+    .font(.callout)
+    .padding(.horizontal, 14).padding(.vertical, 8)
+    .background(.regularMaterial, in: Capsule())
+    .shadow(radius: 4, y: 1)
+    .padding(10)
+    .frame(maxWidth: 560)
   }
 }
 

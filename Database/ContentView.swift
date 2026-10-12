@@ -44,9 +44,17 @@ import SwiftUI
       // AppDelegate into the shared model. Preferring an open window stops
       // SwiftUI from spawning another for each file (it would only mirror
       // the first); with no window open, SwiftUI still creates one.
-      ContentView(model: model, container: container).handlesExternalEvents(
-        preferring: ["*"], allowing: ["*"])
-    }.commands { NewConnectionCommands() }
+      ContentView(model: model, container: container)
+        .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+#if os(macOS)
+        .modifier(UpdateAlerts())
+#endif
+    }.commands {
+      NewConnectionCommands()
+#if os(macOS)
+      UpdateCommands()
+#endif
+    }
   }
 }
 
@@ -82,7 +90,7 @@ struct ContentView: View {
   }
 
   /// Sidebar title: the active connection name, or the app name when idle.
-  private var title: String { model.connectionName ?? "Database Client" }
+  private var title: String { model.connectionName ?? "Database" }
 
   /// Detail title: the open collection/table/key, so the pane says what it
   /// shows; the connection moves into the subtitle.
@@ -107,5 +115,16 @@ struct ContentView: View {
       .onChange(of: model.selectedCollection) { _, collection in
         compactColumn = collection == nil ? .sidebar : .detail
       }
+#if os(iOS)
+      // "Open in Database" from Files or a share sheet (macOS routes this
+      // through AppDelegate). The file is opened in place: its security
+      // scope is opened now and bookmarked for later launches.
+      .onOpenURL { url in
+        guard url.isFileURL else { return }
+        FileAccess.open(url)
+        let bookmark = try? url.bookmarkData()
+        Task { await model.openSQLiteFile(at: url.path, bookmark: bookmark) }
+      }
+#endif
   }
 }

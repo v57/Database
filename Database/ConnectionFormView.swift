@@ -1,3 +1,4 @@
+import Database
 import MongoDB
 import PostgreSQL
 import Redis
@@ -42,13 +43,38 @@ struct ConnectionFormView: View {
   @State private var testTask: Task<Void, Never>?
   /// iOS: bookmark of the picked SQLite file (see ConnectionRecord.fileBookmark).
   @State private var fileBookmark: Data?
+  /// A pasted connection link; it fills in the fields below as it parses.
+  @State private var linkText = ""
+  @State private var linkFeedback: LinkFeedback?
+  /// The host of a pasted link that asks for encryption (sslmode=require,
+  /// rediss://, …); the notice applies while the host is still that one.
+  @State private var encryptedLinkHost: String?
+  /// The name the link last suggested; it keeps following the link (typed
+  /// or pasted in pieces) until the user writes a name of their own.
+  @State private var suggestedName: String?
+  /// Set while a link switches the engine, so the engine-change handler
+  /// doesn't reset the host and port the link just filled in.
+  @State private var isApplyingLink = false
+
+  /// What the link field says under itself.
+  private enum LinkFeedback: Equatable {
+    case filled
+    case warning(String)
+    case error(String)
+  }
+
+  /// The host points at a cloud service that only accepts encrypted
+  /// connections: say so before the user tries (and fails) to connect.
+  private var needsEncryption: Bool {
+    !isFileBased && EncryptionNotice.isEncryptedOnly(host: host)
+  }
 
   /// Outcome of the "Test Connection" button, shown inline under the buttons.
   private enum TestState: Equatable {
     case idle
     case running
     case succeeded
-    case failed(String)
+    case failed(FriendlyError)
   }
 
   init(
@@ -191,10 +217,24 @@ struct ConnectionFormView: View {
       // macOS sheets don't show a navigation title.
       Text(title).font(.headline).listRowBackground(Color.clear)
 #endif
-      Section("Connection") {
+      Section {
+        TextField("Connection Link", text: $linkText, prompt: Text("mongodb://, postgres://, redis://…"))
+          .plainTextEntry()
+          .onChange(of: linkText) { _, text in applyLink(text) }
+        linkFeedbackView
+      } header: {
+        Text("Paste a Connection Link (optional)")
+      } footer: {
+        Text("Hosting services and colleagues often share a link that holds every detail below.")
+      }
+      Section {
         Picker("Engine", selection: $engine) {
           ForEach(DatabaseEngine.allCases) { e in Text(e.displayName).tag(e) }
         }.onChange(of: engine) { oldValue, newValue in
+          if isApplyingLink {
+            isApplyingLink = false
+            return
+          }
           // Prefill the new engine's default port only while the port is still
           // the old engine's default — a custom port survives an engine switch.
           // SQLite's "host" field is a file path, so switching to it clears a
@@ -221,9 +261,16 @@ struct ConnectionFormView: View {
 #endif
           }
         }
+        if needsEncryption || (encryptedLinkHost != nil && encryptedLinkHost == host) {
+          EncryptionNoticeView()
+        }
+      } header: {
+        Text("Connection")
+      } footer: {
+        Text(connectionFooter)
       }
       if !isFileBased {
-        Section("Authentication (optional)") {
+        Section {
           labeledField(
             "Username", text: $username, prompt: engine == .redis ? "ACL user (optional)" : "None"
           ).plainTextEntry().help(
@@ -241,8 +288,12 @@ struct ConnectionFormView: View {
           if engine == .mongodb {
             labeledField("Auth Source", text: $authSource, prompt: "admin").plainTextEntry()
           }
+        } header: {
+          Text("Sign In (optional)")
+        } footer: {
+          Text(signInFooter)
         }
-        Section("Startup") {
+        Section {
           if engine == .redis {
             labeledField("Database Index (0–15)", text: $defaultDatabase, prompt: "0")
               .plainTextEntry()
@@ -257,6 +308,10 @@ struct ConnectionFormView: View {
             Toggle("Direct connect", isOn: $directConnection).help(
               "Connect directly to this server, bypassing topology discovery.")
           }
+        } header: {
+          Text("Options")
+        } footer: {
+          Text(optionsFooter)
         }
       }
       if let errorMessage { Text(errorMessage).foregroundStyle(.red).font(.callout) }
@@ -332,10 +387,94 @@ struct ConnectionFormView: View {
     case .succeeded:
       Label("Connection succeeded", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
         .font(.callout)
-    case .failed(let message):
-      Label(message, systemImage: "xmark.octagon.fill").foregroundStyle(.red).font(.callout)
-        .textSelection(.enabled)
+    case .failed(let error):
+      FriendlyErrorView(error: error).font(.callout)
     }
+  }
+
+  // MARK: - Guidance
+
+  private var connectionFooter: String {
+    if isFileBased { return engine.summary }
+#if os(iOS)
+    let local = "Use the server’s address on your network, such as 192.168.1.20."
+#else
+    let local = "Use “localhost” for a database running on this Mac."
+#endif
+    return "\(engine.summary) \(local) \(engine.displayName) usually uses port \(engine.defaultPort)."
+  }
+
+  private var signInFooter: String {
+    let base = "Leave these empty if the database doesn’t ask for a password."
+    return engine == .mongodb
+      ? base + " Auth Source is the database that holds the user, usually “admin”." : base
+  }
+
+  private var optionsFooter: String {
+    engine == .redis
+      ? "Redis keeps 16 numbered databases; most data lives in database 0."
+      : "Default Database opens first after connecting. Leave it empty to start with the first one."
+  }
+
+  // MARK: - Connection link
+
+  @ViewBuilder private var linkFeedbackView: some View {
+    switch linkFeedback {
+    case .filled:
+      Label("Filled in from the link. Check the details below.", systemImage: "checkmark.circle.fill")
+        .font(.callout).foregroundStyle(.green)
+    case .warning(let text):
+      Label(text, systemImage: "exclamationmark.triangle.fill").font(.callout)
+        .foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+    case .error(let text):
+      Label(text, systemImage: "xmark.circle.fill").font(.callout).foregroundStyle(.red)
+        .fixedSize(horizontal: false, vertical: true)
+    case nil:
+      EmptyView()
+    }
+  }
+
+  /// Fills the form from a pasted link as soon as it parses. Text that
+  /// doesn't look like a link yet (no "://", not a path) is left alone.
+  private func applyLink(_ text: String) {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    encryptedLinkHost = nil
+    guard !trimmed.isEmpty else {
+      linkFeedback = nil
+      return
+    }
+    let link: ConnectionLink
+    do {
+      link = try ConnectionLink.parse(trimmed)
+    } catch {
+      linkFeedback = trimmed.contains("://") || trimmed.hasPrefix("/")
+        ? .error(error.localizedDescription) : nil
+      return
+    }
+    encryptedLinkHost = link.requiresEncryption ? link.host : nil
+    let newEngine = DatabaseEngine(link.engine)
+    if newEngine != engine {
+      isApplyingLink = true
+      engine = newEngine
+    }
+    host = link.host
+    port = link.port ?? Int(newEngine.defaultPort)
+    username = link.username ?? ""
+    if let linkPassword = link.password { password = linkPassword }
+    defaultDatabase = link.database ?? ""
+    authSource = link.authSource ?? ""
+    directConnection = link.directConnection
+    fileBookmark = nil
+    if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name == suggestedName {
+      name =
+        newEngine == .sqlite
+        ? ((link.host as NSString).lastPathComponent as NSString).deletingPathExtension
+        : link.database.map { "\($0) on \(link.host)" } ?? link.host
+      suggestedName = name
+    }
+    // The encryption notice shows under the host instead (see needsEncryption).
+    linkFeedback =
+      link.requiresEncryption ? .filled : (link.warning.map(LinkFeedback.warning) ?? .filled)
   }
 
   // MARK: - File selection (SQLite)
@@ -430,7 +569,8 @@ struct ConnectionFormView: View {
         testState = .succeeded
       } catch {
         guard !Task.isCancelled else { return }
-        testState = .failed(error.localizedDescription)
+        testState = .failed(
+          FriendlyError(error, while: .connecting, host: isFileBased ? nil : host))
       }
     }
   }
