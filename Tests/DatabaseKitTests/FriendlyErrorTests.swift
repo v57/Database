@@ -1,6 +1,6 @@
 import Testing
 
-@testable import Database
+@testable import DatabaseKit
 
 /// Messages below are what the drivers really return (collected against
 /// closed ports, unknown hosts and a scratch SQLite file).

@@ -1,6 +1,6 @@
 #if os(macOS)
 import AppKit
-import Database
+import DatabaseKit
 import SwiftUI
 
 /// Update check for the direct-download Mac app (the iOS app updates through

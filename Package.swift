@@ -5,14 +5,14 @@ import PackageDescription
 let package = Package(
   name: "Database",
   products: [
-    .library(name: "Database", targets: ["Database"]),
+    .library(name: "DatabaseKit", targets: ["DatabaseKit"]),
     .library(name: "MongoDB", targets: ["MongoDB"]),
     .library(name: "SQLQuery", targets: ["SQLQuery"]),
     .library(name: "PostgreSQL", targets: ["PostgreSQL"]),
     .library(name: "Redis", targets: ["Redis"]), .library(name: "SQLite", targets: ["SQLite"]),
   ],
   targets: [
-    .target(name: "Database", swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+    .target(name: "DatabaseKit", swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     // One XCFramework per C driver (Binary/C-drivers/build-c-drivers.sh), so each
     // engine links only its own.
     .binaryTarget(name: "CMongoC", path: "Binary/C-drivers/CMongoC.xcframework"),
@@ -32,7 +32,7 @@ let package = Package(
       name: "SQLQuery",
       dependencies: ["MongoDB"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
-      name: "DatabaseTests", dependencies: ["Database"],
+      name: "DatabaseKitTests", dependencies: ["DatabaseKit"],
       swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .testTarget(
       name: "MongoDBTests",
