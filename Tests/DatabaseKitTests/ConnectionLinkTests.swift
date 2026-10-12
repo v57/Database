@@ -1,6 +1,6 @@
 import Testing
 
-@testable import Database
+@testable import DatabaseKit
 
 @Suite struct ConnectionLinkTests {
   @Test func mongoLinkWithCredentialsAndOptions() throws {

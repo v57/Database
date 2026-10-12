@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import Database
+@testable import DatabaseKit
 
 @Suite struct UpdateCheckTests {
   @Test func comparesVersionsNumerically() {
