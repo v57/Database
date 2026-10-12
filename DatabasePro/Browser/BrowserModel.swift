@@ -1,6 +1,7 @@
 import DatabaseCore
 import Foundation
 import Observation
+import SwiftUI
 
 /// State of one open table, collection or Redis database.
 @Observable @MainActor
@@ -28,7 +29,9 @@ final class BrowserModel {
 
   var selection: Set<String> = []
   var viewMode: ViewMode
-  var mode: Mode = .find
+  private(set) var mode: Mode = .find
+  /// True for a moment while switching to Aggregate; see `switchMode`.
+  private(set) var collapsesInspector = false
   var showsQueryEditor = false
   /// The query as shown in the Query Editor strip; edits make it "custom".
   var queryText = ""
@@ -46,6 +49,21 @@ final class BrowserModel {
 
   /// Pipeline state for Aggregate mode.
   @ObservationIgnored lazy var pipeline = PipelineModel(browser: self)
+
+
+  /// Aggregate has no record inspector. The inspector closes first, without animation, and the builder replaces the
+  /// list on the next update: with both on screen at once, macOS widens the window to fit them and it stays wide.
+  func switchMode(_ newMode: Mode) async {
+    guard newMode != mode else { return }
+    if newMode == .aggregate {
+      var transaction = Transaction()
+      transaction.disablesAnimations = true
+      withTransaction(transaction) { collapsesInspector = true }
+      try? await Task.sleep(for: .milliseconds(30))
+    }
+    mode = newMode
+    collapsesInspector = false
+  }
 
   init(connection: LiveConnection, ref: ObjectRef) {
     self.connection = connection

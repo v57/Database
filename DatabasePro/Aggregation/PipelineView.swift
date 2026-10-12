@@ -15,11 +15,11 @@ struct PipelineView: View {
       Divider()
       if pipeline.showsFullBuilder && !pipeline.isSQL {
         HStack(spacing: 0) {
-          StepLibrary(pipeline: pipeline).frame(width: 230)
+          StepLibrary(pipeline: pipeline).frame(width: 260)
           Divider()
-          stepList.frame(minWidth: 380)
+          stepList.frame(minWidth: 360)
           Divider()
-          StepInspector(pipeline: pipeline, browser: browser).frame(minWidth: 320, idealWidth: 400)
+          StepInspector(pipeline: pipeline, browser: browser).frame(minWidth: 270, idealWidth: 400)
         }
       } else {
         HStack(spacing: 0) {
@@ -88,7 +88,7 @@ struct PipelineView: View {
         }
         AddStepMenu(pipeline: pipeline)
           .padding(.top, 12)
-        if pipeline.showsFullBuilder {
+        if pipeline.showsFullBuilder && !pipeline.isSQL {
           PipelineSettings(pipeline: pipeline).padding(.top, 16)
         }
         if let error = pipeline.resultError {
@@ -237,51 +237,120 @@ struct AddStepMenu: View {
   }
 }
 
-/// The full builder's step library: every MongoDB stage by group.
+/// The full builder's step library: every MongoDB stage, in colored groups.
 struct StepLibrary: View {
   let pipeline: PipelineModel
   @State private var search = ""
 
   var body: some View {
-    List {
-      ForEach(StepKind.groups, id: \.self) { group in
-        let kinds = StepKind.allCases.filter {
-          $0.group == group && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || $0.op.localizedCaseInsensitiveContains(search))
-        }
-        if !kinds.isEmpty {
-          Section(group) {
-            ForEach(kinds) { kind in
-              Button {
-                pipeline.add(kind, at: pipeline.selectedIndex.map { $0 + 1 })
-              } label: {
-                HStack {
-                  Text(kind.name)
-                  Spacer()
-                  Text(kind.op).font(.codeSmall).foregroundStyle(.secondary)
-                }
-                .contentShape(Rectangle())
-              }
-              .buttonStyle(.plain)
-              .help(kind.does)
-              .draggable(kind.rawValue)
+    ScrollView {
+      VStack(alignment: .leading, spacing: 10) {
+        ForEach(StepKind.groups, id: \.self) { group in
+          let kinds = StepKind.allCases.filter {
+            $0.group == group && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || $0.op.localizedCaseInsensitiveContains(search))
+          }
+          if !kinds.isEmpty {
+            StepGroupBlock(group: group, kinds: kinds) { kind in
+              pipeline.add(kind, at: pipeline.selectedIndex.map { $0 + 1 })
             }
           }
         }
       }
+      .padding(.horizontal, 10)
+      .padding(.bottom, 12)
     }
-    .listStyle(.sidebar)
-    .safeAreaInset(edge: .top) {
-      SearchField(text: $search, prompt: "Search \(StepKind.allCases.count) steps")
-        .padding(8)
-        .background(.bar)
+    .safeAreaInset(edge: .top, spacing: 10) {
+      VStack(alignment: .leading, spacing: 10) {
+        Text("Steps").font(.headline)
+        SearchField(text: $search, prompt: "Search \(StepKind.allCases.count) steps")
+      }
+      .padding([.horizontal, .top], 12)
+      .background(.background)
     }
     .safeAreaInset(edge: .bottom) {
       Text("Click a step to add it after the selected one.")
         .font(.caption)
         .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity)
-        .padding(8)
-        .background(.bar)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(.background)
+    }
+    .background(.background)
+  }
+}
+
+/// One library group: a colored icon, its name and count, and its steps.
+private struct StepGroupBlock: View {
+  let group: String
+  let kinds: [StepKind]
+  let onAdd: (StepKind) -> Void
+
+  var body: some View {
+    let look = StepGroupLook(group)
+    VStack(alignment: .leading, spacing: 1) {
+      HStack(spacing: 8) {
+        Image(systemName: look.symbol)
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(look.ink)
+          .frame(width: 22, height: 22)
+          .background(look.ink.opacity(0.14), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+          .accessibilityHidden(true)
+        Text(group).font(.callout.weight(.semibold))
+        Spacer()
+        Text("\(kinds.count)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+      }
+      .padding(.horizontal, 4)
+      .padding(.top, 2)
+      .padding(.bottom, 3)
+      ForEach(kinds) { kind in
+        StepLibraryRow(kind: kind, ink: look.ink) { onAdd(kind) }
+      }
+    }
+    .padding(4)
+    .groupBox()
+  }
+}
+
+private struct StepLibraryRow: View {
+  let kind: StepKind
+  let ink: Color
+  let action: () -> Void
+  @State private var hovering = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 8) {
+        Text(kind.name).lineLimit(1)
+        Spacer(minLength: 4)
+        Text(kind.op).font(.codeSmall).foregroundStyle(ink).lineLimit(1)
+      }
+      .padding(.horizontal, 6)
+      .frame(minHeight: 26)
+      .background(hovering ? ink.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering = $0 }
+    .help(kind.does)
+    .draggable(kind.rawValue)
+  }
+}
+
+/// Each library group's symbol and color. Light mode uses dark inks that read on white; dark mode lighter ones.
+struct StepGroupLook {
+  let symbol: String
+  let ink: Color
+
+  init(_ group: String) {
+    switch group {
+    case "Filter and shape": (symbol, ink) = ("line.3.horizontal.decrease", Color(light: 0x0B4A8F, dark: 0x6CA8F0))
+    case "Group and count": (symbol, ink) = ("square.grid.2x2", Color(light: 0x5E2A84, dark: 0xC597E8))
+    case "Arrays": (symbol, ink) = ("list.bullet", Color(light: 0x0F5E5A, dark: 0x5CC8C0))
+    case "Order and pages": (symbol, ink) = ("arrow.up.arrow.down", Color(light: 0x93370D, dark: 0xF2A27A))
+    case "Combine": (symbol, ink) = ("arrow.triangle.merge", Color(light: 0x1E6B35, dark: 0x6CCB86))
+    case "Time and windows": (symbol, ink) = ("clock", Color(light: 0x8A2456, dark: 0xEE8DB9))
+    case "Location": (symbol, ink) = ("mappin", Color(light: 0x6B5200, dark: 0xE3C35A))
+    default: (symbol, ink) = ("square.and.arrow.down", Color(light: 0x3A3A3F, dark: 0xAEAEB2))
     }
   }
 }

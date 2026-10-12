@@ -14,6 +14,7 @@
   ///   --edit-connection "Shop"             open Edit Connection
   ///   --new-query "SELECT 1" [--run]       open a query tab
   ///   --select-row N                       select the Nth row (0-based)
+  ///   --hide-sidebar                       start with the sidebar hidden
   @MainActor
   enum DebugDriver {
     static func run(_ window: WindowModel) async {
@@ -77,7 +78,7 @@
       }
       if LaunchOptions.flag("--query-editor") { browser.showsQueryEditor = true }
       if LaunchOptions.value("--mode") == "aggregate" {
-        browser.mode = .aggregate
+        await browser.switchMode(.aggregate)
         browser.pipeline.showsFullBuilder = LaunchOptions.flag("--full-builder")
         if LaunchOptions.flag("--demo-pipeline") { demoPipeline(browser.pipeline) }
       }

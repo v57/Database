@@ -64,7 +64,7 @@ struct BrowserView: View {
 
   private var inspectorShown: Binding<Bool> {
     Binding(
-      get: { window.showsInspector && sizeClass != .compact && browser.mode == .find },
+      get: { window.showsInspector && sizeClass != .compact && browser.mode == .find && !browser.collapsesInspector },
       set: { window.showsInspector = $0 })
   }
 
@@ -157,7 +157,7 @@ struct BrowserView: View {
   /// Mode, "show as" and the Query Editor toggle, side by side in a wide toolbar.
   @ViewBuilder private var viewControls: some View {
       if hasModes {
-        Picker("Mode", selection: $browser.mode) {
+        Picker("Mode", selection: modeSelection) {
           ForEach(BrowserModel.Mode.allCases) { mode in
             Label(mode.rawValue, systemImage: mode == .find ? "magnifyingglass" : "square.stack.3d.up").tag(mode)
           }
@@ -182,7 +182,7 @@ struct BrowserView: View {
   private var compactViewMenu: some View {
     Menu {
       if hasModes {
-        Picker("Mode", selection: $browser.mode) {
+        Picker("Mode", selection: modeSelection) {
           ForEach(BrowserModel.Mode.allCases) { mode in
             Label(mode.rawValue, systemImage: mode == .find ? "magnifyingglass" : "square.stack.3d.up").tag(mode)
           }
@@ -199,6 +199,10 @@ struct BrowserView: View {
     } label: {
       Label("View", systemImage: "line.3.horizontal.decrease")
     }
+  }
+
+  private var modeSelection: Binding<BrowserModel.Mode> {
+    Binding(get: { browser.mode }, set: { mode in Task { await browser.switchMode(mode) } })
   }
 
   private var availableModes: [BrowserModel.ViewMode] {
