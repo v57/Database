@@ -1,6 +1,6 @@
 # Test servers for every network engine Database Pro speaks.
 # Usage:
-#   docker compose up -d --wait     # start and wait until healthy
+#   Scripts/test-servers.sh         # make the SSH test key, start and wait until healthy
 #   docker compose down             # stop (data persists in named volumes)
 #   docker compose down -v          # stop and DELETE data
 # SQLite and DuckDB are files and need no server.
