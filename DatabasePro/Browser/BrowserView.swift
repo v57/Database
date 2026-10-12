@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import SwiftUI
 
 /// The main pane for a table or collection: simple bar, list, status bar, inspector.

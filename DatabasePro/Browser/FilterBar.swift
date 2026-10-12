@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import SwiftUI
 
 /// Search, filter chips, sort and fields: the simple bar above the list.

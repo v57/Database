@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		2669A0EF3031C45000C52779 /* DatabaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0EE3031C45000C52779 /* DatabaseCore */; };
+		2669A0EF3031C45000C52779 /* DatabaseProKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0EE3031C45000C52779 /* DatabaseProKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,7 +39,7 @@
 		000000000000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
-				2669A0EF3031C45000C52779 /* DatabaseCore in Frameworks */,
+				2669A0EF3031C45000C52779 /* DatabaseProKit in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -79,7 +79,7 @@
 			);
 			name = DatabasePro;
 			packageProductDependencies = (
-				2669A0EE3031C45000C52779 /* DatabaseCore */,
+				2669A0EE3031C45000C52779 /* DatabaseProKit */,
 			);
 			productName = DatabasePro;
 			productReference = 000000000000000000000120 /* DatabasePro.app */;
@@ -400,9 +400,9 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		2669A0EE3031C45000C52779 /* DatabaseCore */ = {
+		2669A0EE3031C45000C52779 /* DatabaseProKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = DatabaseCore;
+			productName = DatabaseProKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

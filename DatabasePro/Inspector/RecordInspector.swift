@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import SwiftUI
 
 /// A table row's fields, related rows and actions; Edit turns the fields into editors.

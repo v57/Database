@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import Foundation
 
 /// Every MongoDB aggregation stage the builder offers, with a plain name.

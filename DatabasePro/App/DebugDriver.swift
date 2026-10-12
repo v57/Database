@@ -1,5 +1,5 @@
 #if DEBUG
-  import DatabaseCore
+  import DatabaseProKit
   import Foundation
 
   /// Drives the UI from launch arguments in development builds, for screenshots and manual checks:

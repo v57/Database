@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import SwiftUI
 
 /// Sorts records by a field (the Table's sort descriptor; the server does the real sorting).

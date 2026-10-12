@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import SwiftUI
 
 /// Every pending change, old → new, with the statements that will run. Nothing is written before Save.
