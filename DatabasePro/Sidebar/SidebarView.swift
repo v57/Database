@@ -121,6 +121,9 @@ struct ConnectionTree: View {
       }
     } label: {
       ConnectionLabel(connection: connection)
+        // The disclosure chevron sits on the label's first baseline. Moving that baseline to just below the middle
+        // (half the chevron's height) centers the chevron on the two-line row.
+        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 3.5 }
         .tag(SidebarItem.connection(connection.id))
         .contextMenu { menu }
     }
@@ -240,12 +243,9 @@ struct TreeNodeRow: View {
   }
 
   private var label: some View {
-    HStack(spacing: 6) {
-      Image(systemName: node.symbol)
-        .foregroundStyle(node.ref == nil ? Color.secondary : Color.accentColor)
-        .imageScale(.small)
-        .frame(width: 16)
-      Text(node.title).lineLimit(1)
+    HStack(spacing: 8) {
+      SidebarTile(symbol: node.symbol, tint: connection.profile.engine.tint)
+      Text(node.title).fontWeight(node.hasChildren ? .semibold : .regular).lineLimit(1)
       Spacer(minLength: 4)
       if let detail = node.detail {
         Text(detail).font(.caption).foregroundStyle(.secondary).monospacedDigit()
@@ -261,28 +261,65 @@ struct QueryRows: View {
   @Bindable var window: WindowModel
   @Environment(AppModel.self) private var app
 
+  private var tint: Color { connection.profile.engine.tint }
+
   var body: some View {
     let saved = app.queries(for: connection.id)
     let tabs = connection.queries.tabs.filter { $0.savedID == nil }
     if !saved.isEmpty || !tabs.isEmpty {
       DisclosureGroup {
         ForEach(saved) { query in
-          Label(query.title, systemImage: "terminal")
-            .lineLimit(1)
+          SidebarTileLabel(query.title, symbol: "terminal", tint: tint)
             .tag(SidebarItem.savedQuery(connection.id, query.id))
             .contextMenu {
               Button("Delete", systemImage: "trash", role: .destructive) { app.deleteQuery(query.id) }
             }
         }
         ForEach(tabs) { tab in
-          Label(tab.title, systemImage: "doc.text")
-            .lineLimit(1)
+          SidebarTileLabel(tab.title, symbol: "doc.text", tint: tint)
             .foregroundStyle(.secondary)
             .tag(SidebarItem.queryTab(connection.id, tab.id))
         }
       } label: {
-        Label("Queries", systemImage: "folder")
+        SidebarTileLabel("Queries", symbol: "folder", tint: tint).fontWeight(.semibold)
       }
+    }
+  }
+}
+
+/// A sidebar icon in a small tile tinted with the engine's color; white on a selected row's highlight.
+struct SidebarTile: View {
+  let symbol: String
+  let tint: Color
+  @Environment(\.backgroundProminence) private var prominence
+
+  var body: some View {
+    let selected = prominence == .increased
+    Image(systemName: symbol)
+      .font(.system(size: 10, weight: .semibold))
+      .foregroundStyle(selected ? Color.white : tint)
+      .frame(width: 20, height: 20)
+      .background(selected ? Color.white.opacity(0.22) : tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+      .accessibilityHidden(true)
+  }
+}
+
+/// A title with a `SidebarTile`.
+struct SidebarTileLabel: View {
+  let title: String
+  let symbol: String
+  let tint: Color
+
+  init(_ title: String, symbol: String, tint: Color) {
+    self.title = title
+    self.symbol = symbol
+    self.tint = tint
+  }
+
+  var body: some View {
+    HStack(spacing: 8) {
+      SidebarTile(symbol: symbol, tint: tint)
+      Text(title).lineLimit(1)
     }
   }
 }

@@ -1,20 +1,20 @@
 import DatabaseCore
 import SwiftUI
 
-/// The engine's color, used for its two-letter tile.
+/// The engine's color, used for its two-letter tile and its sidebar icons: lighter in dark mode so it reads there.
 extension EngineKind {
   var tint: Color {
     switch self {
-    case .postgres: Color(red: 0.18, green: 0.42, blue: 0.75)
-    case .mysql: Color(red: 0.05, green: 0.50, blue: 0.45)
-    case .mariadb: Color(red: 0.55, green: 0.36, blue: 0.20)
-    case .sqlserver: Color(red: 0.62, green: 0.13, blue: 0.27)
-    case .sqlite: Color(red: 0.30, green: 0.37, blue: 0.47)
-    case .duckdb: Color(red: 0.62, green: 0.50, blue: 0.0)
-    case .mongodb: Color(red: 0.13, green: 0.50, blue: 0.27)
-    case .redis: Color(red: 0.72, green: 0.25, blue: 0.08)
-    case .cassandra: Color(red: 0.22, green: 0.31, blue: 0.68)
-    case .scylla: Color(red: 0.45, green: 0.22, blue: 0.62)
+    case .postgres: Color(light: 0x2E6BBF, dark: 0x7AA9EB)
+    case .mysql: Color(light: 0x0D8073, dark: 0x5CC4B6)
+    case .mariadb: Color(light: 0x8C5C33, dark: 0xD19B6B)
+    case .sqlserver: Color(light: 0x9E2145, dark: 0xE8728F)
+    case .sqlite: Color(light: 0x4D5E78, dark: 0x9AABC4)
+    case .duckdb: Color(light: 0x9E8000, dark: 0xE0C24A)
+    case .mongodb: Color(light: 0x218045, dark: 0x6CCB86)
+    case .redis: Color(light: 0xB84014, dark: 0xF08A5E)
+    case .cassandra: Color(light: 0x384FAD, dark: 0x8C9EEB)
+    case .scylla: Color(light: 0x73389E, dark: 0xBE8CE6)
     }
   }
 }
@@ -149,6 +149,30 @@ extension View {
       buttonStyle(.link)
     #else
       buttonStyle(.borderless)
+    #endif
+  }
+}
+
+extension Color {
+  /// One sRGB color for light appearance and another for dark (0xRRGGBB).
+  init(light: UInt32, dark: UInt32) {
+    func rgb(_ hex: UInt32) -> (Double, Double, Double) {
+      (Double((hex >> 16) & 0xFF) / 255, Double((hex >> 8) & 0xFF) / 255, Double(hex & 0xFF) / 255)
+    }
+    let (lr, lg, lb) = rgb(light)
+    let (dr, dg, db) = rgb(dark)
+    #if os(macOS)
+      self.init(
+        nsColor: NSColor(name: nil) { appearance in
+          appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: dr, green: dg, blue: db, alpha: 1) : NSColor(srgbRed: lr, green: lg, blue: lb, alpha: 1)
+        })
+    #else
+      self.init(
+        uiColor: UIColor { traits in
+          traits.userInterfaceStyle == .dark
+            ? UIColor(red: dr, green: dg, blue: db, alpha: 1) : UIColor(red: lr, green: lg, blue: lb, alpha: 1)
+        })
     #endif
   }
 }
