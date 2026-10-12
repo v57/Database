@@ -10,20 +10,23 @@ let package = Package(
     .library(name: "SQLQuery", targets: ["SQLQuery"]),
     .library(name: "PostgreSQL", targets: ["PostgreSQL"]),
     .library(name: "Redis", targets: ["Redis"]), .library(name: "SQLite", targets: ["SQLite"]),
-    .library(name: "Cdrivers", targets: ["Cdrivers"]),
   ],
   targets: [
     .target(name: "Database", swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
-    .binaryTarget(name: "Cdrivers", path: "Binary/C-drivers/Cdrivers.xcframework"),
+    // One XCFramework per C driver (Binary/C-drivers/build-c-drivers.sh), so each
+    // engine links only its own.
+    .binaryTarget(name: "CMongoC", path: "Binary/C-drivers/CMongoC.xcframework"),
+    .binaryTarget(name: "CPostgreSQL", path: "Binary/C-drivers/CPostgreSQL.xcframework"),
+    .binaryTarget(name: "CHiredis", path: "Binary/C-drivers/CHiredis.xcframework"),
     .target(
       name: "MongoDB",
-      dependencies: ["Cdrivers"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+      dependencies: ["CMongoC"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .target(
       name: "PostgreSQL",
-      dependencies: ["Cdrivers"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+      dependencies: ["CPostgreSQL"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .target(
       name: "Redis",
-      dependencies: ["Cdrivers"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
+      dependencies: ["CHiredis"], swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .target(name: "SQLite", swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]),
     .target(
       name: "SQLQuery",

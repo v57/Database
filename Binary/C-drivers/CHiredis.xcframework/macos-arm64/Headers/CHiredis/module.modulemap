@@ -1,0 +1,4 @@
+module CHiredis [system] {
+    header "../hiredis/hiredis.h"
+    export *
+}
