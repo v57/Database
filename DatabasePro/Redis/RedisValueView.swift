@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import SwiftUI
 
 /// The inspector for one Redis key: type, expiry, the value editor and key actions.

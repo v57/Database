@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import SwiftUI
 
 /// Aggregate mode: steps on the left, the selected step's output on the right.

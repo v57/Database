@@ -27,7 +27,7 @@ let package = Package(
   name: "DatabasePro",
   platforms: [.macOS(.v14), .iOS(.v17)],
   products: [
-    .library(name: "DatabaseCore", targets: ["DatabaseCore"]),
+    .library(name: "DatabaseProKit", targets: ["DatabaseProKit"]),
     .library(name: "SSHTunnel", targets: ["SSHTunnel"]),
   ],
   targets: [
@@ -55,7 +55,7 @@ let package = Package(
 
     // Engine-neutral model the app talks to: connections, containers, items, edits.
     .target(
-      name: "DatabaseCore",
+      name: "DatabaseProKit",
       dependencies: [
         "WireKit", "SSHTunnel", "BSON", "MongoWire", "PostgresWire", "MySQLWire", "TDSWire",
         "CQLWire", "RedisWire", "SQLiteKit", "DuckDBKit",
@@ -74,6 +74,6 @@ let package = Package(
     .testTarget(name: "RedisWireTests", dependencies: ["RedisWire"], swiftSettings: concurrency),
     .testTarget(name: "SQLiteKitTests", dependencies: ["SQLiteKit"], swiftSettings: concurrency),
     .testTarget(name: "DuckDBKitTests", dependencies: ["DuckDBKit"], swiftSettings: concurrency),
-    .testTarget(name: "DatabaseCoreTests", dependencies: ["DatabaseCore"], swiftSettings: concurrency),
+    .testTarget(name: "DatabaseProKitTests", dependencies: ["DatabaseProKit"], swiftSettings: concurrency),
   ]
 )

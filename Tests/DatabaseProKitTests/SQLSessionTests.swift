@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import WireKit
 
-@testable import DatabaseCore
+@testable import DatabaseProKit
 
 /// Runs the same browse/edit/undo scenario on every SQL engine.
 /// Needs the docker-compose.yml services (postgres, mysql, mariadb, sqlserver); SQLite and DuckDB use temp files.

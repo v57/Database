@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import SwiftUI
 
 /// A document as a tree of typed fields; Edit gives each top-level field a type and a value.

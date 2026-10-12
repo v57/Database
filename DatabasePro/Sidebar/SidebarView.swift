@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import SwiftUI
 
 struct SidebarView: View {

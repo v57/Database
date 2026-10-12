@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import SwiftUI
 
 /// The engine's color, used for its two-letter tile and its sidebar icons: lighter in dark mode so it reads there.

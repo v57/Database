@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import SwiftUI
 
 /// Edits a step: its friendly form (Builder) or the stage as text.

@@ -1,4 +1,4 @@
-import DatabaseCore
+import DatabaseProKit
 import Foundation
 import Observation
 

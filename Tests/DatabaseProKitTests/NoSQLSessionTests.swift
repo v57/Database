@@ -4,7 +4,7 @@ import SSHTunnel
 import Testing
 import WireKit
 
-@testable import DatabaseCore
+@testable import DatabaseProKit
 
 /// MongoDB, Redis, Cassandra and ScyllaDB sessions against the docker-compose.yml services.
 @Suite(.serialized) struct NoSQLSessionTests {
