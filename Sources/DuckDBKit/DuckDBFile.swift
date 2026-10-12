@@ -65,70 +65,7 @@ public actor DuckDBFile {
     return DuckDBVectors.read(&result, maxRows: maxRows)
   }
 
-  static func read(_ result: inout duckdb_result, maxRows: Int) -> DBResult {
-    let columnCount = Int(duckdb_column_count(&result))
-    let rowCount = Int(duckdb_row_count(&result))
-    var columns: [DBColumn] = []
-    var types: [duckdb_type] = []
-    for c in 0..<columnCount {
-      let name = duckdb_column_name(&result, idx_t(c)).map { String(cString: $0) } ?? "?"
-      let type = duckdb_column_type(&result, idx_t(c))
-      var logical = duckdb_column_logical_type(&result, idx_t(c))
-      let typeName = typeName(type, logical: logical)
-      duckdb_destroy_logical_type(&logical)
-      columns.append(DBColumn(name: name, typeName: typeName))
-      types.append(type)
-    }
-    var out = DBResult(columns: columns)
-    // A statement without a result set (or an empty column set) reports changed rows.
-    let isChange = columnCount == 1 && columns.first?.name == "Count" && types.first == DUCKDB_TYPE_BIGINT
-    for row in 0..<min(rowCount, maxRows) {
-      var values: [DBValue] = []
-      values.reserveCapacity(columnCount)
-      for c in 0..<columnCount {
-        values.append(value(&result, column: c, row: row, type: types[c]))
-      }
-      out.rows.append(values)
-    }
-    let changed = Int(duckdb_rows_changed(&result))
-    if isChange || changed > 0 {
-      out.affectedRows = isChange ? Int(out.rows.first?.first?.intValue ?? Int64(changed)) : changed
-    }
-    if rowCount > maxRows { out.messages.append("Showing the first \(maxRows) of \(rowCount) rows") }
-    return out
-  }
-
-  static func value(_ result: inout duckdb_result, column: Int, row: Int, type: duckdb_type) -> DBValue {
-    let c = idx_t(column)
-    let r = idx_t(row)
-    if duckdb_value_is_null(&result, c, r) { return .null }
-    switch type {
-    case DUCKDB_TYPE_BOOLEAN: return .bool(duckdb_value_boolean(&result, c, r))
-    case DUCKDB_TYPE_TINYINT, DUCKDB_TYPE_SMALLINT, DUCKDB_TYPE_INTEGER, DUCKDB_TYPE_BIGINT, DUCKDB_TYPE_UTINYINT,
-      DUCKDB_TYPE_USMALLINT, DUCKDB_TYPE_UINTEGER:
-      return .int(duckdb_value_int64(&result, c, r))
-    case DUCKDB_TYPE_FLOAT, DUCKDB_TYPE_DOUBLE: return .double(duckdb_value_double(&result, c, r))
-    case DUCKDB_TYPE_UBIGINT, DUCKDB_TYPE_HUGEINT, DUCKDB_TYPE_UHUGEINT, DUCKDB_TYPE_DECIMAL:
-      return .decimal(varchar(&result, c, r))
-    case DUCKDB_TYPE_BLOB:
-      let blob = duckdb_value_blob(&result, c, r)
-      defer { duckdb_free(blob.data) }
-      guard let data = blob.data else { return .bytes([]) }
-      return .bytes(Array(UnsafeRawBufferPointer(start: data, count: Int(blob.size))))
-    case DUCKDB_TYPE_UUID:
-      let text = varchar(&result, c, r)
-      return UUID(uuidString: text).map(DBValue.uuid) ?? .text(text)
-    default:
-      return .text(varchar(&result, c, r))
-    }
-  }
-
-  static func varchar(_ result: inout duckdb_result, _ c: idx_t, _ r: idx_t) -> String {
-    guard let pointer = duckdb_value_varchar(&result, c, r) else { return "" }
-    defer { duckdb_free(pointer) }
-    return String(cString: pointer)
-  }
-
+  /// The SQL name of a type without parameters ("INTEGER", "LIST").
   static func typeName(_ type: duckdb_type, logical: duckdb_logical_type?) -> String {
     switch type {
     case DUCKDB_TYPE_BOOLEAN: return "BOOLEAN"

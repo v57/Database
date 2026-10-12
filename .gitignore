@@ -11,7 +11,7 @@ xcuserdata/
 *.xcuserstate
 /.swiftpm
 
-# Binaries: published to GitHub Releases (Scripts/release-binaries.sh), rebuilt with Scripts/build-libssh2.sh
+# Binaries: built by Scripts/build-libssh2.sh and Scripts/build-duckdb.sh, published by Scripts/release-binaries.sh
 /Binary/
 
 # Local test servers' SSH key (see docker-compose.yml)

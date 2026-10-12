@@ -1,31 +1,40 @@
 #!/bin/zsh
-# Packs Binary/Libssh2.xcframework for GitHub Releases and points Package.swift at it.
-# The binaries aren't in git: a checkout without Binary/ downloads the release asset.
+# Packs one of the prebuilt libraries in Binary/ for GitHub Releases and points Package.swift at it.
+# The binaries aren't in git: a checkout without Binary/ downloads the release assets.
 #
-#   Scripts/release-binaries.sh [tag]      (tag defaults to libssh2-<libssh2 version>)
+#   Scripts/release-binaries.sh libssh2|duckdb
 #
-# Publishing stays manual: the script prints the `gh release create` command.
+# The release is tagged with the library's version (libssh2-1.11.1, duckdb-1.5.6). Publishing stays manual:
+# the script prints the `gh release create` command.
 set -euo pipefail
 cd "${0:A:h}/.."
 
 REPO=v57/DatabasePro
-FRAMEWORK=Binary/Libssh2.xcframework
-[[ -d $FRAMEWORK ]] || { echo "No $FRAMEWORK: run Scripts/build-libssh2.sh"; exit 1; }
-VERSION=$(awk -F'"' '/define LIBSSH2_VERSION /{sub(/_DEV$/, "", $2); print $2; exit}' $FRAMEWORK/macos-arm64/Headers/libssh2.h)
-TAG=${1:-libssh2-$VERSION}
+case ${1:-} in
+  libssh2)
+    NAME=Libssh2 TITLE=libssh2
+    VERSION=$(awk -F'"' '/define LIBSSH2_VERSION /{sub(/_DEV$/, "", $2); print $2; exit}' \
+      Binary/Libssh2.xcframework/macos-arm64/Headers/libssh2.h)
+    NOTES="libssh2 + mbedTLS for DatabasePro (mbedTLS symbols prefixed _dbpro_), made by Scripts/build-libssh2.sh." ;;
+  duckdb)
+    NAME=Cduckdb TITLE=DuckDB
+    VERSION=$(cat Binary/Cduckdb.xcframework/VERSION)
+    NOTES="The DuckDB $VERSION C library for macOS, iOS and the iOS simulator, with parquet, json and icu built in and extension auto-install off, made by Scripts/build-duckdb.sh." ;;
+  *) echo "Usage: Scripts/release-binaries.sh libssh2|duckdb"; exit 1 ;;
+esac
+[[ -d Binary/$NAME.xcframework ]] || { echo "No Binary/$NAME.xcframework: run its Scripts/build-*.sh"; exit 1; }
+TAG=$1-$VERSION
 OUT=build/release
-ZIP=$OUT/Libssh2.xcframework.zip
+ZIP=$OUT/$NAME.xcframework.zip
 
-rm -rf $OUT && mkdir -p $OUT
-(cd Binary && zip -qry -X ../$ZIP Libssh2.xcframework)
+mkdir -p $OUT && rm -f $ZIP
+(cd Binary && zip -qry -X ../$ZIP $NAME.xcframework)
 CHECKSUM=$(swift package compute-checksum $ZIP)
-URL="https://github.com/$REPO/releases/download/$TAG/Libssh2.xcframework.zip"
 
-sed -i '' -E \
-  -e "s|url: \"https://github.com/$REPO/releases/download/[^\"]*\"|url: \"$URL\"|" \
-  -e "s|checksum: \"[0-9a-f]*\"|checksum: \"$CHECKSUM\"|" Package.swift
+# The two lines after `let <name> = binary(` in Package.swift.
+sed -i '' -E "/^  \"$NAME\", release:/s|release: \"[^\"]*\", checksum: \"[0-9a-f]*\"|release: \"$TAG\", checksum: \"$CHECKSUM\"|" Package.swift
 grep -q $CHECKSUM Package.swift || { echo "Package.swift wasn't updated"; exit 1; }
 
 echo "==> $ZIP ($(du -h $ZIP | cut -f1)), checksum $CHECKSUM"
-echo "Package.swift now points at $URL. Commit it, then publish:"
-echo "  gh release create $TAG $ZIP --repo $REPO --title \"libssh2 $VERSION\" --notes \"libssh2 + mbedTLS for DatabasePro (mbedTLS symbols prefixed _dbpro_).\""
+echo "Package.swift now points at release $TAG. Commit it, then publish:"
+echo "  gh release create $TAG $ZIP --repo $REPO --title \"$TITLE $VERSION\" --notes \"$NOTES\""

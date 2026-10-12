@@ -19,10 +19,9 @@ enum DuckDBVectors {
       for var type in types { duckdb_destroy_logical_type(&type) }
     }
     var out = DBResult(columns: columns)
-    let chunks = duckdb_result_chunk_count(result)
     var total = 0
-    for index in 0..<chunks {
-      var chunk = duckdb_result_get_chunk(result, index)
+    while let fetched = duckdb_fetch_chunk(result) {
+      var chunk: duckdb_data_chunk? = fetched
       defer { duckdb_destroy_data_chunk(&chunk) }
       let size = Int(duckdb_data_chunk_get_size(chunk))
       total += size
