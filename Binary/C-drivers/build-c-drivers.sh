@@ -277,7 +277,7 @@ package_cdrivers() {
   local hdr="$BUILD_DIR/headers"
 
   # libssh2 slice archives (from the Shell repo's Binary/SSH-libssh2 build-ssh.sh).
-  local libssh2_dir="${LIBSSH2_DIR:-/Users/v57/Projects/Shell/Binary/SSH-libssh2/Libssh2.xcframework}"
+  local libssh2_dir="${LIBSSH2_DIR:-/Users/v57/Developer/v57/Shell/Binary/SSH-libssh2/Libssh2.xcframework}"
   local ls_dev="$libssh2_dir/ios-arm64/libssh2_all.a"
   local ls_sim="$libssh2_dir/ios-arm64_x86_64-simulator/libssh2_sim.a"
   local ls_mac="$libssh2_dir/macos-arm64/libssh2_all.a"
