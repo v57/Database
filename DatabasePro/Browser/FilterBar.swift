@@ -4,6 +4,7 @@ import SwiftUI
 /// Search, filter chips, sort and fields: the simple bar above the list.
 struct FilterBar: View {
   @Bindable var browser: BrowserModel
+  @Environment(\.horizontalSizeClass) private var sizeClass
   @State private var addingFilter = false
   @State private var searchText = ""
 
@@ -31,7 +32,9 @@ struct FilterBar: View {
           Button {
             addingFilter = true
           } label: {
+            // A phone keeps the width for the search field.
             Label("Add Filter", systemImage: "plus")
+              .labelStyle(AdaptiveLabelStyle(iconOnly: sizeClass == .compact))
           }
           .buttonStyle(DashedCapsuleStyle())
           .popover(isPresented: $addingFilter, arrowEdge: .bottom) {
@@ -108,6 +111,19 @@ struct FilterChip: View {
     .padding(.trailing, 7)
     .padding(.vertical, 4)
     .background(Color.accentColor.opacity(0.12), in: Capsule())
+  }
+}
+
+/// Title and icon, or just the icon.
+struct AdaptiveLabelStyle: LabelStyle {
+  var iconOnly: Bool
+
+  func makeBody(configuration: Configuration) -> some View {
+    if iconOnly {
+      IconOnlyLabelStyle().makeBody(configuration: configuration)
+    } else {
+      DefaultLabelStyle().makeBody(configuration: configuration)
+    }
   }
 }
 

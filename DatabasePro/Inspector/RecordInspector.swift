@@ -121,11 +121,18 @@ struct RecordInspector: View {
     Task { await target.reload() }
   }
 
+  @ViewBuilder private var copyButtons: some View {
+    Button("Copy as JSON", systemImage: "doc.on.doc") { Clipboard.copy(Exporter.json(record, fields: browser.fields)) }
+      .lineLimit(1)
+    Button("Copy as INSERT") { Clipboard.copy(Exporter.insert(record, browser: browser)) }
+      .lineLimit(1)
+  }
   private var actions: some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Button("Copy as JSON", systemImage: "doc.on.doc") { Clipboard.copy(Exporter.json(record, fields: browser.fields)) }
-        Button("Copy as INSERT") { Clipboard.copy(Exporter.insert(record, browser: browser)) }
+      // Side by side when they fit; stacked in a narrow inspector.
+      ViewThatFits(in: .horizontal) {
+        HStack { copyButtons }
+        VStack(alignment: .leading, spacing: 8) { copyButtons }
       }
       .buttonStyle(.bordered)
       if browser.isEditable && record.key != nil {
