@@ -13,6 +13,7 @@
 		E1E1E1E1E1E1E1E1E1E1E1E1 /* PostgreSQL in Frameworks */ = {isa = PBXBuildFile; productRef = C1C1C1C1C1C1C1C1C1C1C1C1 /* PostgreSQL */; };
 		F1F1F1F1F1F1F1F1F1F1F1F1 /* Redis in Frameworks */ = {isa = PBXBuildFile; productRef = D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */; };
 		AFCEAD4516F5C5239F265754 /* SQLQuery in Frameworks */ = {isa = PBXBuildFile; productRef = 265DA9DEDA15E423029EB916 /* SQLQuery */; };
+		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = D5C0DE000000000000000002 /* UpdateKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +51,7 @@
 				F1F1F1F1F1F1F1F1F1F1F1F1 /* Redis in Frameworks */,
 				884D4B024EB8075F6DE519D6 /* SQLite in Frameworks */,
 				AFCEAD4516F5C5239F265754 /* SQLQuery in Frameworks */,
+				D5C0DE000000000000000003 /* UpdateKit in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -95,6 +97,7 @@
 				D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */,
 				E0DBE02A193510FD325EAD7C /* SQLite */,
 				265DA9DEDA15E423029EB916 /* SQLQuery */,
+				D5C0DE000000000000000002 /* UpdateKit */,
 			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* Database.app */;
@@ -126,6 +129,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				2669A0ED3031C45000C52779 /* XCLocalSwiftPackageReference "." */,
+				D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -404,6 +408,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = .;
 		};
+		D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../UpdateKit;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -430,6 +438,10 @@
 		265DA9DEDA15E423029EB916 /* SQLQuery */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SQLQuery;
+		};
+		D5C0DE000000000000000002 /* UpdateKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UpdateKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

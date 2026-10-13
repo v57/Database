@@ -4,15 +4,28 @@ import Redis
 import SQLite
 import SwiftData
 import SwiftUI
+#if os(macOS)
+import UpdateKit
+#endif
 
 @main struct DatabaseApp: App {
 #if canImport(AppKit)
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 #endif
+#if os(macOS)
+  /// Updates for the Mac app from GitHub Releases (Database.zip, built by
+  /// Scripts/release.sh): checked daily once the user turns on
+  /// automatic checks (never before), installed in place with a relaunch.
+  /// The iOS app updates through the App Store.
+  private let updater = AppUpdater(github: "v57/Database", assetName: "Database.zip")
+#endif
   private let container: ModelContainer
   private let model: DatabaseModel
 
   init() {
+#if os(macOS)
+    updater.start()
+#endif
     do {
       // Explicit per-app store: unsandboxed SwiftData apps that omit a URL
       // ALL default to the same shared ~/Library/Application Support/
@@ -46,13 +59,10 @@ import SwiftUI
       // the first); with no window open, SwiftUI still creates one.
       ContentView(model: model, container: container)
         .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
-#if os(macOS)
-        .modifier(UpdateAlerts())
-#endif
     }.commands {
       NewConnectionCommands()
 #if os(macOS)
-      UpdateCommands()
+      UpdaterCommands(updater: updater)
 #endif
     }
   }
