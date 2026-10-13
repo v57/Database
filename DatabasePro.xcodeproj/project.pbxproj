@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		2669A0EF3031C45000C52779 /* DatabaseProKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0EE3031C45000C52779 /* DatabaseProKit */; };
+		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = D5C0DE000000000000000002 /* UpdateKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +41,7 @@
 			isa = PBXFrameworksBuildPhase;
 			files = (
 				2669A0EF3031C45000C52779 /* DatabaseProKit in Frameworks */,
+				D5C0DE000000000000000003 /* UpdateKit in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -80,6 +82,7 @@
 			name = DatabasePro;
 			packageProductDependencies = (
 				2669A0EE3031C45000C52779 /* DatabaseProKit */,
+				D5C0DE000000000000000002 /* UpdateKit */,
 			);
 			productName = DatabasePro;
 			productReference = 000000000000000000000120 /* DatabasePro.app */;
@@ -111,6 +114,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				2669A0ED3031C45000C52779 /* XCLocalSwiftPackageReference "." */,
+				D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -397,12 +401,20 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = .;
 		};
+		D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../UpdateKit;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		2669A0EE3031C45000C52779 /* DatabaseProKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = DatabaseProKit;
+		};
+		D5C0DE000000000000000002 /* UpdateKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UpdateKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
