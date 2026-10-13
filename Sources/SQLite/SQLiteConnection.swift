@@ -118,11 +118,12 @@ public final class SQLiteConnection {
     return names.filter { $0.localizedCaseInsensitiveContains(search) }
   }
 
-  /// Runs a SELECT and returns every row as key/value pairs. `limit` stops
-  /// stepping the statement early; `offset` skips the first N rows (for
-  /// cursor-free pagination with a stable ORDER BY).
-  public func select(sql: String, limit: Int? = nil, offset: Int? = nil) async throws
-    -> [SQLiteRowData]
+  /// Runs a SELECT and returns every row as key/value pairs. `binds` fill
+  /// `?1, ?2, …` in order as text, so values with quotes never need escaping.
+  /// `limit` stops stepping the statement early; `offset` skips the first N
+  /// rows (for cursor-free pagination with a stable ORDER BY).
+  public func select(sql: String, binds: [String] = [], limit: Int? = nil, offset: Int? = nil)
+    async throws -> [SQLiteRowData]
   {
     guard let db else { throw SQLiteError.notConnected }
     let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -134,6 +135,15 @@ public final class SQLiteConnection {
       throw SQLiteError.invalidQuery(errorMessage(db) ?? "unknown SQLite error")
     }
     defer { sqlite3_finalize(stmt) }
+
+    for (index, bind) in binds.enumerated() {
+      let rc = bind.withCString { text in
+        sqlite3_bind_text(stmt, Int32(index + 1), text, -1, Self.transientDestructor)
+      }
+      guard rc == SQLITE_OK else {
+        throw SQLiteError.invalidQuery(errorMessage(db) ?? "failed to bind parameter \(index + 1)")
+      }
+    }
 
     var rows: [SQLiteRowData] = []
     var rc = sqlite3_step(stmt)
@@ -223,6 +233,10 @@ public final class SQLiteConnection {
   }
 
   // MARK: - Internals
+
+  /// SQLITE_TRANSIENT is a C macro Swift can't import: it tells SQLite to copy
+  /// bound text before the C string goes away.
+  private static let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
   private static func rowData(index: Int, stmt: OpaquePointer?) -> SQLiteRowData {
     let count = Int(sqlite3_column_count(stmt))
