@@ -111,7 +111,7 @@ struct PipelineView: View {
         Text("Paste db.collection.aggregate([…]), a JSON array of stages, or stages separated by commas.")
           .font(.callout)
           .foregroundStyle(.secondary)
-        CodeEditor(text: $importText, language: .mongo, completions: [])
+        CodeEditor(text: $importText, language: EngineKind.mongodb.highlighting, completions: [])
           .frame(minHeight: 240)
           .groupBox()
         if let importError { Text(importError).foregroundStyle(.red).font(.caption) }

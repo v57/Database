@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		2669A0EF3031C45000C52779 /* DatabaseProKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0EE3031C45000C52779 /* DatabaseProKit */; };
 		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = D5C0DE000000000000000002 /* UpdateKit */; };
+		C0DE4161000000000000000003 /* CodeHighlighting in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE4161000000000000000002 /* CodeHighlighting */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +41,7 @@
 		000000000000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				C0DE4161000000000000000003 /* CodeHighlighting in Frameworks */,
 				2669A0EF3031C45000C52779 /* DatabaseProKit in Frameworks */,
 				D5C0DE000000000000000003 /* UpdateKit in Frameworks */,
 			);
@@ -83,6 +85,7 @@
 			packageProductDependencies = (
 				2669A0EE3031C45000C52779 /* DatabaseProKit */,
 				D5C0DE000000000000000002 /* UpdateKit */,
+				C0DE4161000000000000000002 /* CodeHighlighting */,
 			);
 			productName = DatabasePro;
 			productReference = 000000000000000000000120 /* DatabasePro.app */;
@@ -115,6 +118,7 @@
 			packageReferences = (
 				2669A0ED3031C45000C52779 /* XCLocalSwiftPackageReference "." */,
 				D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */,
+				C0DE4161000000000000000001 /* XCLocalSwiftPackageReference "../Code" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -405,6 +409,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../UpdateKit;
 		};
+		C0DE4161000000000000000001 /* XCLocalSwiftPackageReference "../Code" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Code;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -415,6 +423,11 @@
 		D5C0DE000000000000000002 /* UpdateKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = UpdateKit;
+		};
+		C0DE4161000000000000000002 /* CodeHighlighting */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0DE4161000000000000000001 /* XCLocalSwiftPackageReference "../Code" */;
+			productName = CodeHighlighting;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

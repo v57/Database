@@ -416,7 +416,7 @@ struct NewItemSheet: View {
       Form {
         if browser.engine.family == .document {
           Section {
-            CodeEditor(text: $documentText, language: .mongo, completions: [])
+            CodeEditor(text: $documentText, language: EngineKind.mongodb.highlighting, completions: [])
               .frame(minHeight: 220)
             if let documentError {
               Label(documentError, systemImage: "exclamationmark.circle").foregroundStyle(.red).font(.caption)

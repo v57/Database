@@ -1,3 +1,4 @@
+import CodeHighlighting
 import DatabaseProKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -290,6 +291,11 @@ enum SQLFormatter {
     "INNER JOIN", "JOIN", "UNION ALL", "UNION", "VALUES", "SET", "RETURNING",
   ]
 
+  /// SQL's keywords (from CodeHighlighting) and its aggregate functions, upper-cased.
+  static let keywords = (CodeHighlighter.spec(forLanguage: "sql")?.keywords ?? []).union([
+    "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE",
+  ])
+
   static func format(_ sql: String) -> String {
     var text = sql
     // Upper-case keywords outside quotes.
@@ -297,7 +303,7 @@ enum SQLFormatter {
     var word = ""
     var quote: Character?
     func flush() {
-      if SyntaxHighlighter.sqlKeywords.contains(word.lowercased()) { out += word.uppercased() } else { out += word }
+      if keywords.contains(word.uppercased()) { out += word.uppercased() } else { out += word }
       word = ""
     }
     for ch in text {

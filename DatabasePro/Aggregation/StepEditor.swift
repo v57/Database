@@ -23,7 +23,7 @@ struct StepEditor: View {
       if let form = step.form, !showsText {
         formEditor(form)
       } else {
-        CodeEditor(text: Binding(get: { step.text }, set: { pipeline.setText(step.id, $0) }), language: .mongo, completions: [])
+        CodeEditor(text: Binding(get: { step.text }, set: { pipeline.setText(step.id, $0) }), language: EngineKind.mongodb.highlighting, completions: [])
           .frame(minHeight: 80, idealHeight: 120, maxHeight: 260)
           .groupBox()
         if let error = parseError {

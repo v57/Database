@@ -1,95 +1,29 @@
+import CodeHighlighting
 import DatabaseProKit
 import SwiftUI
 
-enum CodeLanguage {
-  case sql, mongo, redis
-}
-
 extension EngineKind {
-  var highlighting: CodeLanguage {
-    switch self {
-    case .mongodb: .mongo
-    case .redis: .redis
-    default: .sql
+  /// The CodeHighlighting (`../Code`) language its queries are written in.
+  var highlighting: String {
+    switch family {
+    case .sql: "sql"
+    case .document: "javascript"  // mongosh
+    case .keyValue: "redis"
+    case .wideColumn: "cql"
     }
   }
 }
 
-/// Colors code by token; shared by the Mac and iOS editors.
-enum SyntaxHighlighter {
-  struct Span {
-    var range: NSRange
-    var kind: Kind
+/// Colors code by token with CodeHighlighting; shared by the Mac and iOS editors.
+enum SyntaxColoring {
+  /// The tokens to color: everything but plain text, which keeps the label color.
+  static func tokens(_ text: String, language: String) -> [CodeToken] {
+    CodeHighlighter.tokens(in: text, language: language).filter { $0.kind != .plainText }
   }
 
-  enum Kind { case keyword, string, number, comment, operatorName, function }
-
-  static let sqlKeywords: Set<String> = [
-    "select", "from", "where", "and", "or", "not", "null", "is", "in", "like", "ilike", "between", "order", "by",
-    "group", "having", "limit", "offset", "join", "left", "right", "inner", "outer", "full", "cross", "on", "as",
-    "distinct", "insert", "into", "values", "update", "set", "delete", "create", "table", "alter", "drop", "with",
-    "case", "when", "then", "else", "end", "union", "all", "exists", "desc", "asc", "primary", "key", "foreign",
-    "references", "index", "view", "begin", "commit", "rollback", "transaction", "returning", "true", "false",
-    "date", "interval", "top", "fetch", "next", "rows", "only", "use", "allow", "filtering", "keyspace", "batch",
-    "apply", "using", "ttl", "if", "explain", "analyze", "default", "unique", "check", "constraint", "cascade",
-    "schema", "database", "grant", "revoke", "count", "sum", "avg", "min", "max", "cast", "coalesce", "over",
-    "partition", "window", "lateral", "recursive", "materialized", "temporary", "replace", "truncate", "go",
-  ]
-
-  static let regexes: [(NSRegularExpression, Kind)] = {
-    func r(_ p: String, _ k: Kind) -> (NSRegularExpression, Kind) {
-      (try! NSRegularExpression(pattern: p, options: [.anchorsMatchLines]), k)
-    }
-    return [
-      r(#"\b\d+(\.\d+)?([eE][-+]?\d+)?\b"#, .number),
-      r(#"\$[A-Za-z_][A-Za-z0-9_]*"#, .operatorName),
-      r(#"\b[A-Za-z_][A-Za-z0-9_]*(?=\()"#, .function),
-      r(#"'(?:[^'\\]|\\.|'')*'|"(?:[^"\\]|\\.)*""#, .string),
-      r(#"--[^\n]*|//[^\n]*|#[^\n]*|/\*[\s\S]*?\*/"#, .comment),
-    ]
-  }()
-
-  static let wordRegex = try! NSRegularExpression(pattern: #"\b[A-Za-z_]+\b"#)
-
-  static func spans(_ text: String, language: CodeLanguage) -> [Span] {
-    let ns = text as NSString
-    let full = NSRange(location: 0, length: ns.length)
-    var spans: [Span] = []
-    switch language {
-    case .sql:
-      for match in wordRegex.matches(in: text, range: full) where sqlKeywords.contains(ns.substring(with: match.range).lowercased()) {
-        spans.append(Span(range: match.range, kind: .keyword))
-      }
-    case .redis:
-      // The first word of each line is the command.
-      ns.enumerateSubstrings(in: full, options: .byLines) { line, range, _, _ in
-        guard let line else { return }
-        let trimmed = line.drop { $0 == " " }
-        let leading = line.count - trimmed.count
-        let word = trimmed.prefix { $0 != " " }
-        if !word.isEmpty {
-          spans.append(Span(range: NSRange(location: range.location + leading, length: (String(word) as NSString).length), kind: .keyword))
-        }
-      }
-    case .mongo:
-      for match in wordRegex.matches(in: text, range: full) {
-        let word = ns.substring(with: match.range)
-        if ["db", "true", "false", "null", "show", "use", "new"].contains(word) {
-          spans.append(Span(range: match.range, kind: .keyword))
-        }
-      }
-    }
-    for (regex, kind) in regexes {
-      if language == .sql && kind == .operatorName { continue }
-      if language != .redis && kind == .comment, regex.pattern.contains("#") {
-        // "#" starts a comment only in Redis scripts; strip it for others.
-        let other = try! NSRegularExpression(pattern: #"--[^\n]*|//[^\n]*|/\*[\s\S]*?\*/"#)
-        for match in other.matches(in: text, range: full) { spans.append(Span(range: match.range, kind: kind)) }
-        continue
-      }
-      for match in regex.matches(in: text, range: full) { spans.append(Span(range: match.range, kind: kind)) }
-    }
-    return spans
+  /// The color of `kind` in Xcode's default theme for the given appearance.
+  static func hex(_ kind: SyntaxKind, isDark: Bool) -> UInt32 {
+    EditorTheme.systemAware(isDark: isDark).syntax.color(for: kind)
   }
 
   /// The word before the cursor, for completion.
@@ -108,15 +42,15 @@ enum SyntaxHighlighter {
 #if os(macOS)
   import AppKit
 
-  extension SyntaxHighlighter.Kind {
+  extension SyntaxKind {
+    /// Follows the appearance: Xcode's light or dark theme color.
     var color: NSColor {
-      switch self {
-      case .keyword: .systemPink
-      case .string: .systemRed
-      case .number: .systemBlue
-      case .comment: .secondaryLabelColor
-      case .operatorName: .systemPurple
-      case .function: .systemTeal
+      NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let hex = SyntaxColoring.hex(self, isDark: isDark)
+        return NSColor(
+          srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+          blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
       }
     }
   }
@@ -124,7 +58,7 @@ enum SyntaxHighlighter {
   /// A plain-text code editor with highlighting, line numbers and completion.
   struct CodeEditor: NSViewRepresentable {
     @Binding var text: String
-    var language: CodeLanguage
+    var language: String
     var completions: [Completion]
     var isEditable = true
     var onRun: (() -> Void)?
@@ -183,7 +117,7 @@ enum SyntaxHighlighter {
         // Offer completions after two letters of a word.
         guard !completing, !parent.completions.isEmpty else { return }
         let location = textView.selectedRange().location
-        let partial = SyntaxHighlighter.partialWord(in: textView.string, at: location)
+        let partial = SyntaxColoring.partialWord(in: textView.string, at: location)
         if partial.length >= 2 {
           completing = true
           textView.complete(nil)
@@ -198,8 +132,8 @@ enum SyntaxHighlighter {
         storage.removeAttribute(.foregroundColor, range: full)
         storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: full)
         storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular), range: full)
-        for span in SyntaxHighlighter.spans(storage.string, language: parent.language) where NSMaxRange(span.range) <= storage.length {
-          storage.addAttribute(.foregroundColor, value: span.kind.color, range: span.range)
+        for token in SyntaxColoring.tokens(storage.string, language: parent.language) where NSMaxRange(token.range) <= storage.length {
+          storage.addAttribute(.foregroundColor, value: token.kind.color, range: token.range)
         }
         storage.endEditing()
       }
@@ -217,7 +151,7 @@ enum SyntaxHighlighter {
       }
 
       func textView(_ textView: NSTextView, rangeForUserCompletion charRange: NSRange) -> NSRange {
-        SyntaxHighlighter.partialWord(in: textView.string, at: textView.selectedRange().location)
+        SyntaxColoring.partialWord(in: textView.string, at: textView.selectedRange().location)
       }
 
       func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -279,22 +213,21 @@ enum SyntaxHighlighter {
 #else
   import UIKit
 
-  extension SyntaxHighlighter.Kind {
+  extension SyntaxKind {
+    /// Follows the appearance: Xcode's light or dark theme color.
     var color: UIColor {
-      switch self {
-      case .keyword: .systemPink
-      case .string: .systemRed
-      case .number: .systemBlue
-      case .comment: .secondaryLabel
-      case .operatorName: .systemPurple
-      case .function: .systemTeal
+      UIColor { traits in
+        let hex = SyntaxColoring.hex(self, isDark: traits.userInterfaceStyle == .dark)
+        return UIColor(
+          red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+          blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
       }
     }
   }
 
   struct CodeEditor: UIViewRepresentable {
     @Binding var text: String
-    var language: CodeLanguage
+    var language: String
     var completions: [Completion]
     var isEditable = true
     var onRun: (() -> Void)?
@@ -343,8 +276,8 @@ enum SyntaxHighlighter {
         storage.setAttributes(
           [.font: UIFont.monospacedSystemFont(ofSize: UIFont.systemFontSize, weight: .regular), .foregroundColor: UIColor.label],
           range: full)
-        for span in SyntaxHighlighter.spans(storage.string, language: parent.language) where NSMaxRange(span.range) <= storage.length {
-          storage.addAttribute(.foregroundColor, value: span.kind.color, range: span.range)
+        for token in SyntaxColoring.tokens(storage.string, language: parent.language) where NSMaxRange(token.range) <= storage.length {
+          storage.addAttribute(.foregroundColor, value: token.kind.color, range: token.range)
         }
         storage.endEditing()
         view.selectedRange = selected
