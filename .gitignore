@@ -1,30 +1,36 @@
-.DS_Store
-.build/
-/Packages
-xcuserdata/
-DerivedData/
-.netrc
-.hermes/
-/Binary/C-drivers/build/
-/KANBAN*
-/.swiftpm
-build/
-CLAUDE.md
-/.claude
-
 # macOS
+.DS_Store
 # Finder folder icon: a file named Icon plus a carriage return
-Icon[]
+Icon[
+]
 
 # Build
+.build/
+build/
+DerivedData/
+xcuserdata/
 *.xcuserstate
+/.swiftpm
+
+# Binaries: built by Scripts/build-libssh2.sh and Scripts/build-duckdb.sh, published by Scripts/release-binaries.sh
+# (libssh2 is linked; DuckDB is a download the app makes on request)
+/Binary/
+
+# App Store screenshots: kept outside git
+/AppStore/
+
+# Local test servers' SSH key (see docker-compose.yml)
+/.testing/
 
 # Secrets
 .env
 
 # Agents (local agent instructions, settings and boards)
+CLAUDE.md
 AGENTS.md
 .claude/
 .codex/
 .commandcode/
+.hermes/
 KANBAN*.md
+graphify-out/

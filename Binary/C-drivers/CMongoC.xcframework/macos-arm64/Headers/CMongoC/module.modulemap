@@ -1,5 +1,0 @@
-module CMongoC [system] {
-    header "../mongoc/mongoc.h"
-    header "../bson/bson.h"
-    export *
-}

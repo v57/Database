@@ -1,57 +1,147 @@
-# Local development databases for the Database app.
+# Test servers for every network engine Database Pro speaks.
 # Usage:
-#   docker compose up -d --wait     # start and wait until healthy
+#   Scripts/test-servers.sh         # make the SSH test key, start and wait until healthy
 #   docker compose down             # stop (data persists in named volumes)
 #   docker compose down -v          # stop and DELETE data
-name: database
+# SQLite and DuckDB are files and need no server.
+name: databasepro
 
 services:
-  mongodb:
-    image: mongo:8
-    container_name: database-mongodb
-    ports:
-      - "127.0.0.1:27017:27017"
-    volumes:
-      - mongodb-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping: 1})"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-
   postgres:
     image: postgres:18
-    container_name: database-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
-    ports:
-      - "127.0.0.1:5432:5432"
-    volumes:
-      # postgres:18+ layout: single mount at PGDATA's parent so pg_upgrade works
-      - postgres-data:/var/lib/postgresql
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [postgres-data:/var/lib/postgresql]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
-      timeout: 5s
-      retries: 12
+      retries: 24
+
+  mongodb:
+    image: mongo:8
+    ports: ["127.0.0.1:27017:27017"]
+    volumes: [mongodb-data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping: 1})"]
+      interval: 5s
+      retries: 24
 
   redis:
     image: redis:8
-    container_name: database-redis
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - redis-data:/data
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: [redis-data:/data]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 5s
-      retries: 12
+      retries: 24
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: databasepro
+      MYSQL_DATABASE: shop
+      MYSQL_USER: app
+      MYSQL_PASSWORD: databasepro
+    ports: ["127.0.0.1:3306:3306"]
+    volumes: [mysql-data:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pdatabasepro"]
+      interval: 5s
+      retries: 36
+
+  mariadb:
+    image: mariadb:11.8
+    environment:
+      MARIADB_ROOT_PASSWORD: databasepro
+      MARIADB_DATABASE: billing
+      MARIADB_USER: app
+      MARIADB_PASSWORD: databasepro
+    ports: ["127.0.0.1:3307:3306"]
+    volumes: [mariadb-data:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      retries: 36
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "DatabasePro#2026"
+      MSSQL_PID: Developer
+    ports: ["127.0.0.1:1433:1433"]
+    volumes: [sqlserver-data:/var/opt/mssql]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'DatabasePro#2026' -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      retries: 30
+
+  cassandra:
+    image: cassandra:5
+    environment:
+      MAX_HEAP_SIZE: 1G
+      HEAP_NEWSIZE: 200M
+      CASSANDRA_CLUSTER_NAME: telemetry
+    # PasswordAuthenticator so the client's login path is exercised (cassandra/cassandra).
+    entrypoint:
+      - bash
+      - -c
+      - >-
+        sed -i -E 's/^authenticator:.*/authenticator: PasswordAuthenticator/' /etc/cassandra/cassandra.yaml
+        && exec docker-entrypoint.sh cassandra -f
+    ports: ["127.0.0.1:9042:9042"]
+    volumes: [cassandra-data:/var/lib/cassandra]
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -u cassandra -p cassandra -e 'describe keyspaces' || exit 1"]
+      interval: 10s
+      retries: 30
+
+  scylla:
+    image: scylladb/scylla:2025.1
+    command: ["--smp", "1", "--memory", "750M", "--overprovisioned", "1", "--developer-mode", "1"]
+    ports: ["127.0.0.1:9043:9042"]
+    volumes: [scylla-data:/var/lib/scylla]
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe keyspaces' || exit 1"]
+      interval: 10s
+      retries: 30
+
+  # An SSH bastion for the tunnel tests: user "tunnel", password "tunnelpass", or the key in
+  # .testing/ssh (create it with: ssh-keygen -t ed25519 -N '' -f .testing/ssh/id_ed25519).
+  # From here the other services are reachable by name (postgres:5432, redis:6379, …).
+  sshd:
+    image: alpine:3.22
+    command:
+      - sh
+      - -c
+      - >-
+        apk add --no-cache openssh-server >/dev/null
+        && ssh-keygen -A
+        && (id tunnel >/dev/null 2>&1 || adduser -D -s /bin/sh tunnel)
+        && echo 'tunnel:tunnelpass' | chpasswd
+        && mkdir -p /home/tunnel/.ssh
+        && cp /keys/id_ed25519.pub /home/tunnel/.ssh/authorized_keys
+        && chown -R tunnel:tunnel /home/tunnel/.ssh && chmod 700 /home/tunnel/.ssh
+        && chmod 600 /home/tunnel/.ssh/authorized_keys
+        && exec /usr/sbin/sshd -D -e -o AllowTcpForwarding=yes -o PasswordAuthentication=yes
+    volumes: ["./.testing/ssh:/keys:ro"]
+    ports: ["127.0.0.1:2222:22"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 22"]
+      interval: 5s
+      retries: 24
 
 volumes:
-  mongodb-data:
   postgres-data:
+  mongodb-data:
   redis-data:
+  mysql-data:
+  mariadb-data:
+  sqlserver-data:
+  cassandra-data:
+  scylla-data:

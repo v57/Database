@@ -1,4 +1,0 @@
-module CPostgreSQL [system] {
-    header "../libpq/libpq-fe.h"
-    export *
-}

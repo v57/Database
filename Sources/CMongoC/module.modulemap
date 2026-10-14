@@ -1,7 +1,0 @@
-module CMongoC [system] {
-    header "/opt/homebrew/include/mongoc-2.5.1/mongoc/mongoc.h"
-    header "/opt/homebrew/include/bson-2.5.1/bson/bson.h"
-    link "mongoc2"
-    link "bson2"
-    export *
-}

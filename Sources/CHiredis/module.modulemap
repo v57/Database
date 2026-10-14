@@ -1,5 +1,0 @@
-module CHiredis [system] {
-    header "/opt/homebrew/include/hiredis/hiredis.h"
-    link "hiredis"
-    export *
-}
