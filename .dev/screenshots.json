@@ -59,65 +59,56 @@
       "id": "01-connections-iphone",
       "platforms": ["iphone"],
       "arguments": ["--data-dir", "$DATA"],
-      "caption": "Ten databases in your pocket",
-      "relaunch": true
+      "caption": "Ten databases in your pocket"
     },
     {
       "id": "02-orders-iphone",
       "platforms": ["iphone"],
       "arguments": ["--data-dir", "$DATA", "--select", "Shop/shop/orders"],
-      "caption": "Browse any table without writing SQL",
-      "relaunch": true
+      "caption": "Browse any table without writing SQL"
     },
     {
       "id": "03-documents-iphone",
       "platforms": ["iphone"],
       "arguments": ["--data-dir", "$DATA", "--select", "Catalog/catalog/products", "--view", "cards"],
-      "caption": "Documents as cards, JSON or a table",
-      "relaunch": true
+      "caption": "Documents as cards, JSON or a table"
     },
     {
       "id": "04-keys-iphone",
       "platforms": ["iphone"],
       "arguments": ["--data-dir", "$DATA", "--select", "Sessions/Database 0"],
-      "caption": "Every Redis key with its type and expiry",
-      "relaunch": true
+      "caption": "Every Redis key with its type and expiry"
     },
 
     {
       "id": "01-browse-ipad",
       "platforms": ["ipad"],
       "arguments": ["--data-dir", "$DATA", "--hide-sidebar", "--select", "Shop/shop/orders", "--select-row", "1"],
-      "caption": "Browse any table without writing SQL",
-      "relaunch": true
+      "caption": "Browse any table without writing SQL"
     },
     {
       "id": "02-documents-ipad",
       "platforms": ["ipad"],
       "arguments": ["--data-dir", "$DATA", "--hide-sidebar", "--select", "Catalog/catalog/products", "--view", "cards", "--select-row", "0"],
-      "caption": "Documents as cards, JSON or a table",
-      "relaunch": true
+      "caption": "Documents as cards, JSON or a table"
     },
     {
       "id": "03-aggregation-ipad",
       "platforms": ["ipad"],
       "arguments": ["--data-dir", "$DATA", "--hide-sidebar", "--select", "Catalog/catalog/reviews", "--mode", "aggregate", "--demo-pipeline"],
-      "caption": "Build aggregation pipelines step by step",
-      "relaunch": true
+      "caption": "Build aggregation pipelines step by step"
     },
     {
       "id": "04-keys-ipad",
       "platforms": ["ipad"],
       "arguments": ["--data-dir", "$DATA", "--hide-sidebar", "--select", "Sessions/Database 0", "--select-key", "leaderboard:weekly"],
-      "caption": "Every Redis key with its type and expiry",
-      "relaunch": true
+      "caption": "Every Redis key with its type and expiry"
     },
     {
       "id": "05-query-ipad",
       "platforms": ["ipad"],
       "arguments": ["--data-dir", "$DATA", "--hide-sidebar", "--select", "Shop", "--new-query", "SELECT c.city, count(*) AS orders, sum(o.total) AS revenue\nFROM orders o\nJOIN customers c ON c.id = o.customer_id\nGROUP BY c.city\nORDER BY revenue DESC;", "--run"],
-      "caption": "Write SQL with completions and run it",
-      "relaunch": true
+      "caption": "Write SQL with completions and run it"
     }
   ]
 }
