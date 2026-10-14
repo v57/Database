@@ -18,7 +18,13 @@
   ///   --hide-sidebar                       start with the sidebar hidden
   @MainActor
   enum DebugDriver {
+    /// Opens the screen the arguments describe and returns once it has finished loading.
     static func run(_ window: WindowModel) async {
+      await open(window)
+      await Activity.settle()
+    }
+
+    private static func open(_ window: WindowModel) async {
       let app = window.app
       if let link = LaunchOptions.value("--new-connection") ?? (LaunchOptions.flag("--new-connection") ? "" : nil) {
         window.showsNewConnection = true

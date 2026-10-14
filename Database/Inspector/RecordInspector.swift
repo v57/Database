@@ -103,6 +103,8 @@ struct RecordInspector: View {
 
   private func loadRelations() async {
     guard let session = browser.session else { return }
+    Activity.begin()
+    defer { Activity.end() }
     relations = (try? await session.relations(of: browser.ref)) ?? []
     relatedCounts = [:]
     for relation in relations where relation.direction == .incoming {

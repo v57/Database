@@ -52,6 +52,8 @@ final class LiveConnection: Identifiable {
 
   private func performConnect() async {
     guard let app else { return }
+    Activity.begin()
+    defer { Activity.end() }
     status = .connecting
     if let latest = app.profile(profile.id) { profile = latest }
     do {
@@ -99,6 +101,8 @@ final class LiveConnection: Identifiable {
     guard let session else { return }
     let key = key(node)
     if !force, children[key] != nil { return }
+    Activity.begin()
+    defer { Activity.end() }
     loading.insert(key)
     defer { loading.remove(key) }
     do {

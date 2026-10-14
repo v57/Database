@@ -90,6 +90,8 @@ final class BrowserModel {
 
   func load() async {
     guard let session else { return }
+    Activity.begin()
+    defer { Activity.end() }
     isLoading = true
     defer { isLoading = false }
     do {
@@ -111,6 +113,8 @@ final class BrowserModel {
 
   func countExactly() async {
     guard let session else { return }
+    Activity.begin()
+    defer { Activity.end() }
     exactTotal = try? await session.count(request)
   }
 

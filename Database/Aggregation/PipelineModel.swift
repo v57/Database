@@ -131,6 +131,9 @@ final class PipelineModel {
   func scheduleRefresh() {
     refreshTask?.cancel()
     refreshTask = Task {
+      // The pause counts as loading: a preview is coming.
+      Activity.begin()
+      defer { Activity.end() }
       try? await Task.sleep(for: .milliseconds(400))
       guard !Task.isCancelled else { return }
       await refreshPreview()
@@ -389,6 +392,8 @@ final class PipelineModel {
   /// Output of the selected step (or the whole pipeline when none is selected).
   func refreshPreview() async {
     guard let session = browser.session else { return }
+    Activity.begin()
+    defer { Activity.end() }
     isPreviewing = true
     defer { isPreviewing = false }
     do {

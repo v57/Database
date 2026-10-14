@@ -36,6 +36,8 @@ final class RedisKeyModel {
       value = .none
       return
     }
+    Activity.begin()
+    defer { Activity.end() }
     isLoading = true
     defer { isLoading = false }
     do {
