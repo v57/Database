@@ -26,9 +26,9 @@ public struct DuckDBRelease: Sendable, Equatable {
 public enum DuckDBLibrary {
   public static let release = DuckDBRelease(
     version: "1.5.6",
-    url: URL(string: "https://github.com/v57/DatabasePro/releases/download/duckdb-1.5.6/libduckdb-macos-arm64.zip")!,
-    sha256: "7ae7e754482bafc257eb1555ef83222e73f5bebe67921d47be36d5dd1ae7e56e",
-    size: 15_300_008)
+    url: URL(string: "https://github.com/v57/Database/releases/download/duckdb-1.5.6/libduckdb-macos-arm64.zip")!,
+    sha256: "d40f95691b49c7f3ca9e5735bf8e1e6ad85255a8ff75c9680d85a22d35dd55f5",
+    size: 15300007)
 
   /// The folder holding `libduckdb.dylib` and `VERSION`. Defaults to the app's data folder; the app sets it when it
   /// keeps its data elsewhere (a development run with `--data-dir`), and tests point it elsewhere with

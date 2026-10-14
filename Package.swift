@@ -6,14 +6,13 @@ import PackageDescription
 let concurrency: [SwiftSetting] = [.enableUpcomingFeature("ApproachableConcurrency")]
 
 // Prebuilt C libraries. Scripts/build-libssh2.sh makes them in Binary/, which isn't in git: a checkout without
-// them downloads the GitHub Releases that Scripts/release-binaries.sh publishes (on the public v57/DatabasePro
-// repository, where they were first published).
+// them downloads the GitHub Releases that Scripts/release-binaries.sh publishes on this repository.
 func binary(_ name: String, release: String, checksum: String) -> Target {
   let path = "Binary/\(name).xcframework"
   return FileManager.default.fileExists(atPath: Context.packageDirectory + "/" + path)
     ? .binaryTarget(name: name, path: path)
     : .binaryTarget(
-      name: name, url: "https://github.com/v57/DatabasePro/releases/download/\(release)/\(name).xcframework.zip",
+      name: name, url: "https://github.com/v57/Database/releases/download/\(release)/\(name).xcframework.zip",
       checksum: checksum)
 }
 

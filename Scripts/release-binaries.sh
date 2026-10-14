@@ -10,8 +10,7 @@
 set -euo pipefail
 cd "${0:A:h}/.."
 
-# The binaries stay on Database Pro's public repository, where they were first published.
-REPO=v57/DatabasePro
+REPO=v57/Database
 OUT=build/release
 mkdir -p $OUT
 case ${1:-} in
@@ -36,7 +35,7 @@ case ${1:-} in
     TITLE=DuckDB
     [[ -f Binary/DuckDB/libduckdb.dylib ]] || { echo "No Binary/DuckDB/libduckdb.dylib: run Scripts/build-duckdb.sh"; exit 1; }
     VERSION=$(cat Binary/DuckDB/VERSION)
-    NOTES="The DuckDB $VERSION library for Apple silicon Macs, with parquet, json and icu built in and extension auto-install off, made by Scripts/build-duckdb.sh. Database Pro downloads it when you open a DuckDB file."
+    NOTES="The DuckDB $VERSION library for Apple silicon Macs, with parquet, json and icu built in and extension auto-install off, made by Scripts/build-duckdb.sh. Database downloads it when you open a DuckDB file."
     TAG=$1-$VERSION
     ZIP=$OUT/libduckdb-macos-arm64.zip
     WORK=$OUT/duckdb-signed
