@@ -15,7 +15,7 @@ if [[ ${1:-up} == down ]]; then
 fi
 if [[ ! -f .testing/ssh/id_ed25519 ]]; then
   mkdir -p .testing/ssh
-  ssh-keygen -q -t ed25519 -N '' -C 'DatabasePro tests' -f .testing/ssh/id_ed25519
+  ssh-keygen -q -t ed25519 -N '' -C 'Database tests' -f .testing/ssh/id_ed25519
   echo "==> Made the test key .testing/ssh/id_ed25519"
 fi
 docker compose up -d --wait

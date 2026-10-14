@@ -11,10 +11,13 @@ public actor MySQLClient {
     public var password: String
     public var database: String?
     public var connectTimeout: TimeInterval
+    /// How to reach the server: TCP from this device, or a channel of an SSH connection.
+    public var dialer: WireDialer
 
     public init(
       host: String = "127.0.0.1", port: Int = 3306, user: String, password: String = "",
-      database: String? = nil, connectTimeout: TimeInterval = 15
+      database: String? = nil, connectTimeout: TimeInterval = 15,
+      dialer: WireDialer = .direct
     ) {
       self.host = host
       self.port = port
@@ -22,6 +25,7 @@ public actor MySQLClient {
       self.password = password
       self.database = database
       self.connectTimeout = connectTimeout
+      self.dialer = dialer
     }
   }
 
@@ -56,7 +60,7 @@ public actor MySQLClient {
   }
 
   public static func connect(_ config: Config) async throws -> MySQLClient {
-    let wire = try await WireConnection.connect(host: config.host, port: config.port, timeout: config.connectTimeout)
+    let wire = try await config.dialer.connect(host: config.host, port: config.port, timeout: config.connectTimeout)
     let client = MySQLClient(config: config, wire: wire)
     do {
       try await client.handshake()

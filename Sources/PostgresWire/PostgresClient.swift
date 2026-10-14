@@ -13,11 +13,14 @@ public actor PostgresClient {
     public var tls: TLSSettings
     public var applicationName: String
     public var connectTimeout: TimeInterval
+    /// How to reach the server: TCP from this device, or a channel of an SSH connection.
+    public var dialer: WireDialer
 
     public init(
       host: String = "127.0.0.1", port: Int = 5432, user: String, password: String = "",
       database: String = "postgres", tls: TLSSettings = .off, applicationName: String = "Database",
-      connectTimeout: TimeInterval = 15
+      connectTimeout: TimeInterval = 15,
+      dialer: WireDialer = .direct
     ) {
       self.host = host
       self.port = port
@@ -27,6 +30,7 @@ public actor PostgresClient {
       self.tls = tls
       self.applicationName = applicationName
       self.connectTimeout = connectTimeout
+      self.dialer = dialer
     }
   }
 
@@ -45,7 +49,7 @@ public actor PostgresClient {
   public static func connect(_ config: Config) async throws -> PostgresClient {
     var tls = config.tls
     if tls.enabled && tls.alpn.isEmpty { tls.alpn = ["postgresql"] }
-    let wire = try await WireConnection.connect(
+    let wire = try await config.dialer.connect(
       host: config.host, port: config.port, tls: tls, timeout: config.connectTimeout)
     let client = PostgresClient(config: config, wire: wire)
     do {
@@ -279,7 +283,7 @@ public actor PostgresClient {
   /// Asks the server to cancel whatever this connection is running.
   public func cancel() async {
     guard processID != 0,
-      let side = try? await WireConnection.connect(host: config.host, port: config.port, tls: config.tls, timeout: 5)
+      let side = try? await config.dialer.connect(host: config.host, port: config.port, tls: config.tls, timeout: 5)
     else { return }
     var w = ByteWriter()
     w.writeBE(Int32(16))

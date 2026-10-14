@@ -11,10 +11,13 @@ public actor CQLClient {
     public var keyspace: String?
     public var tls: TLSSettings
     public var connectTimeout: TimeInterval
+    /// How to reach the server: TCP from this device, or a channel of an SSH connection.
+    public var dialer: WireDialer
 
     public init(
       host: String = "127.0.0.1", port: Int = 9042, user: String? = nil, password: String? = nil,
-      keyspace: String? = nil, tls: TLSSettings = .off, connectTimeout: TimeInterval = 15
+      keyspace: String? = nil, tls: TLSSettings = .off, connectTimeout: TimeInterval = 15,
+      dialer: WireDialer = .direct
     ) {
       self.host = host
       self.port = port
@@ -23,6 +26,7 @@ public actor CQLClient {
       self.keyspace = keyspace
       self.tls = tls
       self.connectTimeout = connectTimeout
+      self.dialer = dialer
     }
   }
 
@@ -64,7 +68,7 @@ public actor CQLClient {
   }
 
   public static func connect(_ config: Config) async throws -> CQLClient {
-    let wire = try await WireConnection.connect(
+    let wire = try await config.dialer.connect(
       host: config.host, port: config.port, tls: config.tls, timeout: config.connectTimeout)
     let client = CQLClient(config: config, wire: wire)
     do {

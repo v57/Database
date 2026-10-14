@@ -68,7 +68,7 @@ let package = Package(
     .testTarget(name: "WireKitTests", dependencies: ["WireKit"], swiftSettings: concurrency),
     .testTarget(name: "BSONTests", dependencies: ["BSON"], swiftSettings: concurrency),
     .testTarget(
-      name: "SSHTunnelTests", dependencies: ["SSHTunnel", "RedisWire", "PostgresWire"], swiftSettings: concurrency),
+      name: "SSHTunnelTests", dependencies: ["SSHTunnel", "RedisWire", "PostgresWire", "WireKit"], swiftSettings: concurrency),
     .testTarget(name: "MongoWireTests", dependencies: ["MongoWire"], swiftSettings: concurrency),
     .testTarget(name: "PostgresWireTests", dependencies: ["PostgresWire"], swiftSettings: concurrency),
     .testTarget(name: "MySQLWireTests", dependencies: ["MySQLWire"], swiftSettings: concurrency),

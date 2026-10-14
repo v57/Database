@@ -73,10 +73,13 @@ public actor RedisClient {
     public var database: Int
     public var tls: TLSSettings
     public var connectTimeout: TimeInterval
+    /// How to reach the server: TCP from this device, or a channel of an SSH connection.
+    public var dialer: WireDialer
 
     public init(
       host: String = "127.0.0.1", port: Int = 6379, username: String? = nil, password: String? = nil,
-      database: Int = 0, tls: TLSSettings = .off, connectTimeout: TimeInterval = 15
+      database: Int = 0, tls: TLSSettings = .off, connectTimeout: TimeInterval = 15,
+      dialer: WireDialer = .direct
     ) {
       self.host = host
       self.port = port
@@ -85,6 +88,7 @@ public actor RedisClient {
       self.database = database
       self.tls = tls
       self.connectTimeout = connectTimeout
+      self.dialer = dialer
     }
   }
 
@@ -100,7 +104,7 @@ public actor RedisClient {
   }
 
   public static func connect(_ config: Config) async throws -> RedisClient {
-    let wire = try await WireConnection.connect(
+    let wire = try await config.dialer.connect(
       host: config.host, port: config.port, tls: config.tls, timeout: config.connectTimeout)
     let client = RedisClient(config: config, wire: wire)
     do {

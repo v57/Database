@@ -19,140 +19,52 @@ public struct TLSSettings: Sendable, Equatable {
   public static let off = TLSSettings()
 }
 
-/// A TCP (optionally TLS) byte stream with an internal read buffer.
+/// A byte stream a wire client talks over: a TCP connection of its own (`WireConnection.connect`), or one another
+/// transport carries, like an SSH channel (`WireChannel`).
+public protocol WireStream: AnyObject, Sendable {
+  /// Sends all of `bytes`.
+  func send(_ bytes: [UInt8]) async throws
+  /// The next bytes to arrive (at least one); throws `WireError.closed` once the other side has finished.
+  func receive() async throws -> [UInt8]
+  var isOpen: Bool { get }
+  func close()
+}
+
+/// A byte stream with an internal read buffer, over any `WireStream`.
 ///
 /// Not thread-safe by itself: every wire client owns one and calls it from a
 /// single actor, so sends and reads never interleave.
 public final class WireConnection: @unchecked Sendable {
-  private let connection: NWConnection
-  private let queue: DispatchQueue
+  public let stream: any WireStream
   private var buffer: [UInt8] = []
   private var bufferStart = 0
-  private var isClosed = false
 
-  private init(connection: NWConnection, queue: DispatchQueue) {
-    self.connection = connection
-    self.queue = queue
+  public init(stream: any WireStream) {
+    self.stream = stream
   }
 
-  /// Opens a connection and waits until it is ready.
+  /// Opens a TCP connection and waits until it is ready.
   public static func connect(
     host: String, port: Int, tls: TLSSettings = .off, timeout: TimeInterval = 15
   ) async throws -> WireConnection {
     guard let nwPort = NWEndpoint.Port(rawValue: UInt16(clamping: port)), port > 0 else {
       throw WireError.connectionFailed("invalid port \(port)")
     }
-    let tcp = NWProtocolTCP.Options()
-    tcp.noDelay = true
-    tcp.connectionTimeout = Int(timeout.rounded(.up))
-    let parameters: NWParameters
-    if tls.enabled {
-      let tlsOptions = NWProtocolTLS.Options()
-      let sec = tlsOptions.securityProtocolOptions
-      sec_protocol_options_set_tls_server_name(sec, host)
-      for name in tls.alpn { sec_protocol_options_add_tls_application_protocol(sec, name) }
-      if tls.allowUntrusted {
-        sec_protocol_options_set_verify_block(sec, { _, _, complete in complete(true) }, .global())
-      }
-      parameters = NWParameters(tls: tlsOptions, tcp: tcp)
-    } else {
-      parameters = NWParameters(tls: nil, tcp: tcp)
-    }
-    let queue = DispatchQueue(label: "WireKit.connection.\(host):\(port)")
-    let nw = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: parameters)
-    let wire = WireConnection(connection: nw, queue: queue)
-    try await wire.waitUntilReady(timeout: timeout, describing: "\(host):\(port)")
-    return wire
-  }
-
-  private func waitUntilReady(timeout: TimeInterval, describing endpoint: String) async throws {
-    let once = ResumeOnce()
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-      connection.stateUpdateHandler = { [connection] state in
-        switch state {
-        case .ready:
-          if once.claim() { continuation.resume() }
-        case .failed(let error):
-          if once.claim() { continuation.resume(throwing: WireError.connectionFailed(Self.describe(error))) }
-        case .waiting(let error):
-          // "Waiting" means the path or the peer refused; don't sit retrying.
-          if once.claim() {
-            connection.cancel()
-            continuation.resume(throwing: WireError.connectionFailed(Self.describe(error)))
-          }
-        case .cancelled:
-          if once.claim() { continuation.resume(throwing: WireError.closed) }
-        default:
-          break
-        }
-      }
-      connection.start(queue: queue)
-      queue.asyncAfter(deadline: .now() + timeout) { [connection] in
-        if once.claim() {
-          connection.cancel()
-          continuation.resume(throwing: WireError.timedOut("connecting to \(endpoint)"))
-        }
-      }
-    }
-    connection.stateUpdateHandler = { [weak self] state in
-      if case .failed = state { self?.isClosed = true }
-      if case .cancelled = state { self?.isClosed = true }
-    }
-  }
-
-  static func describe(_ error: NWError) -> String {
-    switch error {
-    case .posix(let code):
-      switch code {
-      case .ECONNREFUSED: return "nothing is listening there (connection refused)"
-      case .ETIMEDOUT: return "the server didn't answer in time"
-      case .EHOSTUNREACH, .ENETUNREACH: return "the host can't be reached"
-      default: return String(cString: strerror(code.rawValue))
-      }
-    case .dns(let code): return "the host name couldn't be found (DNS error \(code))"
-    case .tls(let status): return "the encrypted connection failed (TLS status \(status))"
-    default: return error.localizedDescription
-    }
+    let stream = try await NetworkStream.connect(
+      to: .hostPort(host: NWEndpoint.Host(host), port: nwPort), tls: tls, serverName: host, timeout: timeout,
+      describing: "\(host):\(port)")
+    return WireConnection(stream: stream)
   }
 
   public func send(_ bytes: [UInt8]) async throws {
-    if isClosed { throw WireError.closed }
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-      connection.send(
-        content: Data(bytes),
-        completion: .contentProcessed { error in
-          if let error {
-            continuation.resume(throwing: WireError.connectionFailed(Self.describe(error)))
-          } else {
-            continuation.resume()
-          }
-        })
-    }
-  }
-
-  /// Reads whatever arrives next (at least one byte).
-  private func receiveChunk() async throws -> [UInt8] {
-    if isClosed { throw WireError.closed }
-    return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[UInt8], Error>) in
-      connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 16) { data, _, isComplete, error in
-        if let data, !data.isEmpty {
-          continuation.resume(returning: [UInt8](data))
-        } else if let error {
-          continuation.resume(throwing: WireError.connectionFailed(Self.describe(error)))
-        } else if isComplete {
-          continuation.resume(throwing: WireError.closed)
-        } else {
-          continuation.resume(returning: [])
-        }
-      }
-    }
+    try await stream.send(bytes)
   }
 
   private var buffered: Int { buffer.count - bufferStart }
 
   private func fill(atLeast n: Int) async throws {
     while buffered < n {
-      let chunk = try await receiveChunk()
+      let chunk = try await stream.receive()
       if bufferStart > 0 && bufferStart > buffer.count / 2 {
         buffer.removeFirst(bufferStart)
         bufferStart = 0
@@ -193,7 +105,7 @@ public final class WireConnection: @unchecked Sendable {
         return line
       }
       searchFrom = max(bufferStart, buffer.count - 1)
-      let chunk = try await receiveChunk()
+      let chunk = try await stream.receive()
       buffer.append(contentsOf: chunk)
     }
   }
@@ -207,10 +119,157 @@ public final class WireConnection: @unchecked Sendable {
     return nil
   }
 
-  public var isOpen: Bool { !isClosed }
+  public var isOpen: Bool { stream.isOpen }
 
   public func close() {
+    stream.close()
+  }
+
+  deinit { stream.close() }
+}
+
+/// A Network.framework connection: TCP to a host, or a Unix socket (`connect(over:…)`), with optional TLS.
+final class NetworkStream: WireStream, @unchecked Sendable {
+  private let connection: NWConnection
+  private let queue: DispatchQueue
+  private let lock = NSLock()
+  private var isClosed = false
+
+  private init(connection: NWConnection, queue: DispatchQueue) {
+    self.connection = connection
+    self.queue = queue
+  }
+
+  /// Opens a connection and waits until it is ready.
+  static func connect(
+    to endpoint: NWEndpoint, tls: TLSSettings, serverName: String, timeout: TimeInterval, describing: String
+  ) async throws -> NetworkStream {
+    let tcp = NWProtocolTCP.Options()
+    if case .hostPort = endpoint {
+      tcp.noDelay = true
+      tcp.connectionTimeout = Int(timeout.rounded(.up))
+    }
+    let parameters: NWParameters
+    if tls.enabled {
+      let tlsOptions = NWProtocolTLS.Options()
+      let sec = tlsOptions.securityProtocolOptions
+      sec_protocol_options_set_tls_server_name(sec, serverName)
+      for name in tls.alpn { sec_protocol_options_add_tls_application_protocol(sec, name) }
+      if tls.allowUntrusted {
+        sec_protocol_options_set_verify_block(sec, { _, _, complete in complete(true) }, .global())
+      }
+      parameters = NWParameters(tls: tlsOptions, tcp: tcp)
+    } else {
+      parameters = NWParameters(tls: nil, tcp: tcp)
+    }
+    let queue = DispatchQueue(label: "WireKit.connection.\(describing)")
+    let stream = NetworkStream(connection: NWConnection(to: endpoint, using: parameters), queue: queue)
+    try await stream.waitUntilReady(timeout: timeout, describing: describing)
+    return stream
+  }
+
+  private func waitUntilReady(timeout: TimeInterval, describing endpoint: String) async throws {
+    let once = ResumeOnce()
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+      connection.stateUpdateHandler = { [connection] state in
+        switch state {
+        case .ready:
+          if once.claim() { continuation.resume() }
+        case .failed(let error):
+          if once.claim() { continuation.resume(throwing: WireError.connectionFailed(Self.describe(error))) }
+        case .waiting(let error):
+          // "Waiting" means the path or the peer refused; don't sit retrying.
+          if once.claim() {
+            connection.cancel()
+            continuation.resume(throwing: WireError.connectionFailed(Self.describe(error)))
+          }
+        case .cancelled:
+          if once.claim() { continuation.resume(throwing: WireError.closed) }
+        default:
+          break
+        }
+      }
+      connection.start(queue: queue)
+      queue.asyncAfter(deadline: .now() + timeout) { [connection] in
+        if once.claim() {
+          connection.cancel()
+          continuation.resume(throwing: WireError.timedOut("connecting to \(endpoint)"))
+        }
+      }
+    }
+    connection.stateUpdateHandler = { [weak self] state in
+      switch state {
+      case .failed, .cancelled: self?.markClosed()
+      default: break
+      }
+    }
+  }
+
+  private func markClosed() {
+    lock.lock()
     isClosed = true
+    lock.unlock()
+  }
+
+  static func describe(_ error: NWError) -> String {
+    switch error {
+    case .posix(let code):
+      switch code {
+      case .ECONNREFUSED: return "nothing is listening there (connection refused)"
+      case .ETIMEDOUT: return "the server didn't answer in time"
+      case .EHOSTUNREACH, .ENETUNREACH: return "the host can't be reached"
+      default: return String(cString: strerror(code.rawValue))
+      }
+    case .dns(let code): return "the host name couldn't be found (DNS error \(code))"
+    case .tls(let status): return "the encrypted connection failed (TLS status \(status))"
+    default: return error.localizedDescription
+    }
+  }
+
+  func send(_ bytes: [UInt8]) async throws {
+    if !isOpen { throw WireError.closed }
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+      connection.send(
+        content: Data(bytes),
+        completion: .contentProcessed { error in
+          if let error {
+            continuation.resume(throwing: WireError.connectionFailed(Self.describe(error)))
+          } else {
+            continuation.resume()
+          }
+        })
+    }
+  }
+
+  func receive() async throws -> [UInt8] {
+    if !isOpen { throw WireError.closed }
+    while true {
+      let chunk = try await withCheckedThrowingContinuation {
+        (continuation: CheckedContinuation<[UInt8], Error>) in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 16) { data, _, isComplete, error in
+          if let data, !data.isEmpty {
+            continuation.resume(returning: [UInt8](data))
+          } else if let error {
+            continuation.resume(throwing: WireError.connectionFailed(Self.describe(error)))
+          } else if isComplete {
+            continuation.resume(throwing: WireError.closed)
+          } else {
+            continuation.resume(returning: [])
+          }
+        }
+      }
+      if !chunk.isEmpty { return chunk }
+    }
+  }
+
+  var isOpen: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return !isClosed
+  }
+
+  func close() {
+    markClosed()
     connection.cancel()
   }
 

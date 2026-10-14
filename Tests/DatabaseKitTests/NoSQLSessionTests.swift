@@ -280,14 +280,20 @@ import WireKit
     #expect(ConnectionLink.parse(roundTrip)?.profile.host == "db.shop.internal")
   }
 
+  /// Through docker-compose.yml's bastion, or another sshd (see SSHTunnelTests: SSH_TEST_PORT, SSH_TEST_USER,
+  /// SSH_TEST_SERVICES=local).
   @Test(arguments: [EngineKind.postgres, .mysql, .sqlserver, .mongodb, .redis, .cassandra])
   func connectsThroughTheSSHBastion(engine: EngineKind) async throws {
     let keyURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent().appendingPathComponent(".testing/ssh/id_ed25519")
     let key = try SSHKey(importing: String(contentsOf: keyURL, encoding: .utf8))
-    let host = engine == .sqlserver ? "sqlserver" : engine == .mongodb ? "mongodb" : engine.rawValue
+    let environment = ProcessInfo.processInfo.environment
+    let name = engine == .sqlserver ? "sqlserver" : engine == .mongodb ? "mongodb" : engine.rawValue
+    let host = environment["SSH_TEST_SERVICES"] == "local" ? "127.0.0.1" : name
     var profile = ConnectionProfile(engine: engine, host: host, port: engine.defaultPort)
-    profile.ssh = SSHSettings(enabled: true, host: "127.0.0.1", port: 2222, user: "tunnel", auth: .key, keyID: UUID())
+    profile.ssh = SSHSettings(
+      enabled: true, host: "127.0.0.1", port: environment["SSH_TEST_PORT"].flatMap(Int.init) ?? 2222,
+      user: environment["SSH_TEST_USER"] ?? "tunnel", auth: .key, keyID: UUID())
     let passwords: [EngineKind: String] = [
       .postgres: "postgres", .mysql: "databasepro", .sqlserver: "DatabasePro#2026", .cassandra: "cassandra",
     ]

@@ -14,10 +14,13 @@ public actor TDSClient {
     public var database: String?
     public var applicationName: String
     public var connectTimeout: TimeInterval
+    /// How to reach the server: TCP from this device, or a channel of an SSH connection.
+    public var dialer: WireDialer
 
     public init(
       host: String = "127.0.0.1", port: Int = 1433, user: String, password: String,
-      database: String? = nil, applicationName: String = "Database", connectTimeout: TimeInterval = 15
+      database: String? = nil, applicationName: String = "Database", connectTimeout: TimeInterval = 15,
+      dialer: WireDialer = .direct
     ) {
       self.host = host
       self.port = port
@@ -26,6 +29,7 @@ public actor TDSClient {
       self.database = database
       self.applicationName = applicationName
       self.connectTimeout = connectTimeout
+      self.dialer = dialer
     }
   }
 
@@ -52,7 +56,7 @@ public actor TDSClient {
   }
 
   public static func connect(_ config: Config) async throws -> TDSClient {
-    let wire = try await WireConnection.connect(host: config.host, port: config.port, timeout: config.connectTimeout)
+    let wire = try await config.dialer.connect(host: config.host, port: config.port, timeout: config.connectTimeout)
     let client = TDSClient(config: config, wire: wire)
     do {
       try await client.prelogin()
