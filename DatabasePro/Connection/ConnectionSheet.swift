@@ -142,7 +142,7 @@ struct ConnectionSheet: View {
     VStack(alignment: .leading, spacing: 8) {
       Text("Database").font(.callout.weight(.semibold))
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8)], spacing: 8) {
-        ForEach(EngineKind.allCases) { engine in
+        ForEach(EngineKind.available) { engine in
           let selected = profile.engine == engine
           Button {
             choose(engine)
@@ -208,6 +208,10 @@ struct ConnectionSheet: View {
             Text("A .duckdb file, or a Parquet, CSV or JSON file to query directly.")
               .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 6)
               .frame(maxWidth: .infinity, alignment: .leading)
+            if !app.duckDB.isInstalled {
+              Divider()
+              DuckDBInstallRow().padding(.horizontal, 12).padding(.vertical, 8)
+            }
           }
         } else {
           row("Host") {

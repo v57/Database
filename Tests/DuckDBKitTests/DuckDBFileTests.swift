@@ -3,6 +3,8 @@ import Foundation
 import Testing
 import WireKit
 
+// DuckDB is a download, not a build dependency: these run once the app (or a test setup) has installed it.
+@Suite(.enabled(if: DuckDBLibrary.isInstalled, "DuckDB isn't installed in \(DuckDBLibrary.directory.path)"))
 struct DuckDBFileTests {
   static func scratch() throws -> URL {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("duck-\(UUID().uuidString)")
@@ -83,7 +85,7 @@ struct DuckDBFileTests {
 }
 
 /// Writes the demo DuckDB and Parquet files when Scripts/seed-demo.py asks for them.
-@Test(.enabled(if: ProcessInfo.processInfo.environment["DATABASEPRO_DEMO_DIR"] != nil))
+@Test(.enabled(if: DuckDBLibrary.isInstalled && ProcessInfo.processInfo.environment["DATABASEPRO_DEMO_DIR"] != nil))
 func writesDemoFiles() async throws {
   let folder = ProcessInfo.processInfo.environment["DATABASEPRO_DEMO_DIR"]!
   let path = folder + "/analytics.duckdb"

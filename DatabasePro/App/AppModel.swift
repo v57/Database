@@ -21,6 +21,8 @@ final class AppModel {
   private(set) var live: [UUID: LiveConnection] = [:]
   let secrets: SecretStore
   let keys: SSHKeyStore
+  /// The optional DuckDB library: downloaded on request, next to the app's data.
+  let duckDB: DuckDBInstaller
   private let folder: URL?
   /// Bumped when SSH keys change, so views listing them refresh.
   var keysVersion = 0
@@ -29,6 +31,8 @@ final class AppModel {
     self.folder = folder
     self.secrets = secrets
     keys = SSHKeyStore(secrets: secrets, listURL: folder?.appendingPathComponent("ssh-keys.json"))
+    if let folder { DuckDBLibrary.directory = folder.appendingPathComponent("DuckDB", isDirectory: true) }
+    duckDB = DuckDBInstaller()
     load()
   }
 
@@ -190,7 +194,7 @@ final class AppModel {
   @discardableResult
   func addFile(_ url: URL) -> ConnectionProfile? {
     let ext = url.pathExtension.lowercased()
-    guard let engine = EngineKind.allCases.first(where: { $0.fileExtensions.contains(ext) }) else { return nil }
+    guard let engine = EngineKind.available.first(where: { $0.fileExtensions.contains(ext) }) else { return nil }
     if let existing = profiles.first(where: { $0.filePath == url.path }) { return existing }
     let profile = ConnectionProfile(name: url.deletingPathExtension().lastPathComponent, engine: engine, filePath: url.path)
     save(profile, password: nil, sshPassword: nil)

@@ -13,6 +13,7 @@ xcuserdata/
 /.swiftpm
 
 # Binaries: built by Scripts/build-libssh2.sh and Scripts/build-duckdb.sh, published by Scripts/release-binaries.sh
+# (libssh2 is linked; DuckDB is a download the app makes on request)
 /Binary/
 
 # App Store screenshots: kept outside git

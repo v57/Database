@@ -1,11 +1,12 @@
 #!/bin/zsh
-# Builds Binary/Cduckdb.xcframework: the DuckDB C library from an upstream release, compiled for macOS, iOS and
-# the iOS simulator (Apple silicon only), with parquet, json and icu built in. Extensions are never installed or
-# loaded at runtime.
+# Builds Binary/DuckDB/libduckdb.dylib: the DuckDB C library from an upstream release, compiled for Apple silicon
+# Macs, with parquet, json and icu built in. Extensions are never installed or loaded at runtime.
 #
 #   Scripts/build-duckdb.sh [version]      (default below; needs cmake and ninja: brew install cmake ninja)
 #
-# `Scripts/release-binaries.sh duckdb` publishes the result to GitHub Releases.
+# The app doesn't link it: `Scripts/release-binaries.sh duckdb` signs and publishes it to GitHub Releases, and the app
+# downloads it when someone opens a DuckDB file (DuckDBKit/DuckDBLibrary.swift). The C header is checked in at
+# Sources/Cduckdb/include/duckdb.h and refreshed here, so a new version updates both at once.
 set -euo pipefail
 cd "${0:A:h}/.."
 
@@ -13,7 +14,7 @@ VERSION=${1:-1.5.6}
 ROOT=$PWD
 WORK=$ROOT/build/duckdb
 SRC=$WORK/duckdb-$VERSION
-OUT=$ROOT/Binary/Cduckdb.xcframework
+OUT=$ROOT/Binary/DuckDB
 JOBS=$(sysctl -n hw.ncpu)
 
 mkdir -p $WORK
@@ -24,45 +25,20 @@ fi
 # The tarball has no git history; DuckDB reports this as its version and source id.
 COMMIT=$(curl -fsSL https://api.github.com/repos/duckdb/duckdb/commits/v$VERSION | awk -F'"' '/"sha"/ {print substr($4, 1, 10); exit}')
 
-# slice  cmake system  sysroot  architectures  deployment target  DuckDB platform name (it can't run a probe
-# program when cross-compiling)
-SLICES=(
-  "macos-arm64 Darwin macosx arm64 14.0 osx_arm64"
-  "ios-arm64 iOS iphoneos arm64 17.0 ios_arm64"
-  "ios-arm64-simulator iOS iphonesimulator arm64 17.0 ios_simulator"
-)
+build=$WORK/build-macos-arm64
+echo "==> Building macos-arm64"
+cmake -S $SRC -B $build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_OSX_SYSROOT=macosx -DCMAKE_OSX_ARCHITECTURES=arm64 \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DDUCKDB_EXPLICIT_PLATFORM=osx_arm64 \
+  -DOVERRIDE_GIT_DESCRIBE=v$VERSION-0-g$COMMIT \
+  -DBUILD_EXTENSIONS="parquet;json;icu" \
+  -DENABLE_EXTENSION_AUTOLOADING=0 -DENABLE_EXTENSION_AUTOINSTALL=0 \
+  -DBUILD_SHELL=0 -DBUILD_UNITTESTS=0 -DENABLE_SANITIZER=0 -DENABLE_UBSAN=0 >/dev/null
+cmake --build $build --parallel $JOBS --target duckdb > $build/build.log 2>&1 || { grep -E "error|FAILED" $build/build.log | head -20; exit 1; }
 
-libs=()
-for slice in $SLICES; do
-  read name system sysroot archs target platform <<< $slice
-  build=$WORK/build-$name
-  echo "==> Building $name"
-  cmake -S $SRC -B $build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_SYSTEM_NAME=$system -DCMAKE_OSX_SYSROOT=$sysroot -DCMAKE_OSX_ARCHITECTURES="$archs" \
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=$target -DDUCKDB_EXPLICIT_PLATFORM=$platform \
-    -DOVERRIDE_GIT_DESCRIBE=v$VERSION-0-g$COMMIT \
-    -DBUILD_EXTENSIONS="parquet;json;icu" \
-    -DENABLE_EXTENSION_AUTOLOADING=0 -DENABLE_EXTENSION_AUTOINSTALL=0 \
-    -DBUILD_SHELL=0 -DBUILD_UNITTESTS=0 -DENABLE_SANITIZER=0 -DENABLE_UBSAN=0 >/dev/null
-  cmake --build $build --parallel $JOBS > $build/build.log 2>&1 || { grep -E "error|FAILED" $build/build.log | head -20; exit 1; }
-  # One archive from DuckDB's pieces (core, third-party code, extensions), like its `make bundle-library`.
-  libtool -static -no_warning_for_no_symbols -o $build/libduckdb.a \
-    $build/src/libduckdb_static.a $build/third_party/*/libduckdb_*.a \
-    $build/extension/libduckdb_generated_extension_loader.a $build/extension/*/lib*_extension.a 2>/dev/null
-  libs+=(-library $build/libduckdb.a -headers $WORK/headers)
-done
-
-rm -rf $WORK/headers && mkdir -p $WORK/headers/Cduckdb
-cp $SRC/src/include/duckdb.h $WORK/headers/
-cat > $WORK/headers/Cduckdb/module.modulemap <<'MAP'
-module Cduckdb [system] {
-    header "../duckdb.h"
-    link "c++"
-    export *
-}
-MAP
-
-rm -rf $OUT && mkdir -p ${OUT:h}
-xcodebuild -create-xcframework $libs -output $OUT >/dev/null
+rm -rf $OUT && mkdir -p $OUT
+cp $build/src/libduckdb.dylib $OUT/libduckdb.dylib
+strip -x $OUT/libduckdb.dylib
 echo "$VERSION" > $OUT/VERSION
-echo "==> $OUT (DuckDB $VERSION, $(du -sh $OUT | cut -f1))"
+cp $SRC/src/include/duckdb.h $ROOT/Sources/Cduckdb/include/duckdb.h
+echo "==> $OUT/libduckdb.dylib (DuckDB $VERSION, $(du -h $OUT/libduckdb.dylib | cut -f1)); header refreshed in Sources/Cduckdb"

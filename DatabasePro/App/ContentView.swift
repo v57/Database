@@ -113,6 +113,7 @@ struct DetailView: View {
 struct ConnectionOverview: View {
   let connection: LiveConnection
   @Bindable var window: WindowModel
+  @Environment(AppModel.self) private var app
 
   var body: some View {
     VStack(spacing: 14) {
@@ -136,10 +137,21 @@ struct ConnectionOverview: View {
         Button("New Query", systemImage: "terminal") { window.newQuery() }
           .buttonStyle(.bordered)
       case .failed(let message):
-        Label(message, systemImage: "exclamationmark.triangle.fill")
-          .foregroundStyle(.red)
-          .multilineTextAlignment(.center)
-          .frame(maxWidth: 460)
+        // A DuckDB file without the library shows the download instead of the error that says so.
+        if connection.profile.engine == .duckdb, !app.duckDB.isInstalled {
+          DuckDBInstallRow()
+            .padding(12)
+            .groupBox()
+            .frame(maxWidth: 460)
+            .onChange(of: app.duckDB.isInstalled) { _, installed in
+              if installed { Task { await connection.reconnect() } }
+            }
+        } else {
+          Label(message, systemImage: "exclamationmark.triangle.fill")
+            .foregroundStyle(.red)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 460)
+        }
         HStack {
           Button("Try Again") { Task { await connection.reconnect() } }.buttonStyle(.borderedProminent)
           Button("Edit Connection…") { window.editingProfileID = connection.id }.buttonStyle(.bordered)

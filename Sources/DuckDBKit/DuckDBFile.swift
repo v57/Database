@@ -12,28 +12,31 @@ public struct DuckDBError: Error, LocalizedError, Sendable {
 public actor DuckDBFile {
   public let path: String?
   public let readOnly: Bool
+  let api: DuckDBAPI
   nonisolated(unsafe) private var database: duckdb_database?
   nonisolated(unsafe) private var connection: duckdb_connection?
 
-  /// Opens (or creates) the file at `path`; `nil` opens an in-memory database.
+  /// Opens (or creates) the file at `path`; `nil` opens an in-memory database. Throws `DuckDBError.notInstalled`
+  /// until the library has been downloaded (see `DuckDBInstaller`).
   public init(path: String?, readOnly: Bool = false) throws {
+    api = try DuckDBLibrary.api()
     self.path = path
     self.readOnly = readOnly
     var config: duckdb_config?
-    guard duckdb_create_config(&config) == DuckDBSuccess else { throw DuckDBError(message: "Couldn't configure DuckDB") }
-    defer { duckdb_destroy_config(&config) }
-    if readOnly, path != nil { duckdb_set_config(config, "access_mode", "READ_ONLY") }
+    guard api.create_config(&config) == DuckDBSuccess else { throw DuckDBError(message: "Couldn't configure DuckDB") }
+    defer { api.destroy_config(&config) }
+    if readOnly, path != nil { _ = api.set_config(config, "access_mode", "READ_ONLY") }
     var db: duckdb_database?
     var errorPointer: UnsafeMutablePointer<CChar>?
-    let state = (path ?? ":memory:").withCString { duckdb_open_ext($0, &db, config, &errorPointer) }
+    let state = api.open_ext(Array((path ?? ":memory:").utf8CString), &db, config, &errorPointer)
     if state != DuckDBSuccess {
       let message = errorPointer.map { String(cString: $0) } ?? "Couldn't open the database"
-      if let errorPointer { duckdb_free(errorPointer) }
+      if let errorPointer { api.free(errorPointer) }
       throw DuckDBError(message: message)
     }
     var con: duckdb_connection?
-    guard duckdb_connect(db, &con) == DuckDBSuccess else {
-      duckdb_close(&db)
+    guard api.connect(db, &con) == DuckDBSuccess else {
+      api.close(&db)
       throw DuckDBError(message: "Couldn't connect to DuckDB")
     }
     database = db
@@ -41,32 +44,35 @@ public actor DuckDBFile {
   }
 
   public func close() {
-    if connection != nil { duckdb_disconnect(&connection) }
-    if database != nil { duckdb_close(&database) }
+    if connection != nil { api.disconnect(&connection) }
+    if database != nil { api.close(&database) }
   }
 
   deinit {
-    if connection != nil { duckdb_disconnect(&connection) }
-    if database != nil { duckdb_close(&database) }
+    if connection != nil { api.disconnect(&connection) }
+    if database != nil { api.close(&database) }
   }
 
   public var isOpen: Bool { connection != nil }
+
+  /// The loaded library's version ("1.5.6").
+  public var libraryVersion: String { api.version }
 
   /// Runs SQL (several statements allowed) and returns the last statement's result.
   public func query(_ sql: String, maxRows: Int = 100_000) throws -> DBResult {
     guard let connection else { throw DuckDBError(message: "The database is closed") }
     var result = duckdb_result()
-    let state = sql.withCString { duckdb_query(connection, $0, &result) }
-    defer { duckdb_destroy_result(&result) }
+    let state = api.query(connection, Array(sql.utf8CString), &result)
+    defer { api.destroy_result(&result) }
     if state != DuckDBSuccess {
-      let message = duckdb_result_error(&result).map { String(cString: $0) } ?? "Query failed"
+      let message = api.result_error(&result).map { String(cString: $0) } ?? "Query failed"
       throw DuckDBError(message: message)
     }
-    return DuckDBVectors.read(&result, maxRows: maxRows)
+    return DuckDBVectors(api: api).read(&result, maxRows: maxRows)
   }
 
-  /// The SQL name of a type without parameters ("INTEGER", "LIST").
-  static func typeName(_ type: duckdb_type, logical: duckdb_logical_type?) -> String {
+  /// The SQL name of a type without parameters ("INTEGER", "LIST", "DECIMAL").
+  static func typeName(_ type: duckdb_type) -> String {
     switch type {
     case DUCKDB_TYPE_BOOLEAN: return "BOOLEAN"
     case DUCKDB_TYPE_TINYINT: return "TINYINT"
@@ -96,9 +102,7 @@ public actor DuckDBFile {
     case DUCKDB_TYPE_ARRAY: return "ARRAY"
     case DUCKDB_TYPE_UNION: return "UNION"
     case DUCKDB_TYPE_BIT: return "BIT"
-    case DUCKDB_TYPE_DECIMAL:
-      guard let logical else { return "DECIMAL" }
-      return "DECIMAL(\(duckdb_decimal_width(logical)),\(duckdb_decimal_scale(logical)))"
+    case DUCKDB_TYPE_DECIMAL: return "DECIMAL"
     default: return "TYPE \(type.rawValue)"
     }
   }

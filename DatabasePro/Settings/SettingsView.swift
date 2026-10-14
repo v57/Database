@@ -2,7 +2,7 @@ import DatabaseProKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Settings: SSH keys, and how much the browser loads.
+/// Settings: SSH keys, the DuckDB download, and how much the browser loads.
 struct SettingsView: View {
   var body: some View {
     TabView {
@@ -26,6 +26,9 @@ struct GeneralSettings: View {
       Text("Production connections always show their changes for review before saving.")
         .font(.caption)
         .foregroundStyle(.secondary)
+      Section("DuckDB") {
+        DuckDBInstallRow(showsRemove: true)
+      }
     }
     .formStyle(.grouped)
   }

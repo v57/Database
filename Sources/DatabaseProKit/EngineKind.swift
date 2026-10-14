@@ -6,6 +6,15 @@ public enum EngineKind: String, Codable, CaseIterable, Identifiable, Sendable {
 
   public var id: String { rawValue }
 
+  /// The engines this device can open: DuckDB is a downloaded library, which iOS can't load.
+  public static var available: [EngineKind] {
+    #if os(macOS)
+      allCases
+    #else
+      allCases.filter { $0 != .duckdb }
+    #endif
+  }
+
   public enum Family: Sendable { case sql, document, keyValue, wideColumn }
 
   public var family: Family {
