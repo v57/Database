@@ -29,6 +29,16 @@ services:
       interval: 5s
       retries: 24
 
+  # Only the screenshots' demo data (Scripts/screenshot-demo.sh), so they don't show the test server's databases.
+  mongodb-demo:
+    image: mongo:8
+    profiles: [screenshots]
+    ports: ["127.0.0.1:27018:27017"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping: 1})"]
+      interval: 5s
+      retries: 24
+
   redis:
     image: redis:8
     command: ["redis-server", "--appendonly", "yes"]

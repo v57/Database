@@ -7,6 +7,8 @@ Usage:
 
 --files     where the SQLite, DuckDB, Parquet and CSV demo files go
 --data-dir  also write connections for every engine there (for a DEBUG run with --data-dir)
+--servers   only fill these services, e.g. postgres,mongodb (Scripts/screenshot-demo.sh; mongodb-demo is its own
+            MongoDB on 27018, which Catalog then uses)
 """
 
 import argparse
@@ -159,7 +161,7 @@ def seed_sqlserver():
     print("SQL Server: LegacyERP")
 
 
-def seed_mongo():
+def seed_mongo(service="mongodb"):
     reviews, inventory, products = [], [], []
     titles = ["Fills the whole room", "Comfy for long calls", "Battery lasts all week", "Great value", "Stopped working",
               "Exactly as described", "Would buy again", "A bit loud"]
@@ -187,8 +189,8 @@ def seed_mongo():
       db.reviews.createIndex({{ createdAt: 1 }});
     """
     # Too long for an argument; mongosh reads it from stdin.
-    run("mongodb", "sh", "-c", "cat > /tmp/seed.js && mongosh --quiet --file /tmp/seed.js", stdin=script)
-    print("MongoDB: catalog")
+    run(service, "sh", "-c", "cat > /tmp/seed.js && mongosh --quiet --file /tmp/seed.js", stdin=script)
+    print(f"{service}: catalog")
 
 
 def seed_redis():
@@ -249,14 +251,18 @@ def write_files(folder):
             f.write(f"{i + 1},{name(i)},{CITIES[i % len(CITIES)]},2026-0{i % 9 + 1}-1{i % 9}\n")
     with open(os.path.join(folder, "events.json"), "w") as f:
         json.dump([{"kind": random.choice(["click", "view", "buy"]), "n": random.randint(1, 9)} for _ in range(200)], f)
-    # DuckDB writes its own file and the Parquet one (so the versions match the app's DuckDB).
+    # DuckDB writes its own file and the Parquet one (so the versions match the app's DuckDB), when it's installed.
+    duckdb = os.environ.get("DATABASE_DUCKDB_DIR") or os.path.expanduser("~/Library/Application Support/dev.v57.db/DuckDB")
+    if not os.path.exists(os.path.join(duckdb, "libduckdb.dylib")):
+        print(f"Files: {folder} (no DuckDB in {duckdb}, so no analytics.duckdb or Parquet file)")
+        return
     env = dict(os.environ, DATABASE_DEMO_DIR=folder)
     subprocess.run(["swift", "test", "--filter", "writesDemoFiles"], cwd=ROOT, env=env, check=True,
                    stdout=subprocess.DEVNULL)
     print(f"Files: {folder}")
 
 
-def write_connections(data_dir, files):
+def write_connections(data_dir, files, mongo_port=27017):
     os.makedirs(data_dir, exist_ok=True)
     def profile(name, engine, port, user="", database="", path="", color="none", production=False, readonly=False, options=None):
         return {"id": str(uuid.uuid5(uuid.NAMESPACE_DNS, name)).upper(), "name": name, "engine": engine,
@@ -267,7 +273,7 @@ def write_connections(data_dir, files):
     profiles = [
         profile("Shop", "postgres", 5432, "postgres", "shop", color="red", production=True),
         profile("Analytics", "duckdb", 0, path=os.path.join(files, "analytics.duckdb"), color="yellow"),
-        profile("Catalog", "mongodb", 27017, database="catalog", color="green"),
+        profile("Catalog", "mongodb", mongo_port, database="catalog", color="green"),
         profile("Sessions", "redis", 6379, color="orange"),
         profile("Events", "scylla", 9043, database="events", color="purple"),
         profile("Telemetry", "cassandra", 9042, "cassandra", "telemetry", color="blue"),
@@ -292,20 +298,28 @@ def main():
     parser.add_argument("--files", required=True)
     parser.add_argument("--data-dir")
     parser.add_argument("--skip-servers", action="store_true")
+    parser.add_argument("--servers", help="comma-separated docker-compose services to fill (default: all)")
     args = parser.parse_args()
     files = os.path.abspath(os.path.expanduser(args.files))
+    seeds = {
+        "postgres": seed_postgres,
+        "mysql": lambda: seed_mysql("mysql", "storefront"),
+        "mariadb": lambda: seed_mysql("mariadb", "billing"),
+        "sqlserver": seed_sqlserver,
+        "mongodb": seed_mongo,
+        "mongodb-demo": lambda: seed_mongo("mongodb-demo"),
+        "redis": seed_redis,
+        "cassandra": lambda: seed_cql("cassandra", "telemetry", user="cassandra"),
+        "scylla": lambda: seed_cql("scylla", "events"),
+    }
+    servers = args.servers.split(",") if args.servers else [s for s in seeds if s != "mongodb-demo"]
     if not args.skip_servers:
-        seed_postgres()
-        seed_mysql("mysql", "storefront")
-        seed_mysql("mariadb", "billing")
-        seed_sqlserver()
-        seed_mongo()
-        seed_redis()
-        seed_cql("cassandra", "telemetry", user="cassandra")
-        seed_cql("scylla", "events")
+        for service in servers:
+            seeds[service]()
     write_files(files)
     if args.data_dir:
-        write_connections(os.path.abspath(os.path.expanduser(args.data_dir)), files)
+        write_connections(os.path.abspath(os.path.expanduser(args.data_dir)), files,
+                          mongo_port=27018 if "mongodb-demo" in servers else 27017)
 
 
 if __name__ == "__main__":

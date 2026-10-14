@@ -4,10 +4,11 @@
 
   /// `--present [--present-delay 3] [--activate]`: after the delay, brings the window (and any sheet on it) up
   /// without taking focus (or, with `--activate`, makes it the active window) and prints `window <number>`, so
-  /// Scripts/shoot.sh can capture it with `screencapture -l`.
+  /// a script can capture it with `screencapture -l`.
   ///
-  /// Scripts/shoot.sh launches the app in the background, and macOS doesn't create SwiftUI's window until the app
-  /// is activated. So in that mode the app hosts the same content in its own window instead.
+  /// Screenshots (`.dev/screenshots.json`, Dev's `dev-screenshots`) launch the app in the background, and macOS
+  /// doesn't create SwiftUI's window until the app is activated. So in that mode the app hosts the same content in
+  /// its own window instead.
   @MainActor
   enum DebugPresenter {
     private static var hostWindow: NSWindow?
@@ -45,7 +46,7 @@
       window.collectionBehavior.insert(.moveToActiveSpace)
       if LaunchOptions.flag("--activate") {
         // App Store screenshots want the active-window look. An app launched in the background can't make itself
-        // active, so Scripts/shoot.sh reopens it (like a Dock click) when it reads this line.
+        // active, so the script that launched it reopens it (like a Dock click) when it reads this line.
         print("activate")
         fflush(stdout)
         for _ in 0..<50 where !NSApp.isActive { try? await Task.sleep(for: .milliseconds(100)) }

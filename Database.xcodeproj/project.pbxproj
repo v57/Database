@@ -8,9 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		2669A0EF3031C45000C52779 /* DatabaseKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0EE3031C45000C52779 /* DatabaseKit */; };
-		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = D5C0DE000000000000000002 /* UpdateKit */; };
-		C0DE4161000000000000000003 /* CodeHighlighting in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE4161000000000000000002 /* CodeHighlighting */; };
 		5C56F8A6336B183BEBF30E38 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = 699545B0CBF14D31A04E078E /* VaultKit */; };
+		C0DE4161000000000000000003 /* CodeHighlighting in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE4161000000000000000002 /* CodeHighlighting */; };
+		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = D5C0DE000000000000000002 /* UpdateKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -286,18 +286,18 @@
 		000000000000000111000000 /* Debug configuration for PBXNativeTarget "Database" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Database/Database-iOS.entitlements;
-				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = Database/Database-iOS.entitlements;
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Database/Database.entitlements;
 				"ARCHS[sdk=macosx*]" = arm64;
-				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Database/Database-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "Database/Database-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Database/Database.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = AUCR797TMH;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Database/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Database;
@@ -309,7 +309,7 @@
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				INFOPLIST_KEY_UIBackgroundModes = remote-notification;
+				INFOPLIST_KEY_UIBackgroundModes = "remote-notification";
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
@@ -340,18 +340,18 @@
 		000000000000000112000000 /* Release configuration for PBXNativeTarget "Database" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Database/Database-iOS.entitlements;
-				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = Database/Database-iOS.entitlements;
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Database/Database.entitlements;
 				"ARCHS[sdk=macosx*]" = arm64;
-				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Database/Database-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "Database/Database-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Database/Database.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = AUCR797TMH;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Database/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Database;
@@ -363,7 +363,7 @@
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				INFOPLIST_KEY_UIBackgroundModes = remote-notification;
+				INFOPLIST_KEY_UIBackgroundModes = "remote-notification";
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
@@ -420,17 +420,17 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */ = {
+		C0DE4161000000000000000001 /* XCRemoteSwiftPackageReference "Code" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/UpdateKit.git";
+			repositoryURL = "https://github.com/v57/Code.git";
 			requirement = {
 				branch = main;
 				kind = branch;
 			};
 		};
-		C0DE4161000000000000000001 /* XCRemoteSwiftPackageReference "Code" */ = {
+		D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/Code.git";
+			repositoryURL = "https://github.com/v57/UpdateKit.git";
 			requirement = {
 				branch = main;
 				kind = branch;
@@ -451,19 +451,19 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = DatabaseKit;
 		};
-		D5C0DE000000000000000002 /* UpdateKit */ = {
+		699545B0CBF14D31A04E078E /* VaultKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = UpdateKit;
+			package = E3E972BC0ADB1ADD2484B58C /* XCRemoteSwiftPackageReference "Vault" */;
+			productName = VaultKit;
 		};
 		C0DE4161000000000000000002 /* CodeHighlighting */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = C0DE4161000000000000000001 /* XCRemoteSwiftPackageReference "Code" */;
 			productName = CodeHighlighting;
 		};
-		699545B0CBF14D31A04E078E /* VaultKit */ = {
+		D5C0DE000000000000000002 /* UpdateKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = E3E972BC0ADB1ADD2484B58C /* XCRemoteSwiftPackageReference "Vault" */;
-			productName = VaultKit;
+			productName = UpdateKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -134,6 +134,19 @@ final class AppModel {
   /// Connections saved by builds before the vault (connections.json and the app's own Keychain items)
   /// are copied into it once. The file stays, for those builds.
   private func importLegacyConnections() {
+    #if DEBUG
+      // A `--data-dir` run (Scripts/seed-demo.py) adds its folder's connections.json with the passwords from its
+      // secrets file, every launch, and leaves the real Keychain and the once-only flag alone.
+      if LaunchOptions.value("--data-dir") != nil {
+        guard let url = profilesURL, let data = try? Data(contentsOf: url),
+          let seeded = try? JSONDecoder().decode([ConnectionProfile].self, from: data)
+        else { return }
+        for profile in seeded where !profiles.contains(where: { $0.id == profile.id }) {
+          save(profile, password: secrets.databasePassword(for: profile.id), sshPassword: secrets.sshPassword(for: profile.id))
+        }
+        return
+      }
+    #endif
     let imported = "ImportedLegacyConnections"
     guard !UserDefaults.standard.bool(forKey: imported), let url = profilesURL, let data = try? Data(contentsOf: url),
       let legacy = try? JSONDecoder().decode([ConnectionProfile].self, from: data)
