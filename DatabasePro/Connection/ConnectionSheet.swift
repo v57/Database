@@ -1,6 +1,7 @@
 import DatabaseProKit
 import SwiftUI
 import UniformTypeIdentifiers
+import VaultKit
 
 /// New and Edit Connection: paste a link or pick an engine, fill in the server, decide how safe it is.
 struct ConnectionSheet: View {
@@ -318,6 +319,18 @@ struct ConnectionSheet: View {
         .padding(12)
         if profile.ssh.enabled {
           Divider().padding(.leading, 12)
+          if !app.vault.hosts.isEmpty {
+            row("Saved host") {
+              // Hosts saved in Shell (or by another connection), shared through the vault.
+              Menu(savedHostTitle) {
+                ForEach(app.vault.hosts) { host in
+                  Button(host.displayName) { use(host) }
+                }
+              }
+              .fixedSize()
+              Spacer()
+            }
+          }
           row("SSH server") {
             HStack {
               TextField("SSH server", text: $profile.ssh.host, prompt: Text("bastion.example.com"))
@@ -384,7 +397,7 @@ struct ConnectionSheet: View {
       Divider().padding(.leading, 12)
       HStack {
         Picker("Key", selection: $profile.ssh.keyID) {
-          Text("Choose a key").tag(UUID?.none)
+          Text("This device’s key (Secure Enclave)").tag(UUID?.none)
           ForEach(app.keys.keys) { key in
             Text("\(key.name) (\(key.kind.label))").tag(UUID?.some(key.id))
           }
@@ -403,16 +416,16 @@ struct ConnectionSheet: View {
         .fixedSize()
       }
       .padding(.horizontal, 12)
-      if let id = profile.ssh.keyID, let stored = app.keys.keys.first(where: { $0.id == id }) {
+      if let line = selectedKeyLine {
         VStack(alignment: .leading, spacing: 6) {
           Text("Add this line to ~/.ssh/authorized_keys on the SSH server:").font(.caption).foregroundStyle(.secondary)
           HStack(alignment: .top) {
-            Text(stored.publicKeyLine)
+            Text(line)
               .font(.codeSmall)
               .textSelection(.enabled)
               .lineLimit(3)
             Spacer()
-            Button("Copy", systemImage: "doc.on.doc") { Clipboard.copy(stored.publicKeyLine) }
+            Button("Copy", systemImage: "doc.on.doc") { Clipboard.copy(line) }
               .labelStyle(.iconOnly)
               .buttonStyle(.borderless)
               .help("Copy public key")
@@ -428,6 +441,33 @@ struct ConnectionSheet: View {
     }
     .padding(.bottom, 12)
     .id(app.keysVersion)
+  }
+
+  /// The public key line of the chosen key: an imported one, or this device's Secure Enclave key, which
+  /// Shell and Database use too (once in `authorized_keys` serves all three).
+  private var selectedKeyLine: String? {
+    if let id = profile.ssh.keyID {
+      return app.keys.keys.first(where: { $0.id == id })?.publicKeyLine
+    }
+    return (try? SharedConnections.deviceKey())?.authorizedKeyLine
+  }
+
+  private var savedHostTitle: String {
+    app.vault.hosts.first {
+      $0.hostname.caseInsensitiveCompare(profile.ssh.host) == .orderedSame && $0.port == profile.ssh.port
+        && $0.user == profile.ssh.user
+    }?.displayName ?? "Choose…"
+  }
+
+  /// Fills the SSH fields from a shared host.
+  private func use(_ host: VaultHost) {
+    profile.ssh.host = host.hostname
+    profile.ssh.port = host.port
+    profile.ssh.user = host.user
+    profile.ssh.auth = host.auth == .password ? .password : .key
+    profile.ssh.keyID = host.auth == .importedKey ? host.keyID.flatMap(UUID.init(uuidString:)) : nil
+    profile.ssh.hostKeyFingerprint = try? app.vault.store?.knownFingerprint(host: host.hostname, port: host.port)
+    if host.auth == .password { sshPassword = host.password ?? "" }
   }
 
   private var deviceName: String {
@@ -522,8 +562,8 @@ struct ConnectionSheet: View {
 
   private func loadSecrets() {
     guard let original else { return }
-    password = app.secrets.databasePassword(for: original.id) ?? ""
-    sshPassword = app.secrets.sshPassword(for: original.id) ?? ""
+    password = app.databasePassword(for: original.id) ?? ""
+    sshPassword = app.sshPassword(for: original.id) ?? ""
     showsAdvanced = original.ssh.enabled || original.useTLS
   }
 }

@@ -26,6 +26,8 @@ let package = Package(
   products: [
     .library(name: "DatabaseProKit", targets: ["DatabaseProKit"]),
     .library(name: "SSHTunnel", targets: ["SSHTunnel"]),
+    // libssh2 + mbedTLS, for Shell, which links this copy instead of building its own.
+    .library(name: "Libssh2", targets: ["Libssh2"]),
   ],
   targets: [
     libssh2,
