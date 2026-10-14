@@ -19,7 +19,7 @@ public struct SSHSettings: Codable, Hashable, Sendable {
   public var port: Int
   public var user: String
   public var auth: SSHAuthMethod
-  /// Which stored key to use (see `SSHKeyStore`).
+  /// Which stored key to use (see `SSHKeyStore`); nil means this device's Secure Enclave key.
   public var keyID: UUID?
   /// Remembered after the first successful login; a different key is refused.
   public var hostKeyFingerprint: String?
@@ -117,7 +117,6 @@ public struct ConnectionProfile: Codable, Hashable, Identifiable, Sendable {
     if ssh.enabled {
       if ssh.host.isEmpty { out.append("Enter the SSH server.") }
       if ssh.user.isEmpty { out.append("Enter the SSH user name.") }
-      if ssh.auth == .key && ssh.keyID == nil { out.append("Choose an SSH key.") }
     }
     return out
   }
