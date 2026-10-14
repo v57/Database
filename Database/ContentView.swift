@@ -4,6 +4,7 @@ import Redis
 import SQLite
 import SwiftData
 import SwiftUI
+import VaultKit
 #if os(macOS)
 import UpdateKit
 #endif
@@ -26,6 +27,8 @@ import UpdateKit
 #if os(macOS)
     updater.start()
 #endif
+    // Connections sync with Database Pro, Shell and the user's other devices through the vault.
+    Vault.shared.startSync()
     do {
       // Explicit per-app store: unsandboxed SwiftData apps that omit a URL
       // ALL default to the same shared ~/Library/Application Support/
@@ -36,7 +39,9 @@ import UpdateKit
         "dev.v57.db", isDirectory: true)
       try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
       let storeURL = appSupport.appendingPathComponent("Database.store")
-      let config = ModelConfiguration("Database", url: storeURL)
+      // Local only: the app has a CloudKit container (the vault's), and SwiftData would otherwise try to
+      // mirror this store to it and fail to load.
+      let config = ModelConfiguration("Database", url: storeURL, cloudKitDatabase: .none)
       container = try ModelContainer(
         for: ConnectionRecord.self, DatabaseOpenRecord.self, CollectionOpenRecord.self,
         configurations: config)

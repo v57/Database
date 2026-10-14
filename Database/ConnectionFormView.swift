@@ -6,6 +6,7 @@ import SQLite
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
+import VaultKit
 
 /// ONE form for creating AND editing a saved connection (house pattern):
 /// optional prefill via a custom init using underscore property-wrapper state.
@@ -36,6 +37,9 @@ struct ConnectionFormView: View {
   @State private var authSource: String
   @State private var defaultDatabase: String
   @State private var directConnection: Bool
+  /// The shared SSH host (saved in Shell) to tunnel through; nil connects directly, unless a saved host is
+  /// the server itself.
+  @State private var sshHostID: String?
   @State private var errorMessage: String?
   @State private var isDropTargeted = false
   @State private var isFileImporterPresented = false
@@ -107,6 +111,11 @@ struct ConnectionFormView: View {
     }
     _directConnection = State(initialValue: mongo?.directConnection ?? false)
     _fileBookmark = State(initialValue: record?.fileBookmark)
+    _sshHostID = State(initialValue: record?.sshHostID)
+  }
+
+  private var route: (host: VaultHost, target: String)? {
+    SharedConnections.shared.route(engine: engine, host: host, sshHostID: sshHostID)
   }
 
   private var isEditing: Bool { record != nil }
@@ -312,6 +321,21 @@ struct ConnectionFormView: View {
           Text("Options")
         } footer: {
           Text(optionsFooter)
+        }
+        let hosts = SharedConnections.shared.vault.hosts
+        if !hosts.isEmpty {
+          Section {
+            Picker("Connect through", selection: $sshHostID) {
+              Text(route.map { "\($0.host.displayName) (its own server)" } ?? "Directly").tag(String?.none)
+              ForEach(hosts) { host in
+                Text(host.displayName).tag(String?.some(host.id))
+              }
+            }
+          } header: {
+            Text("SSH")
+          } footer: {
+            Text("Hosts saved in Shell. Database logs in with this device’s key, the one Shell uses, or the host’s saved password, and connects through it.")
+          }
         }
       }
       if let errorMessage { Text(errorMessage).foregroundStyle(.red).font(.callout) }
@@ -564,7 +588,7 @@ struct ConnectionFormView: View {
     testState = .running
     testTask = Task {
       do {
-        try await model.testConnection(settings)
+        try await model.testConnection(settings, through: route)
         guard !Task.isCancelled else { return }
         testState = .succeeded
       } catch {
@@ -625,14 +649,17 @@ struct ConnectionFormView: View {
         modelContext.insert(saved)
       }
       apply(settings, to: saved)
+      saved.sshHostID = isFileBased ? nil : sshHostID
       try modelContext.save()
+      SharedConnections.shared.publish(saved)
       // New connections connect right away ("Save & Connect"); an edit only
       // reconnects when it changed the connection that is currently open.
       if !isEditing || editedLiveConnection {
         if let onConnect {
           onConnect(saved)
         } else {
-          Task { await model.connect(settings) }
+          let route = route
+          Task { await model.connect(settings, through: route) }
         }
       }
       dismiss()

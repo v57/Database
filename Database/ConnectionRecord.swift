@@ -5,6 +5,7 @@ import PostgreSQL
 import Redis
 import SQLite
 import SwiftData
+import VaultKit
 
 /// Which database engine a connection talks to. Raw-value enum persisted in
 /// ConnectionRecord; new engines join CaseIterable + the switches in
@@ -130,8 +131,8 @@ enum EngineSettings {
   }
 }
 
-/// A saved connection, persisted with SwiftData. Password is stored in plain
-/// text for now; Keychain integration is a noted future step.
+/// A saved connection, persisted with SwiftData and shared with the other v57 apps through the vault
+/// (`SharedConnections`). The password is in the shared keychain group, never in the store.
 @Model final class ConnectionRecord {
   var name: String
   var host: String
@@ -139,13 +140,29 @@ enum EngineSettings {
   // Lightweight-migration note: new stored properties MUST carry defaults.
   var engine: String = DatabaseEngine.mongodb.rawValue
   var username: String?
-  var password: String?
   var authSource: String?
   var defaultDatabase: String?
   var directConnection: Bool = false
   /// iOS: security-scoped bookmark of a picked SQLite file. The picker's
   /// access grant only lasts for one launch; the bookmark re-opens it later.
   var fileBookmark: Data?
+  /// The shared connection's id (`VaultDatabase.id`), also the password's name.
+  var vaultID: String = UUID().uuidString
+  /// Whether the record has been published to (or came from) the shared store: one missing from it was
+  /// deleted elsewhere.
+  var isShared: Bool = false
+  /// The shared SSH host (Shell's) to tunnel through; nil picks one whose address is the server's.
+  var sshHostID: String?
+
+  /// Passwords saved in plain text by builds before the shared keychain; `SharedConnections` moves each
+  /// into it and clears this.
+  @Attribute(originalName: "password") var legacyPassword: String?
+
+  /// The saved password, in the shared keychain group (`VaultSecrets`), so Database Pro and Shell use it too.
+  var password: String? {
+    get { VaultSecrets.password(for: vaultID) }
+    set { try? VaultSecrets.setPassword(newValue, for: vaultID) }
+  }
 
   init(
     name: String, host: String, port: Int, username: String? = nil, password: String? = nil,
@@ -156,11 +173,11 @@ enum EngineSettings {
     self.host = host
     self.port = port
     self.username = username
-    self.password = password
     self.authSource = authSource
     self.defaultDatabase = defaultDatabase
     self.directConnection = directConnection
     self.engine = engine.rawValue
+    if let password { self.password = password }
   }
 
   var engineKind: DatabaseEngine {

@@ -14,6 +14,8 @@
 		F1F1F1F1F1F1F1F1F1F1F1F1 /* Redis in Frameworks */ = {isa = PBXBuildFile; productRef = D1D1D1D1D1D1D1D1D1D1D1D1 /* Redis */; };
 		AFCEAD4516F5C5239F265754 /* SQLQuery in Frameworks */ = {isa = PBXBuildFile; productRef = 265DA9DEDA15E423029EB916 /* SQLQuery */; };
 		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = D5C0DE000000000000000002 /* UpdateKit */; };
+		3DED8EE58BF8CE3396FD58AF /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5E48AB7993AAB1EC98663349 /* VaultKit */; };
+		1D2A63416E836582188C011A /* SSHTunnel in Frameworks */ = {isa = PBXBuildFile; productRef = 44423B6578FB3AD49D809BC0 /* SSHTunnel */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -52,6 +54,8 @@
 				884D4B024EB8075F6DE519D6 /* SQLite in Frameworks */,
 				AFCEAD4516F5C5239F265754 /* SQLQuery in Frameworks */,
 				D5C0DE000000000000000003 /* UpdateKit in Frameworks */,
+				3DED8EE58BF8CE3396FD58AF /* VaultKit in Frameworks */,
+				1D2A63416E836582188C011A /* SSHTunnel in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -98,6 +102,8 @@
 				E0DBE02A193510FD325EAD7C /* SQLite */,
 				265DA9DEDA15E423029EB916 /* SQLQuery */,
 				D5C0DE000000000000000002 /* UpdateKit */,
+				5E48AB7993AAB1EC98663349 /* VaultKit */,
+				44423B6578FB3AD49D809BC0 /* SSHTunnel */,
 			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* Database.app */;
@@ -130,6 +136,8 @@
 			packageReferences = (
 				2669A0ED3031C45000C52779 /* XCLocalSwiftPackageReference "." */,
 				D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */,
+				2DD79983300F2C4339886C9B /* XCLocalSwiftPackageReference "../Vault" */,
+				51CE94BC9277B8E6D25E5BF3 /* XCLocalSwiftPackageReference "../DatabasePro" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -293,6 +301,10 @@
 		000000000000000111000000 /* Debug configuration for PBXNativeTarget "Database" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Database/Database-iOS.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = Database/Database-iOS.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Database/Database.entitlements;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -309,6 +321,7 @@
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIBackgroundModes = remote-notification;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
@@ -339,6 +352,10 @@
 		000000000000000112000000 /* Release configuration for PBXNativeTarget "Database" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Database/Database-iOS.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = Database/Database-iOS.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Database/Database.entitlements;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -355,6 +372,7 @@
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIBackgroundModes = remote-notification;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
@@ -412,6 +430,14 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../UpdateKit;
 		};
+		2DD79983300F2C4339886C9B /* XCLocalSwiftPackageReference "../Vault" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Vault;
+		};
+		51CE94BC9277B8E6D25E5BF3 /* XCLocalSwiftPackageReference "../DatabasePro" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../DatabasePro;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -442,6 +468,16 @@
 		D5C0DE000000000000000002 /* UpdateKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = UpdateKit;
+		};
+		5E48AB7993AAB1EC98663349 /* VaultKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2DD79983300F2C4339886C9B /* XCLocalSwiftPackageReference "../Vault" */;
+			productName = VaultKit;
+		};
+		44423B6578FB3AD49D809BC0 /* SSHTunnel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 51CE94BC9277B8E6D25E5BF3 /* XCLocalSwiftPackageReference "../DatabasePro" */;
+			productName = SSHTunnel;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

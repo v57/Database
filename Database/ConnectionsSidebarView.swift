@@ -95,7 +95,10 @@ struct ConnectionsSidebarView: View {
       syncSelectionFromModel()
     }.onChange(of: model.isSessionActive) { _, isActive in
       sessionActivityChanged(isActive)
-    }.onAppear { syncSelectionFromModel() }.task(id: model.collectionSearch) {
+    }.onAppear {
+      syncSelectionFromModel()
+      SharedConnections.shared.start(context: modelContext)
+    }.task(id: model.collectionSearch) {
       await loadCollectionsForSearch()
     }.animation(.smooth(duration: 0.25), value: model.isSessionActive)
   }
@@ -338,8 +341,11 @@ struct ConnectionsSidebarView: View {
     connectingRecordID = id
     failedRecordID = nil
     let settings = record.toSettings()
+    // Through a shared SSH host (Shell's) when the record names one or the server is one.
+    let route = SharedConnections.shared.route(
+      engine: record.engineKind, host: record.host, sshHostID: record.sshHostID)
     Task {
-      await model.connect(settings)
+      await model.connect(settings, through: route)
       connectingRecordID = nil
       if model.connectionError != nil {
         failedRecordID = id
@@ -362,6 +368,7 @@ struct ConnectionsSidebarView: View {
   private func delete(_ record: ConnectionRecord) {
     if isActive(record) { disconnect() }
     if selection == .connection(record.id) { selection = nil }
+    SharedConnections.shared.unpublish(record)
     modelContext.delete(record)
     try? modelContext.save()
   }

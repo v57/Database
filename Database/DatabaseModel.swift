@@ -6,7 +6,9 @@ import PostgreSQL
 import Redis
 import SQLite
 import SQLQuery
+import SSHTunnel
 import SwiftData
+import VaultKit
 
 /// Observable app state: the active session and the three-column navigation state.
 @Observable @MainActor final class DatabaseModel {
@@ -25,6 +27,8 @@ import SwiftData
   }
 
   var session: MongoConnection?
+  /// The SSH tunnel the live session goes through (a shared host, see `SharedConnections`).
+  @ObservationIgnored private var tunnel: SSHTunnel?
   /// Non-Mongo sessions (Redis/PostgreSQL/SQLite),
   /// tagged by engine. Only one of `session`/`alternateSession` is live at a time.
   var alternateSession: AlternateSession?
@@ -156,10 +160,48 @@ import SwiftData
 
   // MARK: - Connect / disconnect
 
+  /// Connects through an SSH host when `route` names one: the tunnel opens first and the engine
+  /// connects to its local end.
+  func connect(_ settings: EngineSettings, through route: (host: VaultHost, target: String)?) async {
+    guard let route else {
+      await connect(settings)
+      return
+    }
+    await disconnect()
+    isConnecting = true
+    statusMessage = "Opening an SSH tunnel through \(route.host.displayName)…"
+    do {
+      let opened = try await openTunnel(route, port: Int(settings.port))
+      tunnel = opened
+      await connect(settings.redirected(to: "127.0.0.1", port: UInt16(opened.localPort)), keepsTunnel: true)
+    } catch {
+      isConnecting = false
+      statusMessage = "Connection failed: \(error.localizedDescription)"
+      connectionErrorHost = settings.host
+      connectionError = error.localizedDescription
+    }
+  }
+
+  /// Like `testConnection(_:)`, through the route's tunnel.
+  func testConnection(_ settings: EngineSettings, through route: (host: VaultHost, target: String)?) async throws {
+    guard let route else { return try await testConnection(settings) }
+    let opened = try await openTunnel(route, port: Int(settings.port))
+    defer { opened.close() }
+    try await testConnection(settings.redirected(to: "127.0.0.1", port: UInt16(opened.localPort)))
+  }
+
+  private func openTunnel(_ route: (host: VaultHost, target: String), port: Int) async throws -> SSHTunnel {
+    let shared = SharedConnections.shared
+    let opened = try await SSHTunnel.open(
+      server: try shared.server(for: route.host), targetHost: route.target, targetPort: port)
+    shared.trust(opened, host: route.host)
+    return opened
+  }
+
   /// Connects with engine-tagged settings, loads the top-level tree, and
   /// selects the default database.
-  func connect(_ settings: EngineSettings) async {
-    await disconnect()
+  func connect(_ settings: EngineSettings, keepsTunnel: Bool = false) async {
+    await disconnect(keepingTunnel: keepsTunnel)
     // Sidebar order comes from the history as of connecting; it is not
     // re-sorted while the session runs (see markCollectionUsed).
     loadOpenHistory()
@@ -289,6 +331,7 @@ import SwiftData
     record.fileBookmark = bookmark
     modelContext.insert(record)
     try? modelContext.save()
+    SharedConnections.shared.publish(record)
     await connect(record.toSettings())
   }
 
@@ -304,7 +347,11 @@ import SwiftData
     }
   }
 
-  func disconnect() async {
+  func disconnect(keepingTunnel: Bool = false) async {
+    if !keepingTunnel {
+      tunnel?.close()
+      tunnel = nil
+    }
     if let session { await session.disconnect() }
     session = nil
     if let alternateSession { await alternateSession.close() }
@@ -1382,4 +1429,28 @@ struct RecordChange {
   /// "Changed “rating” of “Up”." — shown next to Undo.
   let message: String
   let canUndo: Bool
+}
+
+extension EngineSettings {
+  /// The same settings aimed at another address (an SSH tunnel's local end). MongoDB connects to that one
+  /// server directly: the replica set's own host names aren't reachable through the tunnel.
+  func redirected(to host: String, port: UInt16) -> EngineSettings {
+    switch self {
+    case .mongodb(var config):
+      config.host = host
+      config.port = port
+      config.directConnection = true
+      return .mongodb(config)
+    case .postgresql(var config):
+      config.host = host
+      config.port = port
+      return .postgresql(config)
+    case .redis(var config):
+      config.host = host
+      config.port = port
+      return .redis(config)
+    case .sqlite:
+      return self
+    }
+  }
 }
