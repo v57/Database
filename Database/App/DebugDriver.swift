@@ -12,6 +12,7 @@
   ///   --stage-edit "field=value"           stage an edit on the first row and open Review
   ///   --new-connection [link]              open the New Connection sheet (optionally paste a link)
   ///   --edit-connection "Shop"             open Edit Connection
+  ///   --ssh-configuration "Work"           also open that SSH configuration in the connection sheet
   ///   --new-query "SELECT 1" [--run]       open a query tab
   ///   --select-row N                       select the Nth row (0-based)
   ///   --hide-sidebar                       start with the sidebar hidden
