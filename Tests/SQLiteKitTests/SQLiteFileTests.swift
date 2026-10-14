@@ -31,6 +31,17 @@ struct SQLiteFileTests {
     #expect(try await readOnly.execute("SELECT count(*) FROM notes").rows.first?.first == .int(2))
   }
 
+  @Test func bindsParameters() async throws {
+    let db = try SQLiteFile(path: ":memory:")
+    _ = try await db.query("CREATE TABLE t (source TEXT, n INTEGER, raw BLOB)")
+    let tricky = "it's 100% \"quoted\"; DROP TABLE t; --"
+    _ = try await db.execute("INSERT INTO t VALUES (?1, ?2, ?3)", binds: [.text(tricky), .int(7), .bytes([1, 2])])
+    let found = try await db.execute("SELECT n, raw FROM t WHERE source = ?1", binds: [.text(tricky)])
+    #expect(found.rows == [[.int(7), .bytes([1, 2])]])
+    #expect(try await db.execute("SELECT source FROM t").rows == [[.text(tricky)]])
+    #expect(try await db.execute("SELECT count(*) FROM t WHERE source = ?", binds: [.text("x")]).rows == [[.int(0)]])
+  }
+
   @Test func refusesAMissingFileWhenNotCreating() {
     #expect(throws: SQLiteError.self) { try SQLiteFile(path: "/nonexistent/dir/x.sqlite", create: false) }
   }

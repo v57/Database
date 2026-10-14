@@ -42,8 +42,9 @@ public actor SQLiteFile {
 
   private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-  /// Runs every statement in `sql`; returns one result per statement.
-  public func query(_ sql: String, maxRows: Int = 100_000) throws -> [DBResult] {
+  /// Runs every statement in `sql`; returns one result per statement. `binds` fill the `?`/`?1` parameters of each
+  /// statement that has them, so text from elsewhere never has to be spliced into SQL.
+  public func query(_ sql: String, binds: [DBValue] = [], maxRows: Int = 100_000) throws -> [DBResult] {
     guard let db = handle else { throw SQLiteError(code: SQLITE_MISUSE, message: "The database is closed") }
     var results: [DBResult] = []
     try sql.withCString { start in
@@ -54,13 +55,34 @@ public actor SQLiteFile {
         if rc != SQLITE_OK { throw SQLiteError(code: rc, message: String(cString: sqlite3_errmsg(db))) }
         guard let statement else { continue }  // whitespace or a comment
         defer { sqlite3_finalize(statement) }
+        try bind(binds, to: statement, db: db)
         results.append(try run(statement, db: db, maxRows: maxRows))
       }
     }
     return results
   }
 
-  public func execute(_ sql: String) throws -> DBResult { try query(sql).last ?? DBResult() }
+  public func execute(_ sql: String, binds: [DBValue] = []) throws -> DBResult {
+    try query(sql, binds: binds).last ?? DBResult()
+  }
+
+  private func bind(_ values: [DBValue], to statement: OpaquePointer, db: OpaquePointer) throws {
+    let count = Int(sqlite3_bind_parameter_count(statement))
+    for (offset, value) in values.prefix(count).enumerated() {
+      let index = Int32(offset + 1)
+      let rc: Int32
+      switch value {
+      case .null: rc = sqlite3_bind_null(statement, index)
+      case .bool(let b): rc = sqlite3_bind_int64(statement, index, b ? 1 : 0)
+      case .int(let i): rc = sqlite3_bind_int64(statement, index, i)
+      case .double(let d): rc = sqlite3_bind_double(statement, index, d)
+      case .bytes(let b):
+        rc = b.withUnsafeBytes { sqlite3_bind_blob64(statement, index, $0.baseAddress, sqlite3_uint64(b.count), Self.transient) }
+      default: rc = sqlite3_bind_text(statement, index, value.stringValue ?? "", -1, Self.transient)
+      }
+      if rc != SQLITE_OK { throw SQLiteError(code: rc, message: String(cString: sqlite3_errmsg(db))) }
+    }
+  }
 
   private func run(_ statement: OpaquePointer, db: OpaquePointer, maxRows: Int) throws -> DBResult {
     let columnCount = Int(sqlite3_column_count(statement))
