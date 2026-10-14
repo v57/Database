@@ -10,6 +10,7 @@
 		2669A0EF3031C45000C52779 /* DatabaseKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0EE3031C45000C52779 /* DatabaseKit */; };
 		5C56F8A6336B183BEBF30E38 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = 699545B0CBF14D31A04E078E /* VaultKit */; };
 		C0DE4161000000000000000003 /* CodeHighlighting in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE4161000000000000000002 /* CodeHighlighting */; };
+		DE5C0DE0000000000000000003 /* DevScreenshots in Frameworks */ = {isa = PBXBuildFile; productRef = DE5C0DE0000000000000000002 /* DevScreenshots */; };
 		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = D5C0DE000000000000000002 /* UpdateKit */; };
 /* End PBXBuildFile section */
 
@@ -44,6 +45,7 @@
 			files = (
 				C0DE4161000000000000000003 /* CodeHighlighting in Frameworks */,
 				2669A0EF3031C45000C52779 /* DatabaseKit in Frameworks */,
+				DE5C0DE0000000000000000003 /* DevScreenshots in Frameworks */,
 				D5C0DE000000000000000003 /* UpdateKit in Frameworks */,
 				5C56F8A6336B183BEBF30E38 /* VaultKit in Frameworks */,
 			);
@@ -89,6 +91,7 @@
 				D5C0DE000000000000000002 /* UpdateKit */,
 				C0DE4161000000000000000002 /* CodeHighlighting */,
 				699545B0CBF14D31A04E078E /* VaultKit */,
+				DE5C0DE0000000000000000002 /* DevScreenshots */,
 			);
 			productName = Database;
 			productReference = 000000000000000000000120 /* Database.app */;
@@ -123,6 +126,7 @@
 				D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */,
 				C0DE4161000000000000000001 /* XCRemoteSwiftPackageReference "Code" */,
 				E3E972BC0ADB1ADD2484B58C /* XCRemoteSwiftPackageReference "Vault" */,
+				DE5C0DE0000000000000000001 /* XCRemoteSwiftPackageReference "Dev" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -428,6 +432,14 @@
 				kind = branch;
 			};
 		};
+		DE5C0DE0000000000000000001 /* XCRemoteSwiftPackageReference "Dev" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/v57/Dev.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 		D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/v57/UpdateKit.git";
@@ -460,6 +472,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C0DE4161000000000000000001 /* XCRemoteSwiftPackageReference "Code" */;
 			productName = CodeHighlighting;
+		};
+		DE5C0DE0000000000000000002 /* DevScreenshots */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DE5C0DE0000000000000000001 /* XCRemoteSwiftPackageReference "Dev" */;
+			productName = DevScreenshots;
 		};
 		D5C0DE000000000000000002 /* UpdateKit */ = {
 			isa = XCSwiftPackageProductDependency;

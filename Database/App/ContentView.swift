@@ -1,6 +1,10 @@
 import DatabaseKit
 import SwiftUI
 
+#if DEBUG
+  import DevScreenshots
+#endif
+
 struct ContentView: View {
   @Environment(AppModel.self) private var app
   @State private var window: WindowModel?
@@ -8,7 +12,8 @@ struct ContentView: View {
   var body: some View {
     Group {
       if let window {
-        WindowContent(window: window)
+        // A new model (a screenshot scene) starts the window's own state over too.
+        WindowContent(window: window).id(ObjectIdentifier(window))
       } else {
         Color.clear
       }
@@ -18,9 +23,21 @@ struct ContentView: View {
         let model = WindowModel(app: app)
         window = model
         #if DEBUG
-          Task { await DebugDriver.run(model) }
+          // Screenshots (.dev/screenshots.json): every scene of a locale in this launch. A scene starts from a new
+          // window model and closed connections, as a fresh launch would, then opens from its own arguments.
+          Screenshots.prepare(waitsForReady: true) { scene in
+            LaunchOptions.arguments = scene.arguments
+            let model = WindowModel(app: app)
+            window = model
+            await app.disconnectAll()
+            await DebugDriver.run(model)
+          }
+          Task {
+            await DebugDriver.run(model)
+            Screenshots.ready()
+          }
           #if os(macOS)
-            Task { await DebugPresenter.runIfRequested() }
+            if !Screenshots.isCapturing { Task { await DebugPresenter.runIfRequested() } }
           #endif
         #endif
       }

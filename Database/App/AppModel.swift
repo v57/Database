@@ -269,6 +269,11 @@ final class AppModel {
     await connection.close()
   }
 
+  /// Closes every connection, so the next use starts from scratch: its tree, tables and query tabs.
+  func disconnectAll() async {
+    for id in live.keys { await disconnect(id) }
+  }
+
   func markUsed(_ id: UUID) {
     guard var record = vault.databases.first(where: { $0.id == vaultID(for: id) }) else { return }
     record.lastUsed = Date()
@@ -316,13 +321,15 @@ final class AppModel {
 
 /// Command-line options for development runs.
 enum LaunchOptions {
+  /// The launch's arguments, or the screenshot scene's that opened in this launch since.
+  nonisolated(unsafe) static var arguments = ProcessInfo.processInfo.arguments
+
   static func value(_ name: String) -> String? {
-    let args = ProcessInfo.processInfo.arguments
-    guard let index = args.firstIndex(of: name), index + 1 < args.count else { return nil }
-    return args[index + 1]
+    guard let index = arguments.firstIndex(of: name), index + 1 < arguments.count else { return nil }
+    return arguments[index + 1]
   }
 
-  static func flag(_ name: String) -> Bool { ProcessInfo.processInfo.arguments.contains(name) }
+  static func flag(_ name: String) -> Bool { arguments.contains(name) }
 }
 
 #if DEBUG
