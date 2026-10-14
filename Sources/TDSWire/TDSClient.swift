@@ -17,7 +17,7 @@ public actor TDSClient {
 
     public init(
       host: String = "127.0.0.1", port: Int = 1433, user: String, password: String,
-      database: String? = nil, applicationName: String = "Database Pro", connectTimeout: TimeInterval = 15
+      database: String? = nil, applicationName: String = "Database", connectTimeout: TimeInterval = 15
     ) {
       self.host = host
       self.port = port
@@ -147,7 +147,7 @@ public actor TDSClient {
   private func login() async throws {
     let hostName = ProcessInfo.processInfo.hostName
     let strings: [String] = [
-      hostName, config.user, config.password, config.applicationName, config.host, "", "DatabasePro",
+      hostName, config.user, config.password, config.applicationName, config.host, "", "Database",
       "", config.database ?? "",
     ]
     var fixed = ByteWriter(capacity: 94)

@@ -85,9 +85,9 @@ struct DuckDBFileTests {
 }
 
 /// Writes the demo DuckDB and Parquet files when Scripts/seed-demo.py asks for them.
-@Test(.enabled(if: DuckDBLibrary.isInstalled && ProcessInfo.processInfo.environment["DATABASEPRO_DEMO_DIR"] != nil))
+@Test(.enabled(if: DuckDBLibrary.isInstalled && ProcessInfo.processInfo.environment["DATABASE_DEMO_DIR"] != nil))
 func writesDemoFiles() async throws {
-  let folder = ProcessInfo.processInfo.environment["DATABASEPRO_DEMO_DIR"]!
+  let folder = ProcessInfo.processInfo.environment["DATABASE_DEMO_DIR"]!
   let path = folder + "/analytics.duckdb"
   try? FileManager.default.removeItem(atPath: path)
   try? FileManager.default.removeItem(atPath: path + ".wal")

@@ -10,6 +10,7 @@
 set -euo pipefail
 cd "${0:A:h}/.."
 
+# The binaries stay on Database Pro's public repository, where they were first published.
 REPO=v57/DatabasePro
 OUT=build/release
 mkdir -p $OUT
@@ -18,7 +19,7 @@ case ${1:-} in
     NAME=Libssh2 TITLE=libssh2
     VERSION=$(awk -F'"' '/define LIBSSH2_VERSION /{sub(/_DEV$/, "", $2); print $2; exit}' \
       Binary/Libssh2.xcframework/macos-arm64/Headers/libssh2.h)
-    NOTES="libssh2 + mbedTLS for DatabasePro (mbedTLS symbols prefixed _dbpro_), made by Scripts/build-libssh2.sh."
+    NOTES="libssh2 + mbedTLS for Database (mbedTLS symbols prefixed _dbpro_), made by Scripts/build-libssh2.sh."
     [[ -d Binary/$NAME.xcframework ]] || { echo "No Binary/$NAME.xcframework: run Scripts/build-libssh2.sh"; exit 1; }
     TAG=$1-$VERSION
     ZIP=$OUT/$NAME.xcframework.zip

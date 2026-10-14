@@ -16,7 +16,7 @@ public actor PostgresClient {
 
     public init(
       host: String = "127.0.0.1", port: Int = 5432, user: String, password: String = "",
-      database: String = "postgres", tls: TLSSettings = .off, applicationName: String = "Database Pro",
+      database: String = "postgres", tls: TLSSettings = .off, applicationName: String = "Database",
       connectTimeout: TimeInterval = 15
     ) {
       self.host = host
@@ -262,7 +262,7 @@ public actor PostgresClient {
         // Notifications and COPY aren't used here; COPY gets refused below.
         if message.type == UInt8(ascii: "G") || message.type == UInt8(ascii: "H") {
           var fail = ByteWriter()
-          fail.writeCString("COPY isn't supported in Database Pro")
+          fail.writeCString("COPY isn't supported in Database")
           try await send(type: UInt8(ascii: "f"), fail.bytes)
         }
       default:

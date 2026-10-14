@@ -1,7 +1,7 @@
 import Cduckdb
 import Foundation
 
-/// The DuckDB build Database Pro downloads when asked: a signed `libduckdb.dylib` for Apple silicon Macs, published
+/// The DuckDB build Database downloads when asked: a signed `libduckdb.dylib` for Apple silicon Macs, published
 /// by `Scripts/release-binaries.sh duckdb` (which also updates `DuckDBLibrary.release` below).
 public struct DuckDBRelease: Sendable, Equatable {
   public var version: String
@@ -32,11 +32,11 @@ public enum DuckDBLibrary {
 
   /// The folder holding `libduckdb.dylib` and `VERSION`. Defaults to the app's data folder; the app sets it when it
   /// keeps its data elsewhere (a development run with `--data-dir`), and tests point it elsewhere with
-  /// `DATABASEPRO_DUCKDB_DIR`.
+  /// `DATABASE_DUCKDB_DIR`.
   nonisolated(unsafe) public static var directory: URL =
-    ProcessInfo.processInfo.environment["DATABASEPRO_DUCKDB_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+    ProcessInfo.processInfo.environment["DATABASE_DUCKDB_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
     ?? URL.applicationSupportDirectory
-    .appendingPathComponent("dev.v57.dbpro", isDirectory: true)
+    .appendingPathComponent("dev.v57.db", isDirectory: true)
     .appendingPathComponent("DuckDB", isDirectory: true)
 
   public static var libraryURL: URL { libraryURL(in: directory) }

@@ -6,7 +6,8 @@ import PackageDescription
 let concurrency: [SwiftSetting] = [.enableUpcomingFeature("ApproachableConcurrency")]
 
 // Prebuilt C libraries. Scripts/build-libssh2.sh makes them in Binary/, which isn't in git: a checkout without
-// them downloads the GitHub Releases that Scripts/release-binaries.sh publishes.
+// them downloads the GitHub Releases that Scripts/release-binaries.sh publishes (on the public v57/DatabasePro
+// repository, where they were first published).
 func binary(_ name: String, release: String, checksum: String) -> Target {
   let path = "Binary/\(name).xcframework"
   return FileManager.default.fileExists(atPath: Context.packageDirectory + "/" + path)
@@ -21,11 +22,15 @@ let libssh2 = binary(
   "Libssh2", release: "libssh2-1.11.1", checksum: "b855ccebd64a0434cb1d59b1c1376676682a3fc48fde829b837881307abcea98")
 
 let package = Package(
-  name: "DatabasePro",
+  name: "Database",
   platforms: [.macOS(.v14), .iOS(.v17)],
   products: [
-    .library(name: "DatabaseProKit", targets: ["DatabaseProKit"]),
+    .library(name: "DatabaseKit", targets: ["DatabaseKit"]),
     .library(name: "SSHTunnel", targets: ["SSHTunnel"]),
+    // The byte streams the engines talk over, for apps that bring their own transport (Shell's SSH channels).
+    .library(name: "WireKit", targets: ["WireKit"]),
+    // SQLite files, for Dev's imported translation database.
+    .library(name: "SQLiteKit", targets: ["SQLiteKit"]),
     // libssh2 + mbedTLS, for Shell, which links this copy instead of building its own.
     .library(name: "Libssh2", targets: ["Libssh2"]),
   ],
@@ -53,7 +58,7 @@ let package = Package(
 
     // Engine-neutral model the app talks to: connections, containers, items, edits.
     .target(
-      name: "DatabaseProKit",
+      name: "DatabaseKit",
       dependencies: [
         "WireKit", "SSHTunnel", "BSON", "MongoWire", "PostgresWire", "MySQLWire", "TDSWire",
         "CQLWire", "RedisWire", "SQLiteKit", "DuckDBKit",
@@ -72,6 +77,6 @@ let package = Package(
     .testTarget(name: "RedisWireTests", dependencies: ["RedisWire"], swiftSettings: concurrency),
     .testTarget(name: "SQLiteKitTests", dependencies: ["SQLiteKit"], swiftSettings: concurrency),
     .testTarget(name: "DuckDBKitTests", dependencies: ["DuckDBKit"], swiftSettings: concurrency),
-    .testTarget(name: "DatabaseProKitTests", dependencies: ["DatabaseProKit"], swiftSettings: concurrency),
+    .testTarget(name: "DatabaseKitTests", dependencies: ["DatabaseKit"], swiftSettings: concurrency),
   ]
 )

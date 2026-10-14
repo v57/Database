@@ -3,7 +3,7 @@
 
 Usage:
   docker compose up -d --wait
-  Scripts/seed-demo.py --files ~/Documents/DatabasePro-Demo [--data-dir <dev data folder>]
+  Scripts/seed-demo.py --files ~/Documents/Database-Demo [--data-dir <dev data folder>]
 
 --files     where the SQLite, DuckDB, Parquet and CSV demo files go
 --data-dir  also write connections for every engine there (for a DEBUG run with --data-dir)
@@ -250,7 +250,7 @@ def write_files(folder):
     with open(os.path.join(folder, "events.json"), "w") as f:
         json.dump([{"kind": random.choice(["click", "view", "buy"]), "n": random.randint(1, 9)} for _ in range(200)], f)
     # DuckDB writes its own file and the Parquet one (so the versions match the app's DuckDB).
-    env = dict(os.environ, DATABASEPRO_DEMO_DIR=folder)
+    env = dict(os.environ, DATABASE_DEMO_DIR=folder)
     subprocess.run(["swift", "test", "--filter", "writesDemoFiles"], cwd=ROOT, env=env, check=True,
                    stdout=subprocess.DEVNULL)
     print(f"Files: {folder}")

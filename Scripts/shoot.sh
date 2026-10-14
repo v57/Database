@@ -4,11 +4,11 @@
 # (App Store shots) the script brings it to the front.
 # Usage: Scripts/shoot.sh out.png <seconds> -- <app arguments…>
 out=$1; wait=$2; shift 3
-app=${APP:-.build/xcode/Build/Products/Debug/DatabasePro.app}
+app=${APP:-.build/xcode/Build/Products/Debug/Database.app}
 log=$(mktemp)
 open -n -g --stdout "$log" "$app" --args "$@" --present --present-delay "$wait" -ApplePersistenceIgnoreState YES
 sleep 1
-pid=$(pgrep -nf "DatabasePro.app/Contents/MacOS/DatabasePro.*--present")
+pid=$(pgrep -nf "Database.app/Contents/MacOS/Database.*--present")
 activated=
 for i in {1..120}; do
   if [[ -z $activated ]] && grep -q '^activate$' "$log"; then

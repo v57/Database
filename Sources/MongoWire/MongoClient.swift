@@ -25,7 +25,7 @@ public actor MongoClient {
     public init(
       host: String = "127.0.0.1", port: Int = 27017, user: String? = nil, password: String? = nil,
       authSource: String = "admin", database: String? = nil, tls: TLSSettings = .off,
-      applicationName: String = "Database Pro", connectTimeout: TimeInterval = 15
+      applicationName: String = "Database", connectTimeout: TimeInterval = 15
     ) {
       self.host = host
       self.port = port
@@ -151,7 +151,7 @@ public actor MongoClient {
     var cmd: BSONDocument = [
       "hello": .int32(1), "helloOk": .bool(true),
       "client": .document([
-        "driver": .document(["name": .string("DatabasePro"), "version": .string("1.0")]),
+        "driver": .document(["name": .string("Database"), "version": .string("1.0")]),
         "os": .document(["type": .string("Darwin")]),
         "application": .document(["name": .string(config.applicationName)]),
       ]),
