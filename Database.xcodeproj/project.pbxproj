@@ -120,9 +120,9 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				2669A0ED3031C45000C52779 /* XCLocalSwiftPackageReference "." */,
-				D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */,
-				C0DE4161000000000000000001 /* XCLocalSwiftPackageReference "../Code" */,
-				E3E972BC0ADB1ADD2484B58C /* XCLocalSwiftPackageReference "../Vault" */,
+				D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */,
+				C0DE4161000000000000000001 /* XCRemoteSwiftPackageReference "Code" */,
+				E3E972BC0ADB1ADD2484B58C /* XCRemoteSwiftPackageReference "Vault" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -417,19 +417,34 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = .;
 		};
-		D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../UpdateKit;
-		};
-		C0DE4161000000000000000001 /* XCLocalSwiftPackageReference "../Code" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../Code;
-		};
-		E3E972BC0ADB1ADD2484B58C /* XCLocalSwiftPackageReference "../Vault" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../Vault;
-		};
 /* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/v57/UpdateKit.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		C0DE4161000000000000000001 /* XCRemoteSwiftPackageReference "Code" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/v57/Code.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		E3E972BC0ADB1ADD2484B58C /* XCRemoteSwiftPackageReference "Vault" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/v57/Vault.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		2669A0EE3031C45000C52779 /* DatabaseKit */ = {
@@ -442,12 +457,12 @@
 		};
 		C0DE4161000000000000000002 /* CodeHighlighting */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = C0DE4161000000000000000001 /* XCLocalSwiftPackageReference "../Code" */;
+			package = C0DE4161000000000000000001 /* XCRemoteSwiftPackageReference "Code" */;
 			productName = CodeHighlighting;
 		};
 		699545B0CBF14D31A04E078E /* VaultKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = E3E972BC0ADB1ADD2484B58C /* XCLocalSwiftPackageReference "../Vault" */;
+			package = E3E972BC0ADB1ADD2484B58C /* XCRemoteSwiftPackageReference "Vault" */;
 			productName = VaultKit;
 		};
 /* End XCSwiftPackageProductDependency section */

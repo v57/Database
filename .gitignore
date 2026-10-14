@@ -34,3 +34,8 @@ AGENTS.md
 .hermes/
 KANBAN*.md
 graphify-out/
+
+# Package pins: the other v57 repositories follow GitHub's main until release (or the checkouts next to this
+# one, through <App>-Local.xcworkspace or V57_LOCAL=1), so nothing pins them
+/Database.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+/Database-Local.xcworkspace/xcshareddata/
