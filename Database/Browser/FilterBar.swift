@@ -52,7 +52,6 @@ struct FilterBar: View {
         }
         .padding(.vertical, 2)
       }
-      .scrollClipDisabled()
       Spacer(minLength: 4)
       if browser.engine.family != .wideColumn && browser.engine != .redis {
         SortMenu(browser: browser)

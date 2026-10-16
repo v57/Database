@@ -30,9 +30,7 @@ struct BrowserView: View {
   private var titled: some View {
     split
       .navigationTitle(browser.ref.name)
-      #if os(macOS)
-        .navigationSubtitle(subtitle)
-      #endif
+      .navigationMeta(subtitle)
       .toolbar { toolbar }
       .hidesWindowTitle()
   }
@@ -205,10 +203,12 @@ struct BrowserView: View {
   }
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-    ToolbarItem(placement: .navigation) {
-      KitTitle(browser.ref.name, meta: subtitle, systemImage: browser.ref.symbol, hue: browser.engine.hue, status: titleStatus)
-    }
-    .kitBare()
+    #if os(macOS)
+      ToolbarItem(placement: .navigation) {
+        KitTitle(browser.ref.name, meta: subtitle, systemImage: browser.ref.symbol, hue: browser.engine.hue, status: titleStatus)
+      }
+      .kitBare()
+    #endif
     #if os(macOS)
       if #available(macOS 26, *) {
         ToolbarSpacer(.flexible)

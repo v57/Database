@@ -25,9 +25,7 @@ struct QueryEditorView: View {
     }
     .kitPane(.content)
     .navigationTitle(workspace.selected?.title ?? "Query")
-    #if os(macOS)
-      .navigationSubtitle(workspace.connection.profile.displayName)
-    #endif
+    .navigationMeta(workspace.connection.profile.displayName)
     .toolbar { toolbar }
     .hidesWindowTitle()
     .sheet(isPresented: .init(get: { savingTitle != nil }, set: { if !$0 { savingTitle = nil } })) {
@@ -61,12 +59,14 @@ struct QueryEditorView: View {
   }
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-    ToolbarItem(placement: .navigation) {
-      KitTitle(
-        workspace.selected?.title ?? "Query", meta: workspace.connection.profile.displayName, systemImage: "bolt",
-        hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle)
-    }
-    .kitBare()
+    #if os(macOS)
+      ToolbarItem(placement: .navigation) {
+        KitTitle(
+          workspace.selected?.title ?? "Query", meta: workspace.connection.profile.displayName, systemImage: "bolt",
+          hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle)
+      }
+      .kitBare()
+    #endif
     #if os(macOS)
       if #available(macOS 26, *) {
         ToolbarSpacer(.flexible)

@@ -120,9 +120,7 @@ struct KeysBrowserView: View {
   var body: some View {
     split
       .navigationTitle(browser.ref.name)
-      #if os(macOS)
-        .navigationSubtitle("\(browser.connection.profile.displayName) · \(keyCount) keys")
-      #endif
+      .navigationMeta("\(browser.connection.profile.displayName) · \(keyCount) keys")
       .toolbar { toolbar }
       .hidesWindowTitle()
       .sheet(isPresented: $creating) {
@@ -213,12 +211,14 @@ struct KeysBrowserView: View {
   }
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-    ToolbarItem(placement: .navigation) {
-      KitTitle(
-        browser.ref.name, meta: [browser.connection.profile.displayName, "\(keyCount) keys"], systemImage: "key",
-        hue: browser.engine.hue, status: browser.isLoading && browser.page != nil ? .working : .idle)
-    }
-    .kitBare()
+    #if os(macOS)
+      ToolbarItem(placement: .navigation) {
+        KitTitle(
+          browser.ref.name, meta: [browser.connection.profile.displayName, "\(keyCount) keys"], systemImage: "key",
+          hue: browser.engine.hue, status: browser.isLoading && browser.page != nil ? .working : .idle)
+      }
+      .kitBare()
+    #endif
     #if os(macOS)
       if #available(macOS 26, *) {
         ToolbarSpacer(.flexible)
