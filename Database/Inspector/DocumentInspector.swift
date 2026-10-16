@@ -47,8 +47,8 @@ struct DocumentInspector: View {
           }
           Button("Copy as JSON") { KitPasteboard.copy(document.text(.extendedJSON, indent: 2)) }
           if browser.isEditable && record.key != nil {
-            Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
-              .accessibilityLabel("Delete Document…")
+            Button("Delete Document…", systemImage: "trash", role: .destructive, action: onDelete)
+              .labelStyle(.iconOnly)
           }
         }
         InspectorNote("_id can't be changed. Every other field is editable, and you see the change before it's saved.")

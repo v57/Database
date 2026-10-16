@@ -147,8 +147,8 @@ struct RedisValueView: View {
     if editable, model.value != .none {
       ActionBar {
         Button("Rename Key…") { renaming = key }
-        Button(role: .destructive) { deleting = true } label: { Image(systemName: "trash") }
-          .accessibilityLabel("Delete Key…")
+        Button("Delete Key…", systemImage: "trash", role: .destructive) { deleting = true }
+          .labelStyle(.iconOnly)
       }
     }
   }
