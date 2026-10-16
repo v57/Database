@@ -54,11 +54,11 @@ struct PipelineView: View {
       .buttonStyle(.kit)
       Menu("Export") {
         if pipeline.isSQL {
-          Button("Copy SQL") { Clipboard.copy((try? pipeline.sql()) ?? "") }
+          Button("Copy SQL") { KitPasteboard.copy((try? pipeline.sql()) ?? "") }
         } else {
-          Button("Copy as JavaScript") { Clipboard.copy(pipeline.javaScript) }
+          Button("Copy as JavaScript") { KitPasteboard.copy(pipeline.javaScript) }
           Button("Copy as JSON") {
-            Clipboard.copy(BSON.array(((try? pipeline.stages()) ?? []).map(BSON.document)).text(.extendedJSON, indent: 2))
+            KitPasteboard.copy(BSON.array(((try? pipeline.stages()) ?? []).map(BSON.document)).text(.extendedJSON, indent: 2))
           }
         }
       }
@@ -443,7 +443,7 @@ struct OutputPanel: View {
       }
       .kitSurface(.card)
       Button(pipeline.isSQL ? "Copy SQL" : "Copy as JavaScript") {
-        Clipboard.copy(pipeline.isSQL ? ((try? pipeline.sql()) ?? "") : pipeline.javaScript)
+        KitPasteboard.copy(pipeline.isSQL ? ((try? pipeline.sql()) ?? "") : pipeline.javaScript)
       }
       .buttonStyle(.kit)
     }

@@ -304,7 +304,7 @@ struct KeysBrowserView: View {
       .contextMenu {
         let keys = browser.selection.filter { $0.hasPrefix("key:") }.map { String($0.dropFirst(4)) }
         if !keys.isEmpty {
-          Button("Copy Key Name\(keys.count == 1 ? "" : "s")") { Clipboard.copy(keys.joined(separator: "\n")) }
+          Button("Copy Key Name\(keys.count == 1 ? "" : "s")") { KitPasteboard.copy(keys.joined(separator: "\n")) }
           if browser.isEditable {
             Button("Delete \(keys.count == 1 ? "Key" : "\(keys.count) Keys")", systemImage: "trash", role: .destructive) {
               Task { await model?.perform(keys.map { .delete(key: $0) }) }

@@ -132,7 +132,7 @@ struct SSHHostSheet: View {
       }
       if let line = SSHHostSheet.publicKeyLine(keyID, keys: app.keys) {
         FormRow("Public key", help: "Add this line to ~/.ssh/authorized_keys on the SSH server", systemImage: "doc.on.doc", hue: .gray) {
-          Button("Copy") { Clipboard.copy(line) }.buttonStyle(.kit).controlSize(.small)
+          Button("Copy") { KitPasteboard.copy(line) }.buttonStyle(.kit).controlSize(.small)
         }
       }
       if let keyError {

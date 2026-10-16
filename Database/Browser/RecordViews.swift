@@ -98,9 +98,9 @@ struct RecordMenu: View {
   var body: some View {
     let records = browser.records.filter { ids.contains($0.id) }
     if records.count == 1, let record = records.first {
-      Button("Copy as JSON", systemImage: "doc.on.doc") { Clipboard.copy(Exporter.json(record, fields: browser.fields)) }
+      Button("Copy as JSON", systemImage: "doc.on.doc") { KitPasteboard.copy(Exporter.json(record, fields: browser.fields)) }
       if browser.engine.family == .sql || browser.engine.family == .wideColumn {
-        Button("Copy as INSERT") { Clipboard.copy(Exporter.insert(record, browser: browser)) }
+        Button("Copy as INSERT") { KitPasteboard.copy(Exporter.insert(record, browser: browser)) }
       }
       Menu("Filter by Value") {
         ForEach(browser.visibleFields.prefix(12)) { field in
@@ -113,7 +113,7 @@ struct RecordMenu: View {
       }
     } else if !records.isEmpty {
       Button("Copy \(records.count) as JSON", systemImage: "doc.on.doc") {
-        Clipboard.copy("[\n" + records.map { Exporter.json($0, fields: browser.fields) }.joined(separator: ",\n") + "\n]")
+        KitPasteboard.copy("[\n" + records.map { Exporter.json($0, fields: browser.fields) }.joined(separator: ",\n") + "\n]")
       }
     }
     if browser.isEditable, records.contains(where: { $0.key != nil }) {

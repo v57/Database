@@ -139,7 +139,7 @@ struct QueryTabView: View {
           Menu {
             Button("CSV…") { onExport(ExportDocument(text: Export.csv(fields: table.0, rows: table.1), type: .commaSeparatedText, name: tab.title + ".csv")) }
             Button("JSON…") { onExport(ExportDocument(text: Export.json(fields: table.0, rows: table.1), type: .json, name: tab.title + ".json")) }
-            Button("Copy as CSV") { Clipboard.copy(Export.csv(fields: table.0, rows: table.1)) }
+            Button("Copy as CSV") { KitPasteboard.copy(Export.csv(fields: table.0, rows: table.1)) }
           } label: {
             Label("Export", systemImage: "square.and.arrow.up")
           }

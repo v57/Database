@@ -237,7 +237,7 @@ struct ConnectionSheet: View {
     if host.auth != .password,
       let line = SSHHostSheet.publicKeyLine(host.auth == .importedKey ? host.keyID.flatMap(UUID.init(uuidString:)) : nil, keys: app.keys)
     {
-      Button("Copy Public Key") { Clipboard.copy(line) }
+      Button("Copy Public Key") { KitPasteboard.copy(line) }
     }
     if isSelected(host), profile.ssh.hostKeyFingerprint != nil {
       Button("Forget Host Key") { profile.ssh.hostKeyFingerprint = nil }

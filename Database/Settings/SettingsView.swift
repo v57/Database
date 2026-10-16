@@ -48,7 +48,7 @@ struct SSHKeysView: View {
       ForEach(app.keys.keys) { key in
         FormRow(key.name, help: "\(key.kind.label) · \(key.fingerprint)", systemImage: "key", hue: .brown) {
           HStack(spacing: 2) {
-            Button("Copy Public Key", systemImage: "doc.on.doc") { Clipboard.copy(key.publicKeyLine) }
+            Button("Copy Public Key", systemImage: "doc.on.doc") { KitPasteboard.copy(key.publicKeyLine) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = key }
           }
           .buttonStyle(.kitIcon)

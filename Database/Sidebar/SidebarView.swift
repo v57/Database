@@ -198,7 +198,7 @@ private struct ConnectionMenu: View {
     Divider()
     Button("Edit Connection…", systemImage: "pencil") { window.editingProfileID = connection.id }
     Button("Duplicate", systemImage: "plus.square.on.square") { app.duplicate(connection.id) }
-    Button("Copy Link", systemImage: "link") { Clipboard.copy(ConnectionLink.url(for: connection.profile)) }
+    Button("Copy Link", systemImage: "link") { KitPasteboard.copy(ConnectionLink.url(for: connection.profile)) }
     Divider()
     Button("Delete…", systemImage: "trash", role: .destructive, action: onDelete)
   }
@@ -400,16 +400,5 @@ private struct TreeNote: View {
       .lineLimit(4)
       .padding(.leading, 8 + 14 + CGFloat(level) * 14)
       .padding(.vertical, 4)
-  }
-}
-
-enum Clipboard {
-  static func copy(_ text: String) {
-    #if os(macOS)
-      NSPasteboard.general.clearContents()
-      NSPasteboard.general.setString(text, forType: .string)
-    #else
-      UIPasteboard.general.string = text
-    #endif
   }
 }

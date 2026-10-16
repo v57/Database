@@ -295,7 +295,7 @@ struct PairsEditor: View {
             }
             Button("Delete \(field)", role: .destructive) { onDelete(field) }
           }
-          Button("Copy Value") { Clipboard.copy(value) }
+          Button("Copy Value") { KitPasteboard.copy(value) }
         }
         Rectangle().fill(.kitSeparator).frame(height: 0.5).padding(.leading, 12)
       }

@@ -45,7 +45,7 @@ struct DocumentInspector: View {
           if browser.isEditable && record.key != nil {
             Button("Edit", action: startEditing)
           }
-          Button("Copy as JSON") { Clipboard.copy(document.text(.extendedJSON, indent: 2)) }
+          Button("Copy as JSON") { KitPasteboard.copy(document.text(.extendedJSON, indent: 2)) }
           if browser.isEditable && record.key != nil {
             Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
               .accessibilityLabel("Delete Document…")

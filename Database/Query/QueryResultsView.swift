@@ -96,12 +96,12 @@ struct ResultTable: View {
     .contextMenu {
       Button("Copy Rows as CSV") {
         let picked = selection.sorted().compactMap { rows.indices.contains($0) ? rows[$0] : nil }
-        Clipboard.copy(Export.csv(fields: fields, rows: picked))
+        KitPasteboard.copy(Export.csv(fields: fields, rows: picked))
       }
       .disabled(selection.isEmpty)
       Button("Copy Rows as JSON") {
         let picked = selection.sorted().compactMap { rows.indices.contains($0) ? rows[$0] : nil }
-        Clipboard.copy(Export.json(fields: fields, rows: picked))
+        KitPasteboard.copy(Export.json(fields: fields, rows: picked))
       }
       .disabled(selection.isEmpty)
     }
