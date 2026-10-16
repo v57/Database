@@ -135,11 +135,7 @@ struct ConditionsEditor: View {
         HStack(spacing: 6) {
           if index > 0 { Text("and").foregroundStyle(.kitSecondary) }
           FieldField(value: condition.field, fields: fields) { set(index) { $0.field = $1 }($0) }
-          Picker("Condition", selection: Binding(get: { condition.op }, set: { op in var c = conditions; c[index].op = op; onChange(c) })) {
-            ForEach(FilterOp.allCases) { Text($0.label(for: category(condition.field))).tag($0) }
-          }
-          .labelsHidden()
-          .fixedSize()
+          KitPicker("Condition", selection: Binding(get: { condition.op }, set: { op in var c = conditions; c[index].op = op; onChange(c) }), options: FilterOp.allCases.map { ($0.label(for: category(condition.field)), $0) })
           if condition.op.needsValue {
             TextField("Value", text: Binding(get: { condition.value }, set: { v in var c = conditions; c[index].value = v; onChange(c) }))
               .kitField()
@@ -205,11 +201,7 @@ struct GroupEditor: View {
             .kitField(mono: true)
             .frame(width: 110)
           Text("=").foregroundStyle(.kitSecondary)
-          Picker("Function", selection: Binding(get: { output.function }, set: { f in var o = outputs; o[index].function = f; onChange(by, o) })) {
-            ForEach(GroupOutput.Function.allCases) { Text($0.label).tag($0) }
-          }
-          .labelsHidden()
-          .fixedSize()
+          KitPicker("Function", selection: Binding(get: { output.function }, set: { f in var o = outputs; o[index].function = f; onChange(by, o) }), options: GroupOutput.Function.allCases.map { ($0.label, $0) })
           if output.function != .count {
             FieldField(value: output.field, fields: fields) { v in var o = outputs; o[index].field = v; onChange(by, o) }
           }
@@ -237,12 +229,9 @@ struct SortEditor: View {
         HStack(spacing: 6) {
           if index > 0 { Text("then").foregroundStyle(.kitSecondary) }
           FieldField(value: key.field, fields: fields) { v in var k = keys; k[index].field = v; onChange(k) }
-          Picker("Direction", selection: Binding(get: { key.ascending }, set: { a in var k = keys; k[index].ascending = a; onChange(k) })) {
-            Text("Lowest first").tag(true)
-            Text("Highest first").tag(false)
-          }
-          .labelsHidden()
-          .fixedSize()
+          KitPicker(
+            "Direction", selection: Binding(get: { key.ascending }, set: { a in var k = keys; k[index].ascending = a; onChange(k) }),
+            options: [("Lowest first", true), ("Highest first", false)])
           if keys.count > 1 {
             Button("Remove", systemImage: "minus.circle") { var k = keys; k.remove(at: index); onChange(k) }
               .buttonStyle(.kitIcon)
@@ -341,11 +330,7 @@ struct FormulaBlock: View {
       HStack(spacing: 6) {
         TextField("Name", text: binding(\.name)).kitField(mono: true).frame(width: 110)
         Text("=").foregroundStyle(.kitSecondary)
-        Picker("Formula", selection: binding(\.kind)) {
-          ForEach(FieldFormula.Kind.allCases) { Text($0.label).tag($0) }
-        }
-        .labelsHidden()
-        .fixedSize()
+        KitPicker("Formula", selection: binding(\.kind), options: FieldFormula.Kind.allCases.map { ($0.label, $0) })
         Text(formula.kind.op).kitFont(.monoSmall).foregroundStyle(.kitSecondary)
         Spacer()
         Button("Remove", systemImage: "minus.circle", action: onRemove).buttonStyle(.kitIcon)
@@ -364,11 +349,7 @@ struct FormulaBlock: View {
           }
           GridRow {
             Text("unit").foregroundStyle(.kitSecondary)
-            Picker("Unit", selection: binding(\.unit)) {
-              ForEach(["year", "quarter", "month", "week", "day", "hour", "minute"], id: \.self) { Text($0.capitalized).tag($0) }
-            }
-            .labelsHidden()
-            .fixedSize()
+            KitPicker("Unit", selection: binding(\.unit), options: ["year", "quarter", "month", "week", "day", "hour", "minute"].map { ($0.capitalized, $0) })
           }
           GridRow {
             Text("time zone").foregroundStyle(.kitSecondary)
@@ -379,11 +360,7 @@ struct FormulaBlock: View {
             Text("if").foregroundStyle(.kitSecondary)
             HStack(spacing: 6) {
               FieldField(value: formula.field, fields: fields) { onChange(with(\.field, $0)) }
-              Picker("Compare", selection: binding(\.compare)) {
-                ForEach([FilterOp.equals, .notEquals, .greater, .greaterOrEqual, .less, .lessOrEqual]) { Text($0.label(for: .integer)).tag($0) }
-              }
-              .labelsHidden()
-              .fixedSize()
+              KitPicker("Compare", selection: binding(\.compare), options: [FilterOp.equals, .notEquals, .greater, .greaterOrEqual, .less, .lessOrEqual].map { ($0.label(for: .integer), $0) })
               TextField("Value", text: binding(\.compareValue)).kitField().frame(width: 70)
             }
           }
@@ -409,14 +386,9 @@ struct FormulaBlock: View {
             Text("value").foregroundStyle(.kitSecondary)
             HStack {
               FieldField(value: formula.field, fields: fields) { onChange(with(\.field, $0)) }
-              Picker("Operation", selection: binding(\.mathOp)) {
-                Text("+").tag("$add")
-                Text("−").tag("$subtract")
-                Text("×").tag("$multiply")
-                Text("÷").tag("$divide")
-              }
-              .labelsHidden()
-              .fixedSize()
+              KitPicker(
+                "Operation", selection: binding(\.mathOp),
+                options: [("+", "$add"), ("−", "$subtract"), ("×", "$multiply"), ("÷", "$divide")])
               TextField("Field or number", text: binding(\.otherField)).kitField().frame(width: 110)
             }
           }

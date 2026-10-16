@@ -76,11 +76,7 @@ struct DocumentInspector: View {
                   .kitField(mono: true)
                   .frame(maxWidth: 160)
               }
-              Picker("Type", selection: $row.type) {
-                ForEach(documentFieldTypes, id: \.self) { Text($0).tag($0) }
-              }
-              .labelsHidden()
-              .fixedSize()
+              KitPicker("Type", selection: $row.type, options: documentFieldTypes.map { ($0, $0) })
               .disabled(row.name == "_id")
               Spacer()
               if row.name != "_id" {

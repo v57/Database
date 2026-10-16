@@ -178,13 +178,7 @@ struct ExpiryEditor: View {
       Text("Expires in").kitFont(.headline)
       HStack {
         TextField("Amount", value: $amount, format: .number).kitField(mono: true).frame(width: 70)
-        Picker("Unit", selection: $unit) {
-          Text("seconds").tag(1)
-          Text("minutes").tag(60)
-          Text("hours").tag(3600)
-          Text("days").tag(86400)
-        }
-        .labelsHidden()
+        KitPicker("Unit", selection: $unit, options: [("seconds", 1), ("minutes", 60), ("hours", 3600), ("days", 86400)])
       }
       HStack {
         if hasExpiry { Button("Never Expire") { onSet(nil) }.buttonStyle(.kit) }

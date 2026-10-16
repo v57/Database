@@ -140,20 +140,10 @@ struct AddFilterView: View {
     VStack(alignment: .leading, spacing: 10) {
       FormCard("Add Filter") {
         FormRow("Field", systemImage: "tablecells", hue: .gray) {
-          Picker("Field", selection: $field) {
-            ForEach(browser.fields) { field in
-              Text(field.keyRole != nil ? "\(field.name) (key)" : field.name).tag(field.name)
-            }
-          }
-          .labelsHidden()
-          .fixedSize()
+          KitPicker("Field", selection: $field, options: browser.fields.map { ($0.keyRole != nil ? "\($0.name) (key)" : $0.name, $0.name) })
         }
         FormRow("Condition", systemImage: "line.3.horizontal.decrease", hue: .accent) {
-          Picker("Condition", selection: $op) {
-            ForEach(ops) { Text($0.label(for: selectedField?.category ?? .text)).tag($0) }
-          }
-          .labelsHidden()
-          .fixedSize()
+          KitPicker("Condition", selection: $op, options: ops.map { ($0.label(for: selectedField?.category ?? .text), $0) })
         }
         if op.needsValue {
           if selectedField?.category == .boolean {
@@ -223,7 +213,7 @@ struct SortMenu: View {
   }
 
   var body: some View {
-    Menu {
+    KitMenuButton(label, systemImage: "arrow.up.arrow.down") {
       ForEach(browser.fields) { field in
         Menu(field.name) {
           Button(field.category.isTemporal ? "Oldest First" : field.category.isNumeric ? "Lowest First" : "A to Z") {
@@ -243,21 +233,20 @@ struct SortMenu: View {
           Task { await browser.reload() }
         }
       }
-    } label: {
-      Label(label, systemImage: "arrow.up.arrow.down")
     }
-    .menuStyle(.button)
-    .buttonStyle(.kit)
-    .menuIndicator(.hidden)
-    .fixedSize()
   }
 }
 
 struct FieldsMenu: View {
   let browser: BrowserModel
 
+  private var label: String {
+    let shown = browser.fields.count - browser.request.hiddenFields.count
+    return browser.request.hiddenFields.isEmpty ? "Fields" : "\(shown) of \(browser.fields.count) fields"
+  }
+
   var body: some View {
-    Menu {
+    KitMenuButton(label, systemImage: "eye") {
       ForEach(browser.fields) { field in
         Toggle(field.name, isOn: Binding(
           get: { !browser.request.hiddenFields.contains(field.name) },
@@ -267,14 +256,7 @@ struct FieldsMenu: View {
         Divider()
         Button("Show All Fields") { Task { await browser.showAllFields() } }
       }
-    } label: {
-      let shown = browser.fields.count - browser.request.hiddenFields.count
-      Label(browser.request.hiddenFields.isEmpty ? "Fields" : "\(shown) of \(browser.fields.count) fields", systemImage: "eye")
     }
-    .menuStyle(.button)
-    .buttonStyle(.kit)
-    .menuIndicator(.hidden)
-    .fixedSize()
   }
 }
 

@@ -22,11 +22,7 @@ struct GeneralSettings: View {
   var body: some View {
     FormCard(footer: "Production connections always show their changes for review before saving.") {
       FormRow("Items per page", help: "How many rows, documents or keys a page loads", systemImage: "list.number", hue: .gray) {
-        Picker("Items per page", selection: $pageSize) {
-          ForEach([25, 50, 100, 200, 500], id: \.self) { Text("\($0)").tag($0) }
-        }
-        .labelsHidden()
-        .fixedSize()
+        KitPicker("Items per page", selection: $pageSize, options: [25, 50, 100, 200, 500].map { ("\($0)", $0) })
       }
     }
     FormCard("DuckDB") {
