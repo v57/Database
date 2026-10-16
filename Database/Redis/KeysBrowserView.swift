@@ -119,10 +119,15 @@ struct KeysBrowserView: View {
 
   var body: some View {
     split
-      .navigationTitle(browser.ref.name)
       .navigationMeta("\(browser.connection.profile.displayName) · \(keyCount) keys")
+      #if os(macOS)
+        .kitToolbarTitle(
+          browser.ref.name, meta: [browser.connection.profile.displayName, "\(keyCount) keys"], systemImage: "key",
+          hue: browser.engine.hue, status: browser.isLoading && browser.page != nil ? .working : .idle)
+      #else
+        .navigationTitle(browser.ref.name)
+      #endif
       .toolbar { toolbar }
-      .hidesWindowTitle()
       .sheet(isPresented: $creating) {
         if let model { NewKeySheet(model: model).componentKit(accent: .databaseAccent) }
       }
@@ -212,30 +217,16 @@ struct KeysBrowserView: View {
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
     #if os(macOS)
-      ToolbarItem(placement: .navigation) {
-        KitTitle(
-          browser.ref.name, meta: [browser.connection.profile.displayName, "\(keyCount) keys"], systemImage: "key",
-          hue: browser.engine.hue, status: browser.isLoading && browser.page != nil ? .working : .idle)
-      }
-      .kitBare()
-    #endif
-    #if os(macOS)
       if #available(macOS 26, *) {
         ToolbarSpacer(.flexible)
       }
     #endif
     ToolbarItemGroup(placement: .primaryAction) {
       ToolGroup(iconOnly: true) {
-        Button {
+        Button(commandLine ? "Hide Command Line" : "Show Command Line", systemImage: "apple.terminal") {
           commandLine.toggle()
-        } label: {
-          Label {
-            Text(commandLine ? "Hide Command Line" : "Show Command Line")
-          } icon: {
-            Image(systemName: "apple.terminal")
-              .foregroundStyle(commandLine ? AnyShapeStyle(Hue.accent.text) : AnyShapeStyle(.kitLabel))
-          }
         }
+        .kitToolOn(commandLine)
         Button("Refresh", systemImage: "arrow.clockwise") {
           Task {
             await browser.reload()
@@ -247,7 +238,7 @@ struct KeysBrowserView: View {
         }
       }
     }
-    .kitBare()
+    .kitToolbarItem()
   }
 
   private var typeFilter: Binding<String?> {

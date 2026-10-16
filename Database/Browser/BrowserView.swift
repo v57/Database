@@ -29,10 +29,13 @@ struct BrowserView: View {
 
   private var titled: some View {
     split
-      .navigationTitle(browser.ref.name)
       .navigationMeta(subtitle)
+      #if os(macOS)
+        .kitToolbarTitle(browser.ref.name, meta: [subtitle], systemImage: browser.ref.symbol, hue: browser.engine.hue, status: titleStatus)
+      #else
+        .navigationTitle(browser.ref.name)
+      #endif
       .toolbar { toolbar }
-      .hidesWindowTitle()
   }
 
   @ViewBuilder private var split: some View {
@@ -204,12 +207,6 @@ struct BrowserView: View {
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
     #if os(macOS)
-      ToolbarItem(placement: .navigation) {
-        KitTitle(browser.ref.name, meta: subtitle, systemImage: browser.ref.symbol, hue: browser.engine.hue, status: titleStatus)
-      }
-      .kitBare()
-    #endif
-    #if os(macOS)
       if #available(macOS 26, *) {
         ToolbarSpacer(.flexible)
       }
@@ -238,16 +235,13 @@ struct BrowserView: View {
       }
       ToolGroup(iconOnly: true) {
         if browser.mode == .find && sizeClass != .compact {
-          Button {
+          Button(
+            browser.showsQueryEditor ? "Hide Query Editor" : "Show Query Editor",
+            systemImage: "chevron.left.forwardslash.chevron.right"
+          ) {
             browser.showsQueryEditor.toggle()
-          } label: {
-            Label {
-              Text(browser.showsQueryEditor ? "Hide Query Editor" : "Show Query Editor")
-            } icon: {
-              Image(systemName: "chevron.left.forwardslash.chevron.right")
-                .foregroundStyle(browser.showsQueryEditor ? AnyShapeStyle(Hue.accent.text) : AnyShapeStyle(.kitLabel))
-            }
           }
+          .kitToolOn(browser.showsQueryEditor)
         }
         Button("Refresh", systemImage: "arrow.clockwise") { Task { await browser.reload() } }
         if browser.isEditable && browser.mode == .find {
@@ -255,7 +249,7 @@ struct BrowserView: View {
         }
       }
     }
-    .kitBare()
+    .kitToolbarItem()
   }
 
   /// The title's live icon: the arc while the page loads.
