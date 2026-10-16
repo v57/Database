@@ -22,8 +22,8 @@ struct RecordTable: View {
     KitGrid(
       browser.records, columns: browser.visibleFields.map(column), selection: $browser.selection, sort: sort,
       rowState: rowState)
-    .contextMenu {
-      RecordMenu(browser: browser, ids: browser.selection, onDelete: onDelete)
+    .rowContextMenu { ids in
+      RecordMenu(browser: browser, ids: ids, onDelete: onDelete)
     }
   }
 
@@ -35,21 +35,29 @@ struct RecordTable: View {
   private func column(_ field: FieldInfo) -> KitGridColumn<Record> {
     let width = idealWidth(field)
     let image = field.isPrimaryKey || field.keyRole != nil ? "key" : nil
-    if field.isStatus {
-      return KitGridColumn(field.name, id: field.name, systemImage: image, width: width, content: { record in
-        StatusCell(value: browser.pendingValue(for: record, field: field.name) ?? record[field.name])
-      })
-    }
     let editable = browser.isEditable && !field.isPrimaryKey && !field.isGenerated && field.keyRole == nil
+    if field.isStatus {
+      let status = { (record: Record) in StatusCell(value: browser.pendingValue(for: record, field: field.name) ?? record[field.name]) }
+      guard editable else {
+        return KitGridColumn(field.name, id: field.name, systemImage: image, width: width, content: status)
+      }
+      // A status word stays a chip, and still edits in place as text.
+      return KitGridColumn(
+        field.name, id: field.name, systemImage: image, width: width, value: { cellText(record: $0, field: field) },
+        edit: { record, text in browser.stageCell(record, field: field, text: text) }, content: status)
+    }
     return KitGridColumn(
       field.name, id: field.name, systemImage: image, width: width,
       alignment: field.category.isNumeric ? .trailing : .leading, mono: field.isMono,
-      value: { record in
-        let value = browser.pendingValue(for: record, field: field.name) ?? record[field.name]
-        guard let value, !value.isNull, value != .unset else { return nil }
-        return value.displayText
-      },
+      value: { cellText(record: $0, field: field) },
       edit: editable ? { record, text in browser.stageCell(record, field: field, text: text) } : nil)
+  }
+
+  /// A cell's text as its field shows and edits it, with an unsaved edit in place; `nil` for NULL.
+  private func cellText(record: Record, field: FieldInfo) -> String? {
+    let value = browser.pendingValue(for: record, field: field.name) ?? record[field.name]
+    guard let value, !value.isNull, value != .unset else { return nil }
+    return value.displayText
   }
 
   private func idealWidth(_ field: FieldInfo) -> CGFloat {
