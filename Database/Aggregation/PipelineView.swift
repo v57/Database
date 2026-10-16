@@ -163,7 +163,7 @@ struct StepCard: View {
         }
         Toggle("Step \(index + 1) on", isOn: Binding(get: { step.isEnabled }, set: { on in pipeline.update(step.id) { $0.isEnabled = on } }))
           .toggleStyle(.kitSwitch)
-          .labelsHidden()
+          .kitLabelsHidden()
         Menu {
           Button("Run Through This Step", systemImage: "play") { pipeline.select(step.id) }
           Button("Move Up", systemImage: "arrow.up") { pipeline.move(step.id, by: -1) }.disabled(index == 0)
@@ -348,7 +348,7 @@ struct PipelineSettings: View {
   var body: some View {
     FormCard("Pipeline settings") {
       FormRow("Big sorts use disk", systemImage: "internaldrive", hue: .gray) {
-        Toggle("Big sorts use disk", isOn: $pipeline.allowDiskUse).toggleStyle(.kitSwitch).labelsHidden()
+        Toggle("Big sorts use disk", isOn: $pipeline.allowDiskUse).toggleStyle(.kitSwitch).kitLabelsHidden()
       }
       FormRow("Time limit", systemImage: "timer", hue: .orange) {
         KitStepper("Time limit", value: $pipeline.maxTimeSeconds, in: 0...3600, step: 5) { $0 == 0 ? "none" : "\($0) s" }
@@ -360,7 +360,7 @@ struct PipelineSettings: View {
       }
       if !pipeline.collationLocale.isEmpty {
         FormRow("Ignore case", systemImage: "textformat.size", hue: .gray) {
-          Toggle("Ignore case", isOn: $pipeline.caseInsensitive).toggleStyle(.kitSwitch).labelsHidden()
+          Toggle("Ignore case", isOn: $pipeline.caseInsensitive).toggleStyle(.kitSwitch).kitLabelsHidden()
         }
       }
       FormRow("Tag in server logs", systemImage: "tag", hue: .gray) {
