@@ -29,7 +29,7 @@ struct FilterBar: View {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: 6) {
           ForEach(browser.request.filters) { filter in
-            FilterToken(text: filter.summary(category: browser.category(of: filter.field))) {
+            FilterToken(filter.summary(category: browser.category(of: filter.field))) {
               Task { await browser.removeFilter(filter.id) }
             }
           }
@@ -108,21 +108,6 @@ struct SearchScope: KitOption {
 
   static func == (a: Self, b: Self) -> Bool { a.field == b.field }
   func hash(into hasher: inout Hasher) { hasher.combine(field) }
-}
-
-/// An active filter: the condition as a chip, and its remove button.
-struct FilterToken: View {
-  let text: String
-  let onRemove: () -> Void
-
-  var body: some View {
-    HStack(spacing: 0) {
-      Chip(text, systemImage: "line.3.horizontal.decrease", hue: .accent)
-      Button("Remove filter: \(text)", systemImage: "xmark", action: onRemove)
-        .buttonStyle(.kitIcon)
-        .controlSize(.small)
-    }
-  }
 }
 
 /// Title and icon, or just the icon.
