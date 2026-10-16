@@ -265,11 +265,9 @@ struct BrowserView: View {
       KitSegmented(selection: modeSelection, segments: BrowserModel.Mode.allCases.map {
         KitSegment($0.rawValue, value: $0, systemImage: $0 == .find ? "magnifyingglass" : "square.stack.3d.up")
       })
-      .kitSegmentedStyle(.capsule)
     }
     if browser.mode == .find {
       KitSegmented(selection: $browser.viewMode, options: availableModes.map { ($0.rawValue, $0) })
-        .kitSegmentedStyle(.capsule)
     }
   }
 
