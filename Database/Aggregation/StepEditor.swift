@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
@@ -12,24 +13,19 @@ struct StepEditor: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       if step.form != nil {
-        Picker("Edit as", selection: $showsText) {
-          Text("Builder").tag(false)
-          Text("Text").tag(true)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
+        KitSegmented(selection: $showsText, options: [("Builder", false), ("Text", true)])
       }
       if let form = step.form, !showsText {
         formEditor(form)
       } else {
         CodeEditor(text: Binding(get: { step.text }, set: { pipeline.setText(step.id, $0) }), language: EngineKind.mongodb.highlighting, completions: [])
           .frame(minHeight: 80, idealHeight: 120, maxHeight: 260)
-          .groupBox()
+          .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+          .clipShape(RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
         if let error = parseError {
-          Label(error, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.red)
+          Label(error, systemImage: "exclamationmark.circle").kitFont(.caption).foregroundStyle(Hue.red.text)
         } else if step.form == nil {
-          Text("Stage body in MongoDB Shell syntax, without the \(step.kind.op) key.").font(.caption).foregroundStyle(.secondary)
+          Text("Stage body in MongoDB Shell syntax, without the \(step.kind.op) key.").kitFont(.caption)
         }
       }
     }
@@ -92,7 +88,7 @@ struct StepEditor: View {
     case .count(let name):
       HStack {
         Text("Count as")
-        TextField("Name", text: Binding(get: { name }, set: { update(.count($0)) })).textFieldStyle(.roundedBorder).frame(width: 140)
+        TextField("Name", text: Binding(get: { name }, set: { update(.count($0)) })).kitField().frame(width: 140)
       }
     }
   }
@@ -108,21 +104,22 @@ struct FieldField: View {
     HStack(spacing: 2) {
       TextField("Field", text: Binding(get: { value }, set: onChange))
         .textFieldStyle(.plain)
-        .font(.callout.monospaced())
+        .kitFont(.mono)
         .frame(minWidth: 70, maxWidth: 160)
       Menu {
         ForEach(fields, id: \.self) { name in Button(name) { onChange(name) } }
       } label: {
         Image(systemName: "chevron.down").imageScale(.small)
       }
-      .menuStyle(.borderlessButton)
+      .menuStyle(.button)
+      .buttonStyle(.plain)
       .menuIndicator(.hidden)
       .fixedSize()
     }
     .padding(.horizontal, 8)
-    .padding(.vertical, 3)
-    .foregroundStyle(Color.blue)
-    .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+    .frame(minHeight: KitMetrics.controlSmall)
+    .foregroundStyle(Hue.accent.text)
+    .background(Hue.accent.soft(0.12), in: RoundedRectangle(cornerRadius: KitMetrics.radiusSmall, style: .continuous))
   }
 }
 
@@ -136,7 +133,7 @@ struct ConditionsEditor: View {
     VStack(alignment: .leading, spacing: 6) {
       ForEach(Array(conditions.enumerated()), id: \.element.id) { index, condition in
         HStack(spacing: 6) {
-          if index > 0 { Text("and").foregroundStyle(.secondary) }
+          if index > 0 { Text("and").foregroundStyle(.kitSecondary) }
           FieldField(value: condition.field, fields: fields) { set(index) { $0.field = $1 }($0) }
           Picker("Condition", selection: Binding(get: { condition.op }, set: { op in var c = conditions; c[index].op = op; onChange(c) })) {
             ForEach(FilterOp.allCases) { Text($0.label(for: category(condition.field))).tag($0) }
@@ -145,21 +142,20 @@ struct ConditionsEditor: View {
           .fixedSize()
           if condition.op.needsValue {
             TextField("Value", text: Binding(get: { condition.value }, set: { v in var c = conditions; c[index].value = v; onChange(c) }))
-              .textFieldStyle(.roundedBorder)
+              .kitField()
               .frame(minWidth: 70, maxWidth: 160)
           }
           if conditions.count > 1 {
             Button("Remove condition", systemImage: "minus.circle") { var c = conditions; c.remove(at: index); onChange(c) }
-              .labelStyle(.iconOnly)
-              .buttonStyle(.borderless)
+              .buttonStyle(.kitIcon)
           }
         }
       }
       Button("Add Condition", systemImage: "plus") {
         onChange(conditions + [StepCondition(field: fields.first ?? "", op: .equals, value: "")])
       }
-      .buttonStyle(.borderless)
-      .font(.callout)
+      .buttonStyle(.kitPlain)
+      .controlSize(.small)
     }
   }
 
@@ -181,7 +177,7 @@ struct GroupEditor: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 6) {
-        Text("Group by").foregroundStyle(.secondary)
+        Text("Group by").foregroundStyle(.kitSecondary)
         ForEach(Array(by.enumerated()), id: \.offset) { index, field in
           FieldField(value: field, fields: fields) { value in
             var b = by
@@ -196,19 +192,19 @@ struct GroupEditor: View {
             Button("Group everything together") { onChange([], outputs) }
           }
         } label: {
-          Image(systemName: "plus.circle")
+          Label("Add a field to group by", systemImage: "plus.circle")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.kitIcon)
         .menuIndicator(.hidden)
         .fixedSize()
       }
       ForEach(Array(outputs.enumerated()), id: \.element.id) { index, output in
         HStack(spacing: 6) {
           TextField("Name", text: Binding(get: { output.name }, set: { v in var o = outputs; o[index].name = v; onChange(by, o) }))
-            .textFieldStyle(.roundedBorder)
-            .font(.callout.monospaced())
+            .kitField(mono: true)
             .frame(width: 110)
-          Text("=").foregroundStyle(.secondary)
+          Text("=").foregroundStyle(.kitSecondary)
           Picker("Function", selection: Binding(get: { output.function }, set: { f in var o = outputs; o[index].function = f; onChange(by, o) })) {
             ForEach(GroupOutput.Function.allCases) { Text($0.label).tag($0) }
           }
@@ -218,15 +214,14 @@ struct GroupEditor: View {
             FieldField(value: output.field, fields: fields) { v in var o = outputs; o[index].field = v; onChange(by, o) }
           }
           Button("Remove", systemImage: "minus.circle") { var o = outputs; o.remove(at: index); onChange(by, o) }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.borderless)
+            .buttonStyle(.kitIcon)
         }
       }
       Button("Add Output", systemImage: "plus") {
         onChange(by, outputs + [GroupOutput(name: "total", function: .sum, field: fields.first ?? "")])
       }
-      .buttonStyle(.borderless)
-      .font(.callout)
+      .buttonStyle(.kitPlain)
+      .controlSize(.small)
     }
   }
 }
@@ -240,7 +235,7 @@ struct SortEditor: View {
     VStack(alignment: .leading, spacing: 6) {
       ForEach(Array(keys.enumerated()), id: \.offset) { index, key in
         HStack(spacing: 6) {
-          if index > 0 { Text("then").foregroundStyle(.secondary) }
+          if index > 0 { Text("then").foregroundStyle(.kitSecondary) }
           FieldField(value: key.field, fields: fields) { v in var k = keys; k[index].field = v; onChange(k) }
           Picker("Direction", selection: Binding(get: { key.ascending }, set: { a in var k = keys; k[index].ascending = a; onChange(k) })) {
             Text("Lowest first").tag(true)
@@ -250,14 +245,13 @@ struct SortEditor: View {
           .fixedSize()
           if keys.count > 1 {
             Button("Remove", systemImage: "minus.circle") { var k = keys; k.remove(at: index); onChange(k) }
-              .labelStyle(.iconOnly)
-              .buttonStyle(.borderless)
+              .buttonStyle(.kitIcon)
           }
         }
       }
       Button("Then By…", systemImage: "plus") { onChange(keys + [SortKey(field: fields.first ?? "", ascending: true)]) }
-        .buttonStyle(.borderless)
-        .font(.callout)
+        .buttonStyle(.kitPlain)
+        .controlSize(.small)
     }
   }
 }
@@ -272,13 +266,9 @@ struct PickEditor: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       if !sql {
-        Picker("Mode", selection: Binding(get: { exclude }, set: { onChange(picked, $0) })) {
-          Text("Only these fields").tag(false)
-          Text("All but these").tag(true)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
+        KitSegmented(
+          selection: Binding(get: { exclude }, set: { onChange(picked, $0) }),
+          options: [("Only these fields", false), ("All but these", true)])
       }
       FlowLayoutFields(fields: fields, picked: Set(picked)) { name, on in
         onChange(on ? picked + [name] : picked.filter { $0 != name }, exclude)
@@ -296,21 +286,10 @@ struct FlowLayoutFields: View {
   var body: some View {
     LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
       ForEach(fields, id: \.self) { name in
-        let on = picked.contains(name)
-        Button {
-          onToggle(name, !on)
-        } label: {
-          HStack(spacing: 4) {
-            Image(systemName: on ? "checkmark.circle.fill" : "circle")
-            Text(name).lineLimit(1)
-          }
-          .font(.caption.monospaced())
-          .padding(.horizontal, 8)
-          .padding(.vertical, 4)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(on ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+        Toggle(isOn: Binding(get: { picked.contains(name) }, set: { onToggle(name, $0) })) {
+          Text(name).kitFont(.monoSmall).lineLimit(1)
         }
-        .buttonStyle(.plain)
+        .toggleStyle(.kitChip)
       }
     }
   }
@@ -338,7 +317,7 @@ struct FormulasEditor: View {
       Button("Add Field", systemImage: "plus") {
         onChange(formulas + [FieldFormula(name: "newField", kind: .copy, field: fields.first ?? "")])
       }
-      .buttonStyle(DashedCapsuleStyle())
+      .buttonStyle(.kit)
     }
   }
 }
@@ -360,31 +339,31 @@ struct FormulaBlock: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 6) {
-        TextField("Name", text: binding(\.name)).textFieldStyle(.roundedBorder).font(.callout.monospaced()).frame(width: 110)
-        Text("=").foregroundStyle(.secondary)
+        TextField("Name", text: binding(\.name)).kitField(mono: true).frame(width: 110)
+        Text("=").foregroundStyle(.kitSecondary)
         Picker("Formula", selection: binding(\.kind)) {
           ForEach(FieldFormula.Kind.allCases) { Text($0.label).tag($0) }
         }
         .labelsHidden()
         .fixedSize()
-        Text(formula.kind.op).font(.codeSmall).foregroundStyle(.secondary)
+        Text(formula.kind.op).kitFont(.monoSmall).foregroundStyle(.kitSecondary)
         Spacer()
-        Button("Remove", systemImage: "minus.circle", action: onRemove).labelStyle(.iconOnly).buttonStyle(.borderless)
+        Button("Remove", systemImage: "minus.circle", action: onRemove).buttonStyle(.kitIcon)
       }
       Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
         switch formula.kind {
         case .copy, .size:
           GridRow {
-            Text("field").foregroundStyle(.secondary)
+            Text("field").foregroundStyle(.kitSecondary)
             FieldField(value: formula.field, fields: fields) { onChange(with(\.field, $0)) }
           }
         case .roundDate:
           GridRow {
-            Text("date").foregroundStyle(.secondary)
+            Text("date").foregroundStyle(.kitSecondary)
             FieldField(value: formula.field, fields: fields) { onChange(with(\.field, $0)) }
           }
           GridRow {
-            Text("unit").foregroundStyle(.secondary)
+            Text("unit").foregroundStyle(.kitSecondary)
             Picker("Unit", selection: binding(\.unit)) {
               ForEach(["year", "quarter", "month", "week", "day", "hour", "minute"], id: \.self) { Text($0.capitalized).tag($0) }
             }
@@ -392,12 +371,12 @@ struct FormulaBlock: View {
             .fixedSize()
           }
           GridRow {
-            Text("time zone").foregroundStyle(.secondary)
-            TextField("UTC", text: binding(\.timezone), prompt: Text("Europe/Lisbon")).textFieldStyle(.roundedBorder).frame(width: 160)
+            Text("time zone").foregroundStyle(.kitSecondary)
+            TextField("UTC", text: binding(\.timezone), prompt: Text("Europe/Lisbon")).kitField().frame(width: 160)
           }
         case .condition:
           GridRow {
-            Text("if").foregroundStyle(.secondary)
+            Text("if").foregroundStyle(.kitSecondary)
             HStack(spacing: 6) {
               FieldField(value: formula.field, fields: fields) { onChange(with(\.field, $0)) }
               Picker("Compare", selection: binding(\.compare)) {
@@ -405,20 +384,20 @@ struct FormulaBlock: View {
               }
               .labelsHidden()
               .fixedSize()
-              TextField("Value", text: binding(\.compareValue)).textFieldStyle(.roundedBorder).frame(width: 70)
+              TextField("Value", text: binding(\.compareValue)).kitField().frame(width: 70)
             }
           }
           GridRow {
-            Text("then").foregroundStyle(.secondary)
-            TextField("Then", text: binding(\.thenValue)).textFieldStyle(.roundedBorder).frame(width: 90)
+            Text("then").foregroundStyle(.kitSecondary)
+            TextField("Then", text: binding(\.thenValue)).kitField().frame(width: 90)
           }
           GridRow {
-            Text("else").foregroundStyle(.secondary)
-            TextField("Else", text: binding(\.elseValue)).textFieldStyle(.roundedBorder).frame(width: 90)
+            Text("else").foregroundStyle(.kitSecondary)
+            TextField("Else", text: binding(\.elseValue)).kitField().frame(width: 90)
           }
         case .concat:
           GridRow {
-            Text("join").foregroundStyle(.secondary)
+            Text("join").foregroundStyle(.kitSecondary)
             HStack {
               FieldField(value: formula.field, fields: fields) { onChange(with(\.field, $0)) }
               Text("and")
@@ -427,7 +406,7 @@ struct FormulaBlock: View {
           }
         case .math:
           GridRow {
-            Text("value").foregroundStyle(.secondary)
+            Text("value").foregroundStyle(.kitSecondary)
             HStack {
               FieldField(value: formula.field, fields: fields) { onChange(with(\.field, $0)) }
               Picker("Operation", selection: binding(\.mathOp)) {
@@ -438,21 +417,21 @@ struct FormulaBlock: View {
               }
               .labelsHidden()
               .fixedSize()
-              TextField("Field or number", text: binding(\.otherField)).textFieldStyle(.roundedBorder).frame(width: 110)
+              TextField("Field or number", text: binding(\.otherField)).kitField().frame(width: 110)
             }
           }
         case .raw:
           GridRow {
-            Text("expression").foregroundStyle(.secondary)
-            TextField("{ $toUpper: \"$name\" }", text: binding(\.raw)).textFieldStyle(.roundedBorder).font(.callout.monospaced())
+            Text("expression").foregroundStyle(.kitSecondary)
+            TextField("{ $toUpper: \"$name\" }", text: binding(\.raw)).kitField(mono: true)
           }
         }
       }
       .padding(.leading, 14)
-      .overlay(alignment: .leading) { Rectangle().fill(Color.purple.opacity(0.25)).frame(width: 2) }
+      .overlay(alignment: .leading) { Rectangle().fill(Hue.purple.soft(0.4)).frame(width: 2) }
     }
     .padding(10)
-    .groupBox()
+    .kitSurface(.card)
   }
 
   private func with<T>(_ keyPath: WritableKeyPath<FieldFormula, T>, _ value: T) -> FieldFormula {
@@ -479,11 +458,11 @@ struct LookupEditor: View {
   var body: some View {
     Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
       GridRow {
-        Text("From").foregroundStyle(.secondary)
+        Text("From").foregroundStyle(.kitSecondary)
         FieldField(value: from, fields: collections) { onChange($0, local, foreign, alias) }
       }
       GridRow {
-        Text("where").foregroundStyle(.secondary)
+        Text("where").foregroundStyle(.kitSecondary)
         HStack {
           FieldField(value: foreign, fields: ["_id"]) { onChange(from, local, $0, alias) }
           Text("matches")
@@ -491,8 +470,8 @@ struct LookupEditor: View {
         }
       }
       GridRow {
-        Text("save as").foregroundStyle(.secondary)
-        TextField("as", text: Binding(get: { alias }, set: { onChange(from, local, foreign, $0) })).textFieldStyle(.roundedBorder).frame(width: 140)
+        Text("save as").foregroundStyle(.kitSecondary)
+        TextField("as", text: Binding(get: { alias }, set: { onChange(from, local, foreign, $0) })).kitField().frame(width: 140)
       }
     }
   }

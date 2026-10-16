@@ -1,3 +1,4 @@
+import ComponentKit
 import CodeHighlighting
 import DatabaseKit
 import SwiftUI
@@ -17,25 +18,34 @@ struct QueryEditorView: View {
         QueryTabView(tab: tab, workspace: workspace, onExport: { exporting = $0 })
           .id(tab.id)
       } else {
-        ContentUnavailableView {
-          Label("No Query Open", systemImage: "terminal")
-        } actions: {
-          Button("New Query") { window.newQuery() }
+        EmptyState(systemImage: "terminal", title: "No Query Open") {
+          Button("New Query") { window.newQuery() }.buttonStyle(.kitPrimary)
         }
       }
     }
+    .kitPane(.content)
     .navigationTitle(workspace.selected?.title ?? "Query")
     #if os(macOS)
       .navigationSubtitle(workspace.connection.profile.displayName)
     #endif
     .toolbar { toolbar }
-    .alert("Save Query", isPresented: .init(get: { savingTitle != nil }, set: { if !$0 { savingTitle = nil } })) {
-      TextField("Name", text: Binding(get: { savingTitle ?? "" }, set: { savingTitle = $0 }))
-      Button("Save") {
-        if let tab = workspace.selected, let title = savingTitle, !title.isEmpty { workspace.save(tab, title: title, in: app) }
-        savingTitle = nil
+    .hidesWindowTitle()
+    .sheet(isPresented: .init(get: { savingTitle != nil }, set: { if !$0 { savingTitle = nil } })) {
+      KitSheet(title: "Save Query", meta: "Saved queries show under Queries in the sidebar.", systemImage: "square.and.arrow.down", width: 420) {
+        TextField("Name", text: Binding(get: { savingTitle ?? "" }, set: { savingTitle = $0 }))
+          .kitField()
+      } footer: {
+        Button("Cancel") { savingTitle = nil }
+          .keyboardShortcut(.cancelAction)
+        Button("Save") {
+          if let tab = workspace.selected, let title = savingTitle, !title.isEmpty { workspace.save(tab, title: title, in: app) }
+          savingTitle = nil
+        }
+        .buttonStyle(.kitPrimary)
+        .keyboardShortcut(.defaultAction)
+        .disabled(savingTitle?.isEmpty != false)
       }
-      Button("Cancel", role: .cancel) { savingTitle = nil }
+      .componentKit(accent: .databaseAccent)
     }
     .fileExporter(
       isPresented: .init(get: { exporting != nil }, set: { if !$0 { exporting = nil } }), document: exporting,
@@ -45,66 +55,45 @@ struct QueryEditorView: View {
   }
 
   private var tabBar: some View {
-    ScrollView(.horizontal, showsIndicators: false) {
-      HStack(spacing: 4) {
-        ForEach(workspace.tabs) { tab in
-          let selected = tab.id == workspace.selected?.id
-          HStack(spacing: 6) {
-            Text(tab.title + (tab.isDirty && tab.savedID != nil ? " •" : ""))
-              .fontWeight(selected ? .semibold : .regular)
-              .lineLimit(1)
-            Button("Close \(tab.title)", systemImage: "xmark") { workspace.close(tab.id) }
-              .labelStyle(.iconOnly)
-              .buttonStyle(.borderless)
-              .imageScale(.small)
-          }
-          .padding(.leading, 12)
-          .padding(.trailing, 8)
-          .padding(.vertical, 5)
-          .background {
-            if selected {
-              Capsule().fill(.background).overlay(Capsule().strokeBorder(.separator)).shadow(color: .black.opacity(0.05), radius: 1, y: 1)
-            }
-          }
-          .contentShape(Capsule())
-          .onTapGesture { workspace.selectedID = tab.id }
-        }
-        Button("New Query", systemImage: "plus") { window.newQuery() }
-          .labelStyle(.iconOnly)
-          .buttonStyle(.borderless)
-          .padding(.horizontal, 6)
-      }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 8)
-    }
+    KitTabStrip(
+      tabs: workspace.tabs.map { KitTab(id: $0.id, title: $0.title, isEdited: $0.isDirty && $0.savedID != nil) },
+      selection: $workspace.selectedID, onClose: { workspace.close($0) }, onAdd: { window.newQuery() })
   }
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+    ToolbarItem(placement: .navigation) {
+      KitTitle(
+        workspace.selected?.title ?? "Query", meta: workspace.connection.profile.displayName, systemImage: "bolt",
+        hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle)
+    }
+    .kitBare()
+    #if os(macOS)
+      if #available(macOS 26, *) {
+        ToolbarSpacer(.flexible)
+      }
+    #endif
     ToolbarItemGroup(placement: .primaryAction) {
       if let tab = workspace.selected {
-        Text(workspace.connection.profile.engine.queryLanguage)
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(workspace.connection.profile.engine.tint)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 3)
-          .background(workspace.connection.profile.engine.tint.opacity(0.14), in: Capsule())
-        if workspace.connection.profile.engine.family == .sql || workspace.connection.profile.engine.family == .wideColumn {
-          Button("Format") { tab.text = SQLFormatter.format(tab.text) }
+        ToolGroup {
+          Chip(workspace.connection.profile.engine.queryLanguage, hue: workspace.connection.profile.engine.hue)
+            .padding(.horizontal, 4)
+          if workspace.connection.profile.engine.family == .sql || workspace.connection.profile.engine.family == .wideColumn {
+            Button("Format") { tab.text = SQLFormatter.format(tab.text) }
+          }
+          Button("Explain") { Task { await workspace.explainSelected() } }
+            .disabled(tab.isRunning)
         }
-        Button("Explain") { Task { await workspace.explainSelected() } }
+        ToolGroup(iconOnly: true) {
+          Button("Save…", systemImage: "square.and.arrow.down") { savingTitle = tab.savedID == nil ? "" : tab.title }
+        }
+        Button("Run", systemImage: "play.fill") { Task { await workspace.runSelected() } }
+          .buttonStyle(.kitPrimary)
+          .keyboardShortcut(.return, modifiers: .command)
           .disabled(tab.isRunning)
-        Button("Save…", systemImage: "square.and.arrow.down") { savingTitle = tab.savedID == nil ? "" : tab.title }
-        Button {
-          Task { await workspace.runSelected() }
-        } label: {
-          Label("Run", systemImage: "play.fill")
-        }
-        .buttonStyle(.borderedProminent)
-        .keyboardShortcut(.return, modifiers: .command)
-        .disabled(tab.isRunning)
-        .help("Run (⌘↩)")
+          .kitHelp("Run", shortcut: "⌘↩", systemImage: "play.fill")
       }
     }
+    .kitBare()
   }
 }
 
@@ -135,42 +124,41 @@ struct QueryTabView: View {
         text: $tab.text, language: workspace.connection.profile.engine.highlighting, completions: workspace.completions,
         onRun: { Task { await workspace.runSelected() } })
     }
-    .background(.background)
+    .kitPane(.content)
   }
 
   private var results: some View {
     VStack(spacing: 0) {
       HStack(spacing: 10) {
-        Picker("Output", selection: $tab.output) {
-          ForEach(QueryTab.Output.allCases) { Text($0.rawValue).tag($0) }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
+        KitSegmented(selection: $tab.output, options: QueryTab.Output.allCases.map { ($0.rawValue, $0) })
         if tab.isRunning {
-          ProgressView().controlSize(.small)
-          Text("Running…").font(.caption).foregroundStyle(.secondary)
+          LiveIcon(systemImage: "play.fill", status: .working, size: 18)
+          Text("Running…").kitFont(.caption)
         } else if let elapsed = tab.lastElapsed {
-          Text(statusText + " · " + formatDuration(elapsed)).font(.caption).foregroundStyle(.secondary)
+          Text(statusText + " · " + formatDuration(elapsed)).kitFont(.caption)
         }
         Spacer()
         if let table = currentTable {
-          Menu("Export") {
+          Menu {
             Button("CSV…") { onExport(ExportDocument(text: Export.csv(fields: table.0, rows: table.1), type: .commaSeparatedText, name: tab.title + ".csv")) }
             Button("JSON…") { onExport(ExportDocument(text: Export.json(fields: table.0, rows: table.1), type: .json, name: tab.title + ".json")) }
             Button("Copy as CSV") { Clipboard.copy(Export.csv(fields: table.0, rows: table.1)) }
+          } label: {
+            Label("Export", systemImage: "square.and.arrow.up")
           }
+          .menuStyle(.button)
+          .buttonStyle(.kit)
+          .menuIndicator(.hidden)
+          .controlSize(.small)
           .fixedSize()
         }
       }
-      .padding(.horizontal, 12)
+      .padding(.horizontal, KitMetrics.gutter)
       .padding(.vertical, 6)
-      .background(.bar)
-      Divider()
       switch tab.output {
       case .results:
         if tab.resultOutputs.isEmpty {
-          ContentUnavailableView(tab.error ?? "Run a query to see results", systemImage: tab.error == nil ? "play" : "exclamationmark.triangle")
+          EmptyState(systemImage: tab.error == nil ? "play" : "exclamationmark.triangle", title: tab.error ?? "Run a query to see results")
         } else {
           QueryResultsView(outputs: tab.resultOutputs, connection: workspace.connection)
         }
@@ -178,8 +166,8 @@ struct QueryTabView: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(tab.messages.enumerated()), id: \.offset) { _, line in
-              Text(line).font(.code).textSelection(.enabled)
-                .foregroundStyle(line == tab.error ? .red : .primary)
+              Text(line).kitFont(.mono).textSelection(.enabled)
+                .foregroundStyle(line == tab.error ? AnyShapeStyle(Hue.red.text) : AnyShapeStyle(.kitLabel))
             }
           }
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -188,9 +176,9 @@ struct QueryTabView: View {
       case .plan:
         ScrollView([.vertical, .horizontal]) {
           Text(tab.plan ?? "Press Explain to see how the server will run this query.")
-            .font(.code)
+            .kitFont(.mono)
             .textSelection(.enabled)
-            .foregroundStyle(tab.plan == nil ? .secondary : .primary)
+            .foregroundStyle(tab.plan == nil ? AnyShapeStyle(.kitSecondary) : AnyShapeStyle(.kitLabel))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
         }
@@ -245,17 +233,15 @@ struct ContextBar: View {
         .fixedSize()
       } else {
         Text(tab.context.database.map { "Runs in \($0)" } ?? "Runs in the default database")
-          .foregroundStyle(.secondary)
       }
       if let schema = tab.context.schema {
-        Text("› \(schema)").foregroundStyle(.secondary)
+        Text("› \(schema)")
       }
       Spacer()
-      Text("⌘↩ runs · Tab completes")
-        .foregroundStyle(.tertiary)
+      KeyHints([("⌘↩", "runs"), ("Tab", "completes")])
     }
-    .font(.caption)
-    .padding(.horizontal, 12)
+    .kitFont(.caption)
+    .padding(.horizontal, KitMetrics.gutter)
     .padding(.vertical, 6)
   }
 }
