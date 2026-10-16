@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import Foundation
 import Observation
@@ -22,6 +23,8 @@ final class BrowserModel {
   let connection: LiveConnection
   let ref: ObjectRef
   var request: BrowseRequest
+  /// The one field the search looks in (`nil`: any). It searches as a "contains" filter on that field.
+  var searchField: String?
   private(set) var page: BrowsePage?
   private(set) var isLoading = false
   var errorMessage: String?
@@ -95,7 +98,7 @@ final class BrowserModel {
     isLoading = true
     defer { isLoading = false }
     do {
-      let page = try await session.browse(request)
+      let page = try await session.browse(effectiveRequest)
       self.page = page
       errorMessage = nil
       if !queryIsCustom { queryText = page.query }
@@ -111,11 +114,20 @@ final class BrowserModel {
     }
   }
 
+  /// The request as sent: a search scoped to one field becomes a filter on it.
+  var effectiveRequest: BrowseRequest {
+    guard let searchField, !request.search.isEmpty else { return request }
+    var effective = request
+    effective.filters.append(Filter(field: searchField, op: .contains, value: request.search))
+    effective.search = ""
+    return effective
+  }
+
   func countExactly() async {
     guard let session else { return }
     Activity.begin()
     defer { Activity.end() }
-    exactTotal = try? await session.count(request)
+    exactTotal = try? await session.count(effectiveRequest)
   }
 
   /// Reloads from the first page (after a filter, sort or search change).
@@ -248,6 +260,20 @@ final class BrowserModel {
     pending.append(edit)
   }
 
+  /// Stages an edit typed into a table cell, after parsing it for the field's type.
+  func stageCell(_ record: Record, field: FieldInfo, text: String) {
+    guard let session, record.key != nil else { return }
+    do {
+      let old = record[field.name] ?? .null
+      let value = try session.parseInput(text, isNull: false, for: field)
+      let current = pendingValue(for: record, field: field.name) ?? old
+      guard value != current else { return }
+      stage(RecordEdit(ref: ref, key: record.key, kind: .update([FieldChange(field: field.name, old: old, new: value)]), title: title(for: record)))
+    } catch {
+      errorMessage = FriendlyError.message(error)
+    }
+  }
+
   func revert(_ id: UUID) {
     pending.removeAll { $0.id == id }
   }
@@ -267,6 +293,13 @@ final class BrowserModel {
   func isPendingDelete(_ record: Record) -> Bool {
     pending.contains { edit in
       if case .delete = edit.kind { return edit.key == record.key && edit.ref == ref }
+      return false
+    }
+  }
+
+  func isPendingUpdate(_ record: Record) -> Bool {
+    pending.contains { edit in
+      if case .update = edit.kind { return edit.key == record.key && edit.ref == ref }
       return false
     }
   }

@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
@@ -9,23 +10,26 @@ struct FilterBar: View {
   @State private var searchText = ""
 
   var body: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: KitMetrics.gutter) {
       if browser.engine.supportsSearch {
-        SearchField(text: $searchText, prompt: "Search \(browser.ref.name)")
-          .frame(minWidth: 140, maxWidth: 280)
-          .onSubmit { commitSearch() }
-          .onChange(of: searchText) { _, text in
-            // Searching starts after a short pause.
-            Task {
-              try? await Task.sleep(for: .milliseconds(450))
-              if text == searchText, text != browser.request.search { commitSearch() }
-            }
+        KitSearchField(
+          text: $searchText, prompt: "Search \(browser.ref.name)", scope: scope, scopes: scopes,
+          status: searchStatus, count: searchCount
+        )
+        .frame(minWidth: 180, maxWidth: 300)
+        .onSubmit { commitSearch() }
+        .onChange(of: searchText) { _, text in
+          // Searching starts after a short pause.
+          Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            if text == searchText, text != browser.request.search { commitSearch() }
           }
+        }
       }
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: 6) {
           ForEach(browser.request.filters) { filter in
-            FilterChip(text: filter.summary(category: browser.category(of: filter.field))) {
+            FilterToken(text: filter.summary(category: browser.category(of: filter.field))) {
               Task { await browser.removeFilter(filter.id) }
             }
           }
@@ -36,17 +40,19 @@ struct FilterBar: View {
             Label("Add Filter", systemImage: "plus")
               .labelStyle(AdaptiveLabelStyle(iconOnly: sizeClass == .compact))
           }
-          .buttonStyle(DashedCapsuleStyle())
+          .buttonStyle(.kit)
           .popover(isPresented: $addingFilter, arrowEdge: .bottom) {
             AddFilterView(browser: browser) { filter in
               addingFilter = false
               Task { await browser.addFilter(filter) }
             }
-            .appButtonShape()
+            .componentKit(accent: .databaseAccent)
           }
           .disabled(browser.fields.isEmpty)
         }
+        .padding(.vertical, 2)
       }
+      .scrollClipDisabled()
       Spacer(minLength: 4)
       if browser.engine.family != .wideColumn && browser.engine != .redis {
         SortMenu(browser: browser)
@@ -55,9 +61,37 @@ struct FilterBar: View {
         FieldsMenu(browser: browser)
       }
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 10)
+    .controlSize(.small)
+    .padding(.horizontal, KitMetrics.gutter)
+    .padding(.vertical, 6)
     .onAppear { searchText = browser.request.search }
+  }
+
+  private var scopes: [SearchScope] {
+    [SearchScope(field: nil, isDocument: browser.engine.family == .document)]
+      + browser.fields.filter { $0.category == .text || $0.category == .uuid }.map { SearchScope(field: $0.name) }
+  }
+
+  private var scope: Binding<SearchScope> {
+    Binding(
+      get: { SearchScope(field: browser.searchField, isDocument: browser.engine.family == .document) },
+      set: { scope in
+        browser.searchField = scope.field
+        if !browser.request.search.isEmpty { Task { await browser.reload() } }
+      })
+  }
+
+  /// The search's live icon: the arc while it runs, then how many matched.
+  private var searchStatus: WorkStatus {
+    guard !browser.request.search.isEmpty else { return .idle }
+    if browser.isLoading { return .working }
+    return browser.records.isEmpty ? .failed : .done
+  }
+
+  private var searchCount: String? {
+    guard !browser.request.search.isEmpty, !browser.isLoading, !browser.records.isEmpty else { return nil }
+    let total = browser.exactTotal ?? browser.page?.total ?? browser.records.count
+    return browser.noun.count(total)
   }
 
   private func commitSearch() {
@@ -66,51 +100,29 @@ struct FilterBar: View {
   }
 }
 
-/// A rounded search field that works the same on Mac and iPhone.
-struct SearchField: View {
-  @Binding var text: String
-  var prompt: String
+/// Where the search looks: any column, or one.
+struct SearchScope: KitOption {
+  var field: String?
+  var isDocument = false
 
-  var body: some View {
-    HStack(spacing: 6) {
-      Image(systemName: "magnifyingglass").foregroundStyle(.secondary).imageScale(.small)
-      TextField(prompt, text: $text)
-        .textFieldStyle(.plain)
-        #if os(iOS)
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
-        #endif
-      if !text.isEmpty {
-        Button("Clear Search", systemImage: "xmark.circle.fill") { text = "" }
-          .labelStyle(.iconOnly)
-          .buttonStyle(.borderless)
-          .foregroundStyle(.secondary)
-      }
-    }
-    .padding(.horizontal, 9)
-    .padding(.vertical, 5)
-    .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-  }
+  var title: String { field ?? (isDocument ? "Any field" : "Any column") }
+
+  static func == (a: Self, b: Self) -> Bool { a.field == b.field }
+  func hash(into hasher: inout Hasher) { hasher.combine(field) }
 }
 
-struct FilterChip: View {
+/// An active filter: the condition as a chip, and its remove button.
+struct FilterToken: View {
   let text: String
   let onRemove: () -> Void
 
   var body: some View {
-    HStack(spacing: 4) {
-      Text(text).lineLimit(1)
+    HStack(spacing: 0) {
+      Chip(text, systemImage: "line.3.horizontal.decrease", hue: .accent)
       Button("Remove filter: \(text)", systemImage: "xmark", action: onRemove)
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .imageScale(.small)
+        .buttonStyle(.kitIcon)
+        .controlSize(.small)
     }
-    .font(.callout.weight(.medium))
-    .foregroundStyle(Color.accentColor)
-    .padding(.leading, 11)
-    .padding(.trailing, 7)
-    .padding(.vertical, 4)
-    .background(Color.accentColor.opacity(0.12), in: Capsule())
   }
 }
 
@@ -124,18 +136,6 @@ struct AdaptiveLabelStyle: LabelStyle {
     } else {
       DefaultLabelStyle().makeBody(configuration: configuration)
     }
-  }
-}
-
-/// "Add Filter", "Add Field": a dashed capsule the size of a bordered button.
-struct DashedCapsuleStyle: ButtonStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .padding(.horizontal, 10)
-      .frame(minHeight: 22)
-      .overlay(Capsule().strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [3, 3])).foregroundStyle(.tertiary))
-      .opacity(configuration.isPressed ? 0.6 : 1)
-      .contentShape(Capsule())
   }
 }
 
@@ -153,44 +153,54 @@ struct AddFilterView: View {
   }
 
   var body: some View {
-    Form {
-      Picker("Field", selection: $field) {
-        ForEach(browser.fields) { field in
-          HStack {
-            Text(field.name)
-            if field.keyRole != nil { Text("key").foregroundStyle(.secondary) }
+    VStack(alignment: .leading, spacing: 10) {
+      FormCard("Add Filter") {
+        FormRow("Field", systemImage: "tablecells", hue: .gray) {
+          Picker("Field", selection: $field) {
+            ForEach(browser.fields) { field in
+              Text(field.keyRole != nil ? "\(field.name) (key)" : field.name).tag(field.name)
+            }
           }
-          .tag(field.name)
+          .labelsHidden()
+          .fixedSize()
         }
-      }
-      Picker("Condition", selection: $op) {
-        ForEach(ops) { Text($0.label(for: selectedField?.category ?? .text)).tag($0) }
-      }
-      if op.needsValue {
-        if selectedField?.category == .boolean {
-          Picker("Value", selection: $value) {
-            Text("true").tag("true")
-            Text("false").tag("false")
+        FormRow("Condition", systemImage: "line.3.horizontal.decrease", hue: .accent) {
+          Picker("Condition", selection: $op) {
+            ForEach(ops) { Text($0.label(for: selectedField?.category ?? .text)).tag($0) }
           }
-        } else {
-          TextField(op == .inLastDays ? "Days" : "Value", text: $value, prompt: Text(placeholder))
-            .onSubmit(add)
+          .labelsHidden()
+          .fixedSize()
+        }
+        if op.needsValue {
+          if selectedField?.category == .boolean {
+            FormRow("Value", systemImage: "checkmark.circle", hue: .gray) {
+              KitSegmented(selection: $value, options: [("true", "true"), ("false", "false")])
+            }
+          } else {
+            FormRow(op == .inLastDays ? "Days" : "Value", systemImage: "character.cursor.ibeam", hue: .gray,
+              field: TextField(op == .inLastDays ? "Days" : "Value", text: $value, prompt: Text(placeholder)).onSubmit(add))
+          }
         }
       }
       if browser.engine.family == .wideColumn, let field = selectedField, field.keyRole != .partition {
         Text("Filtering on \(field.name) reads the whole table unless the partition key is filtered too.")
-          .font(.caption)
-          .foregroundStyle(.orange)
+          .kitFont(.caption)
+          .foregroundStyle(Hue.orange.text)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.horizontal, 4)
       }
       HStack {
         Spacer()
         Button("Add Filter", action: add)
+          .buttonStyle(.kitPrimary)
           .keyboardShortcut(.defaultAction)
           .disabled(field.isEmpty || (op.needsValue && value.isEmpty))
       }
+      .controlSize(.small)
     }
-    .formStyle(.grouped)
-    .frame(minWidth: 320)
+    .padding(KitMetrics.gutter)
+    .frame(width: 360)
+    .background(.kitPanel)
     .onAppear {
       field = browser.fields.first(where: { !$0.isPrimaryKey })?.name ?? browser.fields.first?.name ?? ""
       if !ops.contains(op) { op = ops.first ?? .equals }
@@ -252,7 +262,9 @@ struct SortMenu: View {
     } label: {
       Label(label, systemImage: "arrow.up.arrow.down")
     }
-    .menuStyle(.borderlessButton)
+    .menuStyle(.button)
+    .buttonStyle(.kit)
+    .menuIndicator(.hidden)
     .fixedSize()
   }
 }
@@ -275,7 +287,9 @@ struct FieldsMenu: View {
       let shown = browser.fields.count - browser.request.hiddenFields.count
       Label(browser.request.hiddenFields.isEmpty ? "Fields" : "\(shown) of \(browser.fields.count) fields", systemImage: "eye")
     }
-    .menuStyle(.borderlessButton)
+    .menuStyle(.button)
+    .buttonStyle(.kit)
+    .menuIndicator(.hidden)
     .fixedSize()
   }
 }
@@ -285,39 +299,32 @@ struct QueryStrip: View {
   @Bindable var browser: BrowserModel
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      HStack(spacing: 8) {
-        Text(browser.queryIsCustom ? "Edited query: results replace the list below" : "\(browser.engine.queryLanguage) written by the bar above. Edit it to go further.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Spacer()
-        if browser.queryIsCustom {
-          Button("Reset") { browser.resetQuery() }
-            .buttonStyle(.borderless)
-            .font(.caption)
+    VStack(alignment: .leading, spacing: 2) {
+      RichHeader(
+        browser.queryIsCustom ? "Edited query" : "\(browser.engine.queryLanguage) written by the bar",
+        meta: browser.queryIsCustom ? "Results replace the list below" : "Edit it to go further",
+        systemImage: "chevron.left.forwardslash.chevron.right"
+      ) {
+        HStack(spacing: 4) {
+          if browser.queryIsCustom {
+            Button("Reset") { browser.resetQuery() }
+              .buttonStyle(.kitPlain)
+          }
+          Button("Run", systemImage: "play.fill") { Task { await browser.runQuery() } }
+            .buttonStyle(.kitPrimary)
+            .keyboardShortcut(.return, modifiers: .command)
         }
-        Button {
-          Task { await browser.runQuery() }
-        } label: {
-          Label("Run", systemImage: "play.fill")
-        }
-        .buttonStyle(.borderedProminent)
         .controlSize(.small)
-        .keyboardShortcut(.return, modifiers: .command)
       }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 6)
-      Divider()
       CodeEditor(
         text: Binding(get: { browser.queryText }, set: { browser.editQuery($0) }), language: browser.engine.highlighting,
         completions: [])
         .frame(height: max(64, min(220, CGFloat(browser.queryText.split(separator: "\n", omittingEmptySubsequences: false).count) * 20 + 24)))
-        .clipped()
+        .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
     }
-    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.separator))
-    .padding(.horizontal, 16)
-    .padding(.bottom, 10)
+    .kitCard()
+    .padding(.horizontal, KitMetrics.gutter)
+    .padding(.bottom, KitMetrics.gutter)
   }
 }

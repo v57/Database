@@ -1,15 +1,84 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
-/// The main pane for a table or collection: simple bar, list, status bar, inspector.
+/// The main pane for a table or collection: simple bar, grid, changes, status bar, inspector.
 struct BrowserView: View {
   @Bindable var browser: BrowserModel
   @Bindable var window: WindowModel
   @Environment(\.horizontalSizeClass) private var sizeClass
+  @Environment(\.showToast) private var toast
   @State private var adding = false
   @State private var deleting: [Record] = []
 
   var body: some View {
+    titled
+      .sheet(isPresented: $browser.showsReview) {
+        ReviewSheet(browser: browser).componentKit(accent: .databaseAccent)
+      }
+      .sheet(isPresented: $adding) {
+        NewItemSheet(browser: browser).componentKit(accent: .databaseAccent)
+      }
+      .kitConfirmation(
+        "Delete \(browser.noun.count(deleting.count))?", isPresented: isDeleting,
+        message: "You'll see the change before anything is deleted.", systemImage: "trash", confirm: "Add to Changes",
+        action: stageDeletes)
+      .onChange(of: browser.toast) { _, message in showToast(message) }
+      .focusedSceneValue(\.deleteAction, deleteAction)
+  }
+
+  private var titled: some View {
+    split
+      .navigationTitle(browser.ref.name)
+      #if os(macOS)
+        .navigationSubtitle(subtitle)
+      #endif
+      .toolbar { toolbar }
+      .hidesWindowTitle()
+  }
+
+  @ViewBuilder private var split: some View {
+    if showsInspector {
+      ResizableSplit("inspectorWidth", pane: .trailing, width: KitMetrics.inspectorWidth, range: 280...520, mainMinWidth: 420) {
+        main
+      } pane: {
+        inspector
+      }
+    } else {
+      main
+    }
+  }
+
+  private var isDeleting: Binding<Bool> {
+    Binding(get: { !deleting.isEmpty }, set: { if !$0 { deleting = [] } })
+  }
+
+  private var deleteAction: (() -> Void)? {
+    guard browser.isEditable, !browser.selectedRecords.isEmpty else { return nil }
+    return { deleting = browser.selectedRecords }
+  }
+
+  private func stageDeletes() {
+    browser.stageDelete(deleting)
+    deleting = []
+    browser.showsReview = true
+  }
+
+  /// "Saved 3 changes", with Undo, for a few seconds after saving.
+  private func showToast(_ message: String?) {
+    guard let message else { return }
+    let browser = browser
+    var undo: (@MainActor () -> Void)?
+    if browser.canUndo {
+      undo = { @MainActor in
+        Task { @MainActor in await browser.undo() }
+      }
+    }
+    toast(Toast(message, systemImage: "checkmark", duration: .seconds(8), undo: undo))
+    browser.toast = nil
+  }
+
+  private var main: some View {
     VStack(spacing: 0) {
       if browser.mode == .aggregate {
         PipelineView(pipeline: browser.pipeline, browser: browser)
@@ -20,39 +89,20 @@ struct BrowserView: View {
         }
         notices
         content
-        StatusBar(browser: browser)
+        if !browser.pending.isEmpty {
+          changes
+            .padding([.horizontal, .top], KitMetrics.gutter)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+        statusBar
       }
     }
-    .background(.background)
-    .navigationTitle(browser.ref.name)
-    #if os(macOS)
-      .navigationSubtitle(subtitle)
-    #endif
-    .toolbar { toolbar }
-    .inspector(isPresented: inspectorShown) {
-      inspector
-        .inspectorColumnWidth(min: 280, ideal: 340, max: 520)
-    }
-    .sheet(isPresented: $browser.showsReview) {
-      ReviewSheet(browser: browser).appButtonShape()
-    }
-    .sheet(isPresented: $adding) {
-      NewItemSheet(browser: browser).appButtonShape()
-    }
-    .confirmationDialog(
-      "Delete \(browser.noun.count(deleting.count))?", isPresented: .init(get: { !deleting.isEmpty }, set: { if !$0 { deleting = [] } }),
-      titleVisibility: .visible
-    ) {
-      Button("Add to Changes", role: .destructive) {
-        browser.stageDelete(deleting)
-        deleting = []
-        browser.showsReview = true
-      }
-    } message: {
-      Text("You'll see the change before anything is deleted.")
-    }
-    .overlay(alignment: .bottom) { ToastView(browser: browser) }
-    .focusedSceneValue(\.deleteAction, browser.isEditable && !browser.selectedRecords.isEmpty ? { deleting = browser.selectedRecords } : nil)
+    .animation(.kit, value: browser.pending.isEmpty)
+    .kitPane(.content)
+  }
+
+  private var showsInspector: Bool {
+    window.showsInspector && sizeClass != .compact && browser.mode == .find && !browser.collapsesInspector
   }
 
   private var subtitle: String {
@@ -62,44 +112,34 @@ struct BrowserView: View {
     return parts.joined(separator: " › ")
   }
 
-  private var inspectorShown: Binding<Bool> {
-    Binding(
-      get: { window.showsInspector && sizeClass != .compact && browser.mode == .find && !browser.collapsesInspector },
-      set: { window.showsInspector = $0 })
-  }
-
   @ViewBuilder private var content: some View {
     if let error = browser.errorMessage, browser.page == nil {
-      ContentUnavailableView {
-        Label("Couldn't Load \(browser.noun.pluralCapitalized)", systemImage: "exclamationmark.triangle")
-      } description: {
-        Text(error)
-      } actions: {
-        Button("Try Again") { Task { await browser.reload() } }
+      EmptyState(systemImage: "exclamationmark.triangle", title: "Couldn't Load \(browser.noun.pluralCapitalized)", message: error) {
+        Button("Try Again") { Task { await browser.reload() } }.buttonStyle(.kitPrimary)
       }
     } else if let runs = browser.customRunsForDisplay {
       QueryResultsView(outputs: runs, connection: browser.connection)
     } else if browser.page == nil {
-      ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+      LiveIcon(systemImage: browser.ref.symbol, hue: browser.engine.hue, status: .working, size: 40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     } else if browser.records.isEmpty {
-      ContentUnavailableView {
-        Label(emptyTitle, systemImage: "doc.text.magnifyingglass")
-      } description: {
-        Text(emptyDescription)
-      } actions: {
+      EmptyState(systemImage: "doc.text.magnifyingglass", title: emptyTitle, message: emptyDescription) {
         if !browser.request.activeFilters.isEmpty || !browser.request.search.isEmpty {
           Button("Clear Filters") {
             browser.request.filters = []
             browser.request.search = ""
             Task { await browser.reload() }
           }
+          .buttonStyle(.kit)
         }
       }
     } else if sizeClass == .compact {
       PhoneRecordList(browser: browser, window: window)
     } else {
       switch browser.viewMode {
-      case .table: RecordTable(browser: browser, window: window, onDelete: { deleting = $0 })
+      case .table:
+        RecordTable(browser: browser, window: window, onDelete: { deleting = $0 })
+          .padding(.horizontal, KitMetrics.gutter)
       case .cards: CardsView(browser: browser)
       case .json: JSONListView(browser: browser)
       }
@@ -119,14 +159,61 @@ struct BrowserView: View {
 
   @ViewBuilder private var notices: some View {
     if let error = browser.errorMessage, browser.page != nil {
-      Banner(text: error, systemImage: "exclamationmark.triangle.fill", color: .red) { browser.errorMessage = nil }
+      Banner(error, systemImage: "exclamationmark.triangle", hue: .red, onDismiss: { browser.errorMessage = nil })
+        .padding([.horizontal, .bottom], KitMetrics.gutter)
     }
     ForEach(browser.page?.notes ?? [], id: \.self) { note in
-      Banner(text: note, systemImage: "info.circle", color: .secondary, onDismiss: nil)
+      Banner(note, systemImage: "info.circle", hue: .gray)
+        .padding([.horizontal, .bottom], KitMetrics.gutter)
     }
   }
 
+  /// The edits waiting for review, under the grid.
+  private var changes: some View {
+    ChangesCard(
+      count: browser.pending.count, meta: ["\(browser.ref.name) on \(browser.connection.profile.displayName)", "nothing is saved until you review"],
+      discardAll: { withKitAnimation { browser.discardChanges() } }, review: { browser.showsReview = true }
+    ) {
+      ForEach(browser.pending) { edit in
+        PendingChangeRow(edit: edit, browser: browser)
+      }
+    }
+  }
+
+  /// Counts, timing, safety notice and paging.
+  private var statusBar: some View {
+    StatusBar {
+      Text(browser.pageLabel)
+      if let elapsed = browser.page?.elapsed {
+        Text(formatDuration(elapsed)).foregroundStyle(.kitTertiary)
+      }
+      if browser.connection.profile.isProduction {
+        Label(sizeClass == .compact ? "Production" : "Production: every change is reviewed before saving", systemImage: "shield")
+      } else if browser.connection.profile.isReadOnly {
+        Label("Read only", systemImage: "lock")
+      } else if browser.ref.kind == .view {
+        Label("View: read only", systemImage: "eye")
+      }
+      Spacer()
+      Button("Previous Page", systemImage: "chevron.left") { Task { await browser.previousPage() } }
+        .disabled(browser.request.offset == 0)
+      Button("Next Page", systemImage: "chevron.right") { Task { await browser.nextPage() } }
+        .disabled(browser.page?.hasMore != true)
+    }
+    .buttonStyle(.kitIcon)
+    .padding(.top, KitMetrics.gutter)
+  }
+
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+    ToolbarItem(placement: .navigation) {
+      KitTitle(browser.ref.name, meta: subtitle, systemImage: browser.ref.symbol, hue: browser.engine.hue, status: titleStatus)
+    }
+    .kitBare()
+    #if os(macOS)
+      if #available(macOS 26, *) {
+        ToolbarSpacer(.flexible)
+      }
+    #endif
     ToolbarItemGroup(placement: .primaryAction) {
       if sizeClass == .compact {
         compactViewMenu
@@ -134,48 +221,62 @@ struct BrowserView: View {
         viewControls
       }
       if !browser.pending.isEmpty {
-        Button {
-          browser.showsReview = true
-        } label: {
-          Label("Review \(browser.pending.count) Change\(browser.pending.count == 1 ? "" : "s")", systemImage: "checklist")
-            .labelStyle(.titleAndIcon)
+        ToolGroup {
+          Button {
+            browser.showsReview = true
+          } label: {
+            Label {
+              HStack(spacing: 4) {
+                Text("Review Changes").foregroundStyle(Hue.accent.text)
+                Count(browser.pending.count, .attention)
+              }
+            } icon: {
+              Image(systemName: "checklist").foregroundStyle(Hue.accent.text)
+            }
+          }
         }
-        .buttonStyle(.borderedProminent)
-        .tint(.orange)
       }
-      Button("Refresh", systemImage: "arrow.clockwise") { Task { await browser.reload() } }
-        .help("Refresh (⌘R)")
-      if browser.isEditable && browser.mode == .find {
-        Button("Add \(browser.noun.capitalized)", systemImage: "plus") { adding = true }
-          .help("Add a \(browser.noun.singular)")
+      ToolGroup(iconOnly: true) {
+        if browser.mode == .find && sizeClass != .compact {
+          Button {
+            browser.showsQueryEditor.toggle()
+          } label: {
+            Label {
+              Text(browser.showsQueryEditor ? "Hide Query Editor" : "Show Query Editor")
+            } icon: {
+              Image(systemName: "chevron.left.forwardslash.chevron.right")
+                .foregroundStyle(browser.showsQueryEditor ? AnyShapeStyle(Hue.accent.text) : AnyShapeStyle(.kitLabel))
+            }
+          }
+        }
+        Button("Refresh", systemImage: "arrow.clockwise") { Task { await browser.reload() } }
+        if browser.isEditable && browser.mode == .find {
+          Button("Add \(browser.noun.capitalized)", systemImage: "plus") { adding = true }
+        }
       }
     }
+    .kitBare()
+  }
+
+  /// The title's live icon: the arc while the page loads.
+  private var titleStatus: WorkStatus {
+    browser.isLoading && browser.page != nil ? .working : .idle
   }
 
   private var hasModes: Bool { browser.engine.family == .document || browser.engine.family == .sql }
 
-  /// Mode, "show as" and the Query Editor toggle, side by side in a wide toolbar.
+  /// Mode and "show as", side by side in a wide toolbar.
   @ViewBuilder private var viewControls: some View {
-      if hasModes {
-        Picker("Mode", selection: modeSelection) {
-          ForEach(BrowserModel.Mode.allCases) { mode in
-            Label(mode.rawValue, systemImage: mode == .find ? "magnifyingglass" : "square.stack.3d.up").tag(mode)
-          }
-        }
-        .pickerStyle(.segmented)
-        .help("Find items, or build an aggregation pipeline")
-      }
-      if browser.mode == .find {
-        Picker("Show As", selection: $browser.viewMode) {
-          ForEach(availableModes) { Text($0.rawValue).tag($0) }
-        }
-        .pickerStyle(.segmented)
-        .help("Show as table, cards or JSON")
-        Toggle(isOn: $browser.showsQueryEditor) {
-          Label("Query Editor", systemImage: "chevron.left.forwardslash.chevron.right")
-        }
-        .help("Show the query the simple bar writes")
-      }
+    if hasModes {
+      KitSegmented(selection: modeSelection, segments: BrowserModel.Mode.allCases.map {
+        KitSegment($0.rawValue, value: $0, systemImage: $0 == .find ? "magnifyingglass" : "square.stack.3d.up")
+      })
+      .kitSegmentedStyle(.capsule)
+    }
+    if browser.mode == .find {
+      KitSegmented(selection: $browser.viewMode, options: availableModes.map { ($0.rawValue, $0) })
+        .kitSegmentedStyle(.capsule)
+    }
   }
 
   /// The same choices in one menu, for a phone's toolbar.
@@ -219,7 +320,54 @@ struct BrowserView: View {
         RecordInspector(browser: browser, record: record, window: window, onDelete: { deleting = [record] })
       }
     } else {
-      ContentUnavailableView("No Selection", systemImage: "sidebar.right", description: Text("Select a \(browser.noun.singular) to see its fields."))
+      EmptyState(systemImage: "sidebar.right", title: "No Selection", message: "Select a \(browser.noun.singular) to see its fields.")
+        .kitPane(.secondary)
+    }
+  }
+}
+
+/// One pending edit in the changes card, with its Undo.
+private struct PendingChangeRow: View {
+  let edit: RecordEdit
+  let browser: BrowserModel
+
+  var body: some View {
+    let title = edit.key?.summary ?? edit.title
+    let undo = { withKitAnimation { browser.revert(edit.id) } }
+    switch edit.kind {
+    case .update(let changes):
+      if changes.count == 1, let change = changes.first {
+        ChangeRow(.edited, title: title, field: change.field, old: change.old.reviewText, new: change.new.reviewText, undo: undo)
+      } else {
+        ChangeRow(.edited, title: title, field: "\(changes.count) fields", undo: undo) {
+          Text(changes.map(\.field).joined(separator: ", ")).foregroundStyle(.kitSecondary)
+        }
+      }
+    case .insert(let values):
+      ChangeRow(.inserted, title: title, field: "row", new: summary(values), undo: undo)
+    case .delete(let record):
+      ChangeRow(.deleted, title: title, field: "row", old: summary(record.values), undo: undo)
+    }
+  }
+
+  private func summary(_ values: [String: CellValue]) -> String {
+    browser.fields.filter { !$0.isPrimaryKey }.prefix(3).compactMap { values[$0.name]?.displayText }.joined(separator: ", ")
+  }
+}
+
+extension CellValue {
+  /// How a value reads in a review: "empty" for NULL, "missing" for a field a document doesn't have.
+  var reviewText: String { self == .unset ? "missing" : isNull ? "empty" : displayText }
+}
+
+extension ObjectRef {
+  var symbol: String {
+    switch kind {
+    case .table: "tablecells"
+    case .view, .materializedView: "eye"
+    case .collection: "curlybraces"
+    case .redisDatabase: "key"
+    case .file: "doc"
     }
   }
 }
@@ -236,93 +384,3 @@ extension FocusedValues {
   @Entry var deleteAction: (() -> Void)?
 }
 
-/// A one-line notice above the list.
-struct Banner: View {
-  let text: String
-  let systemImage: String
-  let color: Color
-  var onDismiss: (() -> Void)?
-
-  var body: some View {
-    HStack(spacing: 8) {
-      Image(systemName: systemImage).foregroundStyle(color)
-      Text(text).font(.callout).frame(maxWidth: .infinity, alignment: .leading)
-      if let onDismiss {
-        Button("Dismiss", systemImage: "xmark", action: onDismiss)
-          .labelStyle(.iconOnly)
-          .buttonStyle(.borderless)
-      }
-    }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
-    .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    .padding(.horizontal, 16)
-    .padding(.bottom, 8)
-  }
-}
-
-/// Counts, timing, safety notice and paging.
-struct StatusBar: View {
-  let browser: BrowserModel
-  @Environment(\.horizontalSizeClass) private var sizeClass
-
-  var body: some View {
-    HStack(spacing: 14) {
-      if browser.isLoading {
-        ProgressView().controlSize(.mini)
-      }
-      Text(browser.pageLabel)
-      if let elapsed = browser.page?.elapsed {
-        Text(formatDuration(elapsed))
-      }
-      if browser.connection.profile.isProduction {
-        Label(sizeClass == .compact ? "Production" : "Production: every change is reviewed before saving", systemImage: "shield")
-      } else if browser.connection.profile.isReadOnly {
-        Label("Read only", systemImage: "lock")
-      } else if browser.ref.kind == .view {
-        Label("View: read only", systemImage: "eye")
-      }
-      Spacer()
-      Button("Previous Page", systemImage: "chevron.left") { Task { await browser.previousPage() } }
-        .labelStyle(.iconOnly)
-        .disabled(browser.request.offset == 0)
-      Button("Next Page", systemImage: "chevron.right") { Task { await browser.nextPage() } }
-        .labelStyle(.iconOnly)
-        .disabled(browser.page?.hasMore != true)
-    }
-    .buttonStyle(.borderless)
-    .font(.caption)
-    .foregroundStyle(.secondary)
-    .padding(.horizontal, 16)
-    .padding(.vertical, 8)
-  }
-}
-
-/// "Saved 3 changes · Undo", for a few seconds after saving.
-struct ToastView: View {
-  @Bindable var browser: BrowserModel
-
-  var body: some View {
-    if let toast = browser.toast {
-      HStack(spacing: 12) {
-        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-        Text(toast)
-        if browser.canUndo {
-          Button("Undo") { Task { await browser.undo() } }
-            .buttonStyle(.borderless)
-            .fontWeight(.semibold)
-        }
-      }
-      .padding(.horizontal, 16)
-      .padding(.vertical, 10)
-      .background(.regularMaterial, in: Capsule())
-      .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
-      .padding(.bottom, 44)
-      .transition(.move(edge: .bottom).combined(with: .opacity))
-      .task(id: toast) {
-        try? await Task.sleep(for: .seconds(8))
-        withAnimation { browser.toast = nil }
-      }
-    }
-  }
-}
