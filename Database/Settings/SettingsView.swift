@@ -1,17 +1,18 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Settings: SSH keys, the DuckDB download, and how much the browser loads.
+/// Settings: how much the browser loads, the DuckDB download, and SSH keys.
 struct SettingsView: View {
+  @AppStorage("settings.pane") private var pane = "General"
+
   var body: some View {
-    TabView {
-      SSHKeysView()
-        .tabItem { Label("SSH Keys", systemImage: "key") }
-      GeneralSettings()
-        .tabItem { Label("General", systemImage: "gearshape") }
+    KitSettings(selection: $pane) {
+      SettingsPane("General", systemImage: "gearshape") { GeneralSettings() }
+      SettingsPane("SSH Keys", systemImage: "key", hue: .brown) { SSHKeysView() }
     }
-    .frame(width: 560, height: 420)
+    .frame(width: 640, height: 460)
   }
 }
 
@@ -19,18 +20,19 @@ struct GeneralSettings: View {
   @AppStorage("pageSize") private var pageSize = 50
 
   var body: some View {
-    Form {
-      Picker("Items per page", selection: $pageSize) {
-        ForEach([25, 50, 100, 200, 500], id: \.self) { Text("\($0)").tag($0) }
-      }
-      Text("Production connections always show their changes for review before saving.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      Section("DuckDB") {
-        DuckDBInstallRow(showsRemove: true)
+    FormCard(footer: "Production connections always show their changes for review before saving.") {
+      FormRow("Items per page", help: "How many rows, documents or keys a page loads", systemImage: "list.number", hue: .gray) {
+        Picker("Items per page", selection: $pageSize) {
+          ForEach([25, 50, 100, 200, 500], id: \.self) { Text("\($0)").tag($0) }
+        }
+        .labelsHidden()
+        .fixedSize()
       }
     }
-    .formStyle(.grouped)
+    FormCard("DuckDB") {
+      DuckDBInstallRow(showsRemove: true)
+        .padding(10)
+    }
   }
 }
 
@@ -42,47 +44,35 @@ struct SSHKeysView: View {
   @State private var deleting: StoredSSHKey?
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text("Keys are stored in your Keychain. Give the public key to the SSH server's administrator, or add it to ~/.ssh/authorized_keys yourself.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-      List {
-        ForEach(app.keys.keys) { key in
-          VStack(alignment: .leading, spacing: 4) {
-            HStack {
-              Image(systemName: "key.fill").foregroundStyle(.secondary)
-              Text(key.name).fontWeight(.medium)
-              Text(key.kind.label).font(.caption).foregroundStyle(.secondary)
-              Spacer()
-              Button("Copy Public Key", systemImage: "doc.on.doc") { Clipboard.copy(key.publicKeyLine) }
-                .buttonStyle(.borderless)
-              Button("Delete", systemImage: "trash", role: .destructive) { deleting = key }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-            }
-            Text(key.fingerprint).font(.codeSmall).foregroundStyle(.secondary).textSelection(.enabled)
+    FormCard(footer: "Keys are stored in your Keychain. Give the public key to the SSH server's administrator, or add it to ~/.ssh/authorized_keys yourself.") {
+      ForEach(app.keys.keys) { key in
+        FormRow(key.name, help: "\(key.kind.label) · \(key.fingerprint)", systemImage: "key", hue: .brown) {
+          HStack(spacing: 2) {
+            Button("Copy Public Key", systemImage: "doc.on.doc") { Clipboard.copy(key.publicKeyLine) }
+            Button("Delete", systemImage: "trash", role: .destructive) { deleting = key }
           }
-          .padding(.vertical, 4)
-        }
-        if app.keys.keys.isEmpty {
-          Text("No keys yet.").foregroundStyle(.secondary)
+          .buttonStyle(.kitIcon)
         }
       }
-      .id(app.keysVersion)
-      if let error { Text(error).foregroundStyle(.red).font(.caption) }
-      HStack {
-        Button("Create New Key") {
-          do {
-            _ = try app.keys.generate(name: "Database key \(app.keys.keys.count + 1)")
-            app.keysVersion += 1
-          } catch {
-            self.error = FriendlyError.message(error)
-          }
-        }
-        Button("Import Private Key…") { importing = true }
+      if app.keys.keys.isEmpty {
+        FormRow("No keys yet", help: "Create one, or import a private key you have", systemImage: "key", hue: .gray)
       }
     }
-    .padding()
+    .id(app.keysVersion)
+    if let error { Banner(error, systemImage: "exclamationmark.triangle", hue: .red) }
+    HStack {
+      Button("Create New Key") {
+        do {
+          _ = try app.keys.generate(name: "Database key \(app.keys.keys.count + 1)")
+          app.keysVersion += 1
+        } catch {
+          self.error = FriendlyError.message(error)
+        }
+      }
+      .buttonStyle(.kit)
+      Button("Import Private Key…") { importing = true }
+        .buttonStyle(.kit)
+    }
     .fileImporter(isPresented: $importing, allowedContentTypes: [.data, .plainText, .item]) { result in
       guard case .success(let url) = result else { return }
       let access = url.startAccessingSecurityScopedResource()
@@ -96,14 +86,14 @@ struct SSHKeysView: View {
         self.error = FriendlyError.message(error)
       }
     }
-    .confirmationDialog("Delete \(deleting?.name ?? "")?", isPresented: .init(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
-      Button("Delete Key", role: .destructive) {
-        if let deleting { try? app.keys.remove(deleting.id) }
-        app.keysVersion += 1
-        deleting = nil
-      }
-    } message: {
-      Text("Connections using this key won't be able to log in until you choose another.")
+    .kitConfirmation(
+      "Delete \(deleting?.name ?? "")?", isPresented: .init(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+      message: "Connections using this key won't be able to log in until you choose another.", systemImage: "trash",
+      confirm: "Delete Key"
+    ) {
+      if let deleting { try? app.keys.remove(deleting.id) }
+      app.keysVersion += 1
+      deleting = nil
     }
   }
 }

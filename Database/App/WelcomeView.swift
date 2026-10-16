@@ -1,7 +1,8 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
-/// First screen: recent connections and a way to add one.
+/// First screen: the kit's welcome, with New Connection and the recent connections.
 struct WelcomeView: View {
   @Bindable var window: WindowModel
   @Environment(AppModel.self) private var app
@@ -13,59 +14,39 @@ struct WelcomeView: View {
 
   var body: some View {
     ScrollView {
-      VStack(spacing: 28) {
-        VStack(spacing: 10) {
-          Image(systemName: "cylinder.split.1x2.fill")
-            .font(.system(size: 52))
-            .foregroundStyle(.tint)
-          Text("Database").font(.largeTitle.bold())
-          Text("PostgreSQL, MySQL, MariaDB, SQL Server, SQLite, DuckDB, MongoDB, Redis, Cassandra and ScyllaDB — in one window.")
-            .multilineTextAlignment(.center)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: 480)
+      KitWelcome(
+        appName: "Database",
+        emptyTitle: "No Recent Connections", emptyMessage: "Connections you open appear here.",
+        onDrop: { urls in
+          var opened = false
+          for url in urls { if let profile = app.addFile(url) { window.connect(profile.id); opened = true } }
+          return opened
         }
-        Button {
+      ) {
+        WelcomeAction(
+          "New Connection…", detail: "PostgreSQL, MySQL, SQL Server, SQLite, MongoDB, Redis and more", systemImage: "plus"
+        ) {
           window.showsNewConnection = true
-        } label: {
-          Label("New Connection", systemImage: "plus")
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
-
-        if !recent.isEmpty {
-          VStack(alignment: .leading, spacing: 8) {
-            Text("Recent").font(.headline)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 10)], spacing: 10) {
-              ForEach(recent) { profile in
-                Button {
-                  window.connect(profile.id)
-                } label: {
-                  HStack(spacing: 10) {
-                    EngineTile(engine: profile.engine, size: 32)
-                    VStack(alignment: .leading, spacing: 2) {
-                      Text(profile.displayName).fontWeight(.semibold).lineLimit(1)
-                      Text(profile.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                    Spacer()
-                    if profile.isProduction { TagLabel(text: "Production", color: .red) }
-                  }
-                  .padding(12)
-                  .groupBox()
-                  .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-              }
-            }
+      } recents: {
+        ForEach(recent) { profile in
+          RecentItem(
+            profile.displayName, subtitle: profile.subtitle,
+            date: profile.lastUsed?.formatted(.relative(presentation: .named)),
+            status: profile.isProduction ? "Production" : nil, statusHue: .red, id: profile.id.uuidString
+          ) {
+            window.connect(profile.id)
           }
-          .frame(maxWidth: 760)
         }
-        Text("Tip: drop a .sqlite, .duckdb, .parquet or .csv file on the window to open it.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+      }
+      .clipShape(RoundedRectangle(cornerRadius: KitMetrics.radiusOverlay, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: KitMetrics.radiusOverlay, style: .continuous).strokeBorder(.kitSeparator)
       }
       .padding(40)
       .frame(maxWidth: .infinity)
     }
+    .kitPane(.secondary)
     .navigationTitle("Database")
   }
 }

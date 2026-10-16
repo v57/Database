@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
@@ -69,13 +70,13 @@ private struct WindowContent: View {
       ConnectionSheet(profile: nil) { saved in
         window.connect(saved.id)
       }
-      .appButtonShape()
+      .componentKit(accent: .databaseAccent)
     }
     .sheet(item: $window.editingProfileID) { id in
       ConnectionSheet(profile: app.profile(id)) { saved in
         window.connect(saved.id)
       }
-      .appButtonShape()
+      .componentKit(accent: .databaseAccent)
     }
     .onChange(of: window.route) { _, route in
       if case .welcome = route { compactColumn = .sidebar } else { compactColumn = .detail }
@@ -134,49 +135,49 @@ struct ConnectionOverview: View {
 
   var body: some View {
     VStack(spacing: 14) {
-      EngineTile(engine: connection.profile.engine, size: 56)
-      Text(connection.profile.displayName).font(.title2.bold())
-      Text(connection.profile.subtitle).foregroundStyle(.secondary)
-      SafetyTags(profile: connection.profile)
+      connection.liveTile(size: 56)
+      Text(connection.profile.displayName).kitFont(.title1)
+      Text(connection.profile.subtitle).foregroundStyle(.kitSecondary)
+      HStack(spacing: 6) { connection.profile.safetyChips }
       switch connection.status {
       case .idle, .connecting:
-        ProgressView("Connecting…").controlSize(.small)
+        Text("Connecting…").foregroundStyle(.kitSecondary)
       case .connected:
         if let report = connection.report {
           Label("Connected to \(report.serverDescription) in \(formatDuration(report.elapsed))", systemImage: "checkmark.circle.fill")
-            .foregroundStyle(.green)
+            .foregroundStyle(Hue.green.text)
           if let fingerprint = report.sshHostKeyFingerprint {
-            Text("Through SSH · host key \(fingerprint)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            Text("Through SSH · host key \(fingerprint)").kitFont(.caption).textSelection(.enabled)
           }
         }
         Text("Pick a \(connection.profile.engine.collectionNoun.singular) in the sidebar to see its \(connection.profile.engine.itemNoun.plural).")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.kitSecondary)
         Button("New Query", systemImage: "terminal") { window.newQuery() }
-          .buttonStyle(.bordered)
+          .buttonStyle(.kit)
       case .failed(let message):
         // A DuckDB file without the library shows the download instead of the error that says so.
         if connection.profile.engine == .duckdb, !app.duckDB.isInstalled {
           DuckDBInstallRow()
-            .padding(12)
-            .groupBox()
+            .kitCard(padding: 12)
             .frame(maxWidth: 460)
             .onChange(of: app.duckDB.isInstalled) { _, installed in
               if installed { Task { await connection.reconnect() } }
             }
         } else {
           Label(message, systemImage: "exclamationmark.triangle.fill")
-            .foregroundStyle(.red)
+            .foregroundStyle(Hue.red.text)
             .multilineTextAlignment(.center)
             .frame(maxWidth: 460)
         }
         HStack {
-          Button("Try Again") { Task { await connection.reconnect() } }.buttonStyle(.borderedProminent)
-          Button("Edit Connection…") { window.editingProfileID = connection.id }.buttonStyle(.bordered)
+          Button("Try Again") { Task { await connection.reconnect() } }.buttonStyle(.kitPrimary)
+          Button("Edit Connection…") { window.editingProfileID = connection.id }.buttonStyle(.kit)
         }
       }
     }
     .padding(32)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .kitPane(.content)
     .navigationTitle(connection.profile.displayName)
   }
 }

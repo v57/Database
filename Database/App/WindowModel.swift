@@ -3,7 +3,7 @@ import Foundation
 import Observation
 
 /// What a sidebar row points at.
-enum SidebarItem: Hashable {
+nonisolated enum SidebarItem: Hashable, Sendable {
   case connection(UUID)
   case node(UUID, TreeNode)
   case savedQuery(UUID, UUID)
