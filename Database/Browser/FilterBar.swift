@@ -215,7 +215,7 @@ struct SortMenu: View {
   var body: some View {
     KitMenuButton(label, systemImage: "arrow.up.arrow.down") {
       ForEach(browser.fields) { field in
-        Menu(field.name) {
+        KitSubmenu(field.name) {
           Button(field.category.isTemporal ? "Oldest First" : field.category.isNumeric ? "Lowest First" : "A to Z") {
             browser.request.sort = [SortKey(field: field.name, ascending: true)]
             Task { await browser.reload() }
