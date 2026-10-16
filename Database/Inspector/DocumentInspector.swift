@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
@@ -23,23 +24,35 @@ struct DocumentInspector: View {
   }
 
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 14) {
-        header
-        if editing {
-          editor
-        } else {
-          VStack(alignment: .leading, spacing: 0) {
-            ForEach(document.elements, id: \.key) { element in
-              BSONTreeRow(key: element.key, value: element.value, level: 0, pending: browser.pendingValue(for: record, field: element.key))
-            }
-          }
-          .padding(.vertical, 4)
-          .groupBox()
-          actions
+    KitInspector(width: nil) {
+      InspectorHeader(
+        browser.displayName(for: record) ?? "Document", meta: ["Document in \(browser.ref.name)", "\(document.count) fields"],
+        systemImage: browser.ref.symbol, hue: browser.engine.hue)
+      if editing {
+        editor
+        ActionBar {
+          Button("Cancel") { editing = false }
+          Button("Done", action: finishEditing)
+            .keyboardShortcut(.defaultAction)
         }
+      } else {
+        KitSection("Fields", meta: "\(document.count) fields", systemImage: browser.ref.symbol, hue: browser.engine.hue) {
+          ForEach(document.elements, id: \.key) { element in
+            BSONTreeRow(key: element.key, value: element.value, level: 0, pending: browser.pendingValue(for: record, field: element.key))
+          }
+        }
+        ActionBar {
+          if browser.isEditable && record.key != nil {
+            Button("Edit", action: startEditing)
+          }
+          Button("Copy as JSON") { Clipboard.copy(document.text(.extendedJSON, indent: 2)) }
+          if browser.isEditable && record.key != nil {
+            Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
+              .accessibilityLabel("Delete Document…")
+          }
+        }
+        InspectorNote("_id can't be changed. Every other field is editable, and you see the change before it's saved.")
       }
-      .padding(16)
     }
     .task(id: record.id) { editing = false }
     .onChange(of: browser.editRequest) { _, id in
@@ -48,100 +61,62 @@ struct DocumentInspector: View {
     }
   }
 
-  private var header: some View {
-    HStack(alignment: .top) {
-      VStack(alignment: .leading, spacing: 2) {
-        Text(browser.displayName(for: record) ?? "Document").font(.title3.bold()).lineLimit(2)
-        Text("Document in \(browser.ref.name) · \(document.count) fields").font(.caption).foregroundStyle(.secondary)
-      }
-      Spacer()
-      if editing {
-        Button("Cancel") { editing = false }.buttonStyle(.bordered)
-        Button("Done", action: finishEditing).buttonStyle(.borderedProminent)
-      } else if browser.isEditable && record.key != nil {
-        Button("Edit", action: startEditing).buttonStyle(.bordered)
-      }
-    }
-  }
-
-  private var actions: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Button("Copy as JSON", systemImage: "doc.on.doc") { Clipboard.copy(document.text(.extendedJSON, indent: 2)) }
-        .buttonStyle(.bordered)
-      if browser.isEditable && record.key != nil {
-        Button("Delete Document…", systemImage: "trash", role: .destructive, action: onDelete)
-          .buttonStyle(.bordered)
-          .foregroundStyle(.red)
-      }
-      Label("_id can't be changed. Every other field is editable, and you see the change before it's saved.", systemImage: "info.circle")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-  }
-
   // MARK: Editing
 
   private var editor: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      ForEach($rows) { $row in
-        VStack(alignment: .leading, spacing: 4) {
-          HStack(spacing: 6) {
+    KitSection("Edit", meta: "\(rows.count) fields", systemImage: "pencil", hue: .orange) {
+      VStack(alignment: .leading, spacing: 8) {
+        ForEach($rows) { $row in
+          VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+              if row.name == "_id" {
+                Text(row.name).kitFont(.headline)
+              } else {
+                TextField("Field", text: $row.name)
+                  .kitField(mono: true)
+                  .frame(maxWidth: 160)
+              }
+              Picker("Type", selection: $row.type) {
+                ForEach(documentFieldTypes, id: \.self) { Text($0).tag($0) }
+              }
+              .labelsHidden()
+              .fixedSize()
+              .disabled(row.name == "_id")
+              Spacer()
+              if row.name != "_id" {
+                Button("Remove \(row.name)", systemImage: "minus.circle", role: .destructive) { rows.removeAll { $0.id == row.id } }
+                  .buttonStyle(.kitIcon)
+              }
+            }
             if row.name == "_id" {
-              Text(row.name).font(.callout.weight(.medium))
+              Text(row.text).kitFont(.monoSmall).foregroundStyle(.kitSecondary)
+            } else if row.type == "Boolean" {
+              KitSegmented(selection: $row.text, options: [("true", "true"), ("false", "false")])
+                .kitSegmentedStyle(.wide)
+            } else if row.type == "Null" {
+              Text("null").italic().foregroundStyle(.kitSecondary)
+            } else if ["Object", "Array"].contains(row.type) || !documentFieldTypes.contains(row.type) || row.text.contains("\n") {
+              TextEditor(text: $row.text)
+                .kitFont(.mono)
+                .frame(minHeight: 60, maxHeight: 220)
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
             } else {
-              TextField("Field", text: $row.name)
-                .textFieldStyle(.roundedBorder)
-                .font(.callout.monospaced())
-                .frame(maxWidth: 160)
-            }
-            Picker("Type", selection: $row.type) {
-              ForEach(documentFieldTypes, id: \.self) { Text($0).tag($0) }
-            }
-            .labelsHidden()
-            .fixedSize()
-            .disabled(row.name == "_id")
-            Spacer()
-            if row.name != "_id" {
-              Button("Remove \(row.name)", systemImage: "minus.circle.fill") { rows.removeAll { $0.id == row.id } }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .foregroundStyle(.red)
+              TextField("Value", text: $row.text, prompt: Text(row.type == "Date" ? "2026-10-12T10:02:00Z" : ""))
+                .kitField(status: errors[row.id] == nil ? .none : .error, mono: row.type != "String")
             }
           }
-          if row.name == "_id" {
-            Text(row.text).font(.codeSmall).foregroundStyle(.secondary)
-          } else if row.type == "Boolean" {
-            Picker("Value", selection: $row.text) {
-              Text("true").tag("true")
-              Text("false").tag("false")
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-          } else if row.type == "Null" {
-            Text("null").italic().foregroundStyle(.secondary)
-          } else if ["Object", "Array"].contains(row.type) || !documentFieldTypes.contains(row.type) || row.text.contains("\n") {
-            TextEditor(text: $row.text)
-              .font(.code)
-              .frame(minHeight: 60, maxHeight: 220)
-              .scrollContentBackground(.hidden)
-              .padding(4)
-              .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
-          } else {
-            TextField("Value", text: $row.text, prompt: Text(row.type == "Date" ? "2026-10-12T10:02:00Z" : ""))
-              .textFieldStyle(.roundedBorder)
-              .font(row.type == "String" ? .body : .code)
-          }
-          if let error = errors[row.id] {
-            Label(error, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.red)
-          }
+          .kitFieldError(errors[row.id])
+          .padding(.vertical, 4)
         }
-        .padding(10)
-        .groupBox()
+        Button("Add Field", systemImage: "plus") {
+          rows.append(EditableField(name: "", type: "String", text: "", original: nil))
+        }
+        .buttonStyle(.kit)
+        .controlSize(.small)
       }
-      Button("Add Field", systemImage: "plus") {
-        rows.append(EditableField(name: "", type: "String", text: "", original: nil))
-      }
-      .buttonStyle(DashedCapsuleStyle())
+      .padding(6)
     }
   }
 
@@ -201,31 +176,32 @@ struct BSONTreeRow: View {
       HStack(spacing: 6) {
         Group {
           if value.isContainer {
-            Image(systemName: expanded ? "chevron.down" : "chevron.right")
-              .font(.caption2.weight(.bold))
-              .foregroundStyle(.secondary)
+            Image(systemName: "chevron.right")
+              .font(.system(size: 9, weight: .bold))
+              .foregroundStyle(.kitTertiary)
+              .rotationEffect(.degrees(expanded ? 90 : 0))
           } else {
             Color.clear
           }
         }
         .frame(width: 10)
-        Text(key).foregroundStyle(.secondary)
-        TypeBadge(value.typeName)
+        Text(key).foregroundStyle(.kitSecondary).lineLimit(1)
+        Chip(type: value.typeName).controlSize(.small)
         Spacer(minLength: 8)
         Text(pending.map { $0 == .unset ? "(removed)" : $0.displayText } ?? summary)
-          .font(.codeSmall)
-          .foregroundStyle(value.isContainer ? .secondary : .primary)
+          .kitFont(.monoSmall)
+          .foregroundStyle(value.isContainer ? AnyShapeStyle(.kitSecondary) : AnyShapeStyle(.kitLabel))
           .lineLimit(1)
           .truncationMode(.middle)
           .textSelection(.enabled)
           .padding(.horizontal, pending != nil ? 4 : 0)
-          .background(pending != nil ? Color.orange.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
+          .background(pending != nil ? AnyShapeStyle(Hue.orange.soft()) : AnyShapeStyle(Color.clear), in: RoundedRectangle(cornerRadius: KitMetrics.radiusXS))
       }
-      .padding(.leading, CGFloat(12 + level * 16))
-      .padding(.trailing, 12)
-      .padding(.vertical, 5)
+      .padding(.leading, CGFloat(4 + level * 14))
+      .padding(.trailing, 6)
+      .frame(minHeight: 30)
       .contentShape(Rectangle())
-      .onTapGesture { if value.isContainer { withAnimation(.snappy) { expanded.toggle() } } }
+      .onTapGesture { if value.isContainer { withKitAnimation { expanded.toggle() } } }
       .accessibilityElement(children: .combine)
       .accessibilityAddTraits(value.isContainer ? .isButton : [])
       if expanded {
