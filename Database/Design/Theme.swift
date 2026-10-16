@@ -76,29 +76,6 @@ func formatTTL(milliseconds ms: Int64) -> String {
 
 func formatBytes(_ n: Int64) -> String { ByteCountFormatter.string(fromByteCount: n, countStyle: .memory) }
 
-extension ToolbarContent {
-  /// The kit's toolbar views (`KitTitle`, `ToolGroup`, `KitSegmented`) draw their own cards, so the toolbar's Liquid
-  /// Glass capsule stays out from behind them.
-  @ToolbarContentBuilder func kitBare() -> some ToolbarContent {
-    if #available(macOS 26, iOS 26, *) {
-      sharedBackgroundVisibility(.hidden)
-    } else {
-      self
-    }
-  }
-}
-
-extension View {
-  /// Each pane names itself in its own `KitTitle`, so the window's title stays out of the toolbar.
-  @ViewBuilder func hidesWindowTitle() -> some View {
-    #if os(macOS)
-      if #available(macOS 15, *) { toolbar(removing: .title) } else { self }
-    #else
-      self
-    #endif
-  }
-}
-
 extension View {
   /// The pane's meta line under its title: the window subtitle on the Mac, the navigation subtitle on iPad.
   @ViewBuilder func navigationMeta(_ text: String) -> some View {

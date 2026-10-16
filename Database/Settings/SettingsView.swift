@@ -22,11 +22,7 @@ struct GeneralSettings: View {
   var body: some View {
     FormCard(footer: "Production connections always show their changes for review before saving.") {
       FormRow("Items per page", help: "How many rows, documents or keys a page loads", systemImage: "list.number", hue: .gray) {
-        Picker("Items per page", selection: $pageSize) {
-          ForEach([25, 50, 100, 200, 500], id: \.self) { Text("\($0)").tag($0) }
-        }
-        .labelsHidden()
-        .fixedSize()
+        KitPicker("Items per page", selection: $pageSize, options: [25, 50, 100, 200, 500].map { ("\($0)", $0) })
       }
     }
     FormCard("DuckDB") {
@@ -48,7 +44,7 @@ struct SSHKeysView: View {
       ForEach(app.keys.keys) { key in
         FormRow(key.name, help: "\(key.kind.label) · \(key.fingerprint)", systemImage: "key", hue: .brown) {
           HStack(spacing: 2) {
-            Button("Copy Public Key", systemImage: "doc.on.doc") { Clipboard.copy(key.publicKeyLine) }
+            Button("Copy Public Key", systemImage: "doc.on.doc") { KitPasteboard.copy(key.publicKeyLine) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = key }
           }
           .buttonStyle(.kitIcon)

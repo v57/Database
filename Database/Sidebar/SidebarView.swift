@@ -103,7 +103,6 @@ private struct CurrentConnectionSection: View {
       MetaLine([profile.engine.displayName, profile.serverSummary])
         .truncationMode(.tail)
     } accessory: {
-      if profile.isProduction { Chip.production.controlSize(.small).fixedSize() }
       Menu {
         ConnectionMenu(connection: connection, window: window, onDelete: onDelete)
       } label: {
@@ -111,6 +110,9 @@ private struct CurrentConnectionSection: View {
       }
       .menuIndicator(.hidden)
       .accessibilityLabel("\(profile.displayName) actions")
+    }
+    .titleAccessory {
+      if profile.isProduction { Chip.production.controlSize(.small) }
     }
     .contextMenu { ConnectionMenu(connection: connection, window: window, onDelete: onDelete) }
   }
@@ -157,15 +159,16 @@ struct ConnectionRow: View {
   var body: some View {
     let profile = connection.profile
     VStack(alignment: .leading, spacing: 2) {
-      SidebarRow(value: SidebarItem.connection(connection.id), profile.displayName, subtitle: profile.subtitle) {
-        HStack(spacing: 2) {
-          Disclosure(isExpanded: isExpanded, title: profile.displayName)
-          connection.liveTile(size: 22)
-        }
-      } trailing: {
+      SidebarRow(
+        value: SidebarItem.connection(connection.id), profile.displayName, subtitle: profile.subtitle,
+        isExpanded: isExpanded
+      ) {
+        connection.liveTile(size: 22)
+      }
+      .titleAccessory {
         HStack(spacing: 6) {
           if let hue = profile.color.hue { StatusDot(hue: hue) }
-          if profile.isProduction { Chip.production.controlSize(.small).fixedSize() }
+          if profile.isProduction { Chip.production.controlSize(.small) }
         }
       }
       .contextMenu { ConnectionMenu(connection: connection, window: window, onDelete: onDelete) }
@@ -198,7 +201,7 @@ private struct ConnectionMenu: View {
     Divider()
     Button("Edit Connection…", systemImage: "pencil") { window.editingProfileID = connection.id }
     Button("Duplicate", systemImage: "plus.square.on.square") { app.duplicate(connection.id) }
-    Button("Copy Link", systemImage: "link") { Clipboard.copy(ConnectionLink.url(for: connection.profile)) }
+    Button("Copy Link", systemImage: "link") { KitPasteboard.copy(ConnectionLink.url(for: connection.profile)) }
     Divider()
     Button("Delete…", systemImage: "trash", role: .destructive, action: onDelete)
   }
@@ -277,29 +280,19 @@ struct TreeNodeRow: View {
 
   var body: some View {
     if node.hasChildren {
-      SidebarRow(node.title) {
-        HStack(spacing: 2) {
-          Disclosure(isExpanded: isExpanded, title: node.title)
-          RowTile(systemImage: node.symbol)
-        }
-      } trailing: {
+      SidebarRow(node.title, systemImage: node.symbol, isExpanded: isExpanded) {
         detail
       }
+      .action { isExpanded.wrappedValue.toggle() }
       .kitRowIndent(level)
-      .simultaneousGesture(TapGesture().onEnded { isExpanded.wrappedValue.toggle() })
       if isExpanded.wrappedValue {
         TreeChildren(connection: connection, parent: node, window: window, level: level + 1)
       }
     } else {
-      SidebarRow(value: SidebarItem.node(connection.id, node), node.title) {
-        HStack(spacing: 2) {
-          Disclosure.spacer
-          RowTile(systemImage: node.symbol)
-        }
-      } trailing: {
+      SidebarRow(value: SidebarItem.node(connection.id, node), node.title, systemImage: node.symbol) {
         detail
       }
-      .kitRowIndent(level)
+      .kitRowIndent(leafIndent(level))
     }
   }
 
@@ -320,66 +313,31 @@ struct QueryRows: View {
     let saved = app.queries(for: connection.id)
     let tabs = connection.queries.tabs.filter { $0.savedID == nil }
     if !saved.isEmpty || !tabs.isEmpty {
-      SidebarRow("Queries") {
-        HStack(spacing: 2) {
-          Disclosure(isExpanded: $isExpanded, title: "Queries")
-          RowTile(systemImage: "folder")
-        }
-      } trailing: {
+      SidebarRow("Queries", systemImage: "folder", isExpanded: $isExpanded) {
         Text("\(saved.count + tabs.count)")
       }
+      .action { withKitAnimation { isExpanded.toggle() } }
       .kitRowIndent(level)
-      .simultaneousGesture(TapGesture().onEnded { withKitAnimation { isExpanded.toggle() } })
       if isExpanded {
         ForEach(saved) { query in
-          SidebarRow(value: SidebarItem.savedQuery(connection.id, query.id), query.title) {
-            HStack(spacing: 2) {
-              Disclosure.spacer
-              RowTile(systemImage: "terminal")
-            }
-          }
-          .kitRowIndent(level + 1)
+          SidebarRow(value: SidebarItem.savedQuery(connection.id, query.id), query.title, systemImage: "terminal")
+            .kitRowIndent(leafIndent(level + 1))
           .contextMenu {
             Button("Delete", systemImage: "trash", role: .destructive) { app.deleteQuery(query.id) }
           }
         }
         ForEach(tabs) { tab in
-          SidebarRow(value: SidebarItem.queryTab(connection.id, tab.id), tab.title) {
-            HStack(spacing: 2) {
-              Disclosure.spacer
-              RowTile(systemImage: "doc.text")
-            }
-          }
-          .kitRowIndent(level + 1)
+          SidebarRow(value: SidebarItem.queryTab(connection.id, tab.id), tab.title, systemImage: "doc.text")
+            .kitRowIndent(leafIndent(level + 1))
         }
       }
     }
   }
 }
 
-/// A tree row's chevron, in front of its tile. (The kit's sidebar rows have no disclosure of their own yet.)
-private struct Disclosure: View {
-  @Binding var isExpanded: Bool
-  let title: String
-
-  /// The chevron's room, for rows that don't open, so their tiles line up.
-  static var spacer: some View { Color.clear.frame(width: 12) }
-
-  var body: some View {
-    Button {
-      withKitAnimation { isExpanded.toggle() }
-    } label: {
-      Image(systemName: "chevron.right")
-        .font(.system(size: 9, weight: .bold))
-        .foregroundStyle(.kitTertiary)
-        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-        .frame(width: 12, height: 18)
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel(isExpanded ? "Collapse \(title)" : "Expand \(title)")
-  }
-}
+/// A leaf beside tree rows that open: one step further in, where the chevron's room puts their tiles, so the tiles
+/// line up. (Rows outside a `KitOutline` don't keep the chevron's slot themselves.)
+private func leafIndent(_ level: Int) -> Int { level + 1 }
 
 /// A quiet line in the tree: loading, empty, or what went wrong.
 private struct TreeNote: View {
@@ -400,16 +358,5 @@ private struct TreeNote: View {
       .lineLimit(4)
       .padding(.leading, 8 + 14 + CGFloat(level) * 14)
       .padding(.vertical, 4)
-  }
-}
-
-enum Clipboard {
-  static func copy(_ text: String) {
-    #if os(macOS)
-      NSPasteboard.general.clearContents()
-      NSPasteboard.general.setString(text, forType: .string)
-    #else
-      UIPasteboard.general.string = text
-    #endif
   }
 }

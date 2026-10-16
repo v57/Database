@@ -106,14 +106,9 @@ struct SSHHostSheet: View {
     FormCard {
       FormRow("Key", help: keyID == nil ? "In this device's Secure Enclave" : nil, systemImage: "key", hue: .brown) {
         HStack(spacing: 6) {
-          Picker("Key", selection: $keyID) {
-            Text("This device’s key").tag(UUID?.none)
-            ForEach(app.keys.keys) { key in
-              Text("\(key.name) (\(key.kind.label))").tag(UUID?.some(key.id))
-            }
-          }
-          .labelsHidden()
-          .fixedSize()
+          KitPicker(
+            "Key", selection: $keyID,
+            options: [("This device’s key", UUID?.none)] + app.keys.keys.map { ("\($0.name) (\($0.kind.label))", UUID?.some($0.id)) })
           Menu("Add Key") {
             Button("Create New Key") {
               if let key = try? app.keys.generate(name: "Database on \(SharedConnections.deviceName)") {
@@ -132,7 +127,7 @@ struct SSHHostSheet: View {
       }
       if let line = SSHHostSheet.publicKeyLine(keyID, keys: app.keys) {
         FormRow("Public key", help: "Add this line to ~/.ssh/authorized_keys on the SSH server", systemImage: "doc.on.doc", hue: .gray) {
-          Button("Copy") { Clipboard.copy(line) }.buttonStyle(.kit).controlSize(.small)
+          Button("Copy") { KitPasteboard.copy(line) }.buttonStyle(.kit).controlSize(.small)
         }
       }
       if let keyError {

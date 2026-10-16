@@ -147,8 +147,8 @@ struct RedisValueView: View {
     if editable, model.value != .none {
       ActionBar {
         Button("Rename Key…") { renaming = key }
-        Button(role: .destructive) { deleting = true } label: { Image(systemName: "trash") }
-          .accessibilityLabel("Delete Key…")
+        Button("Delete Key…", systemImage: "trash", role: .destructive) { deleting = true }
+          .labelStyle(.iconOnly)
       }
     }
   }
@@ -178,13 +178,7 @@ struct ExpiryEditor: View {
       Text("Expires in").kitFont(.headline)
       HStack {
         TextField("Amount", value: $amount, format: .number).kitField(mono: true).frame(width: 70)
-        Picker("Unit", selection: $unit) {
-          Text("seconds").tag(1)
-          Text("minutes").tag(60)
-          Text("hours").tag(3600)
-          Text("days").tag(86400)
-        }
-        .labelsHidden()
+        KitPicker("Unit", selection: $unit, options: [("seconds", 1), ("minutes", 60), ("hours", 3600), ("days", 86400)])
       }
       HStack {
         if hasExpiry { Button("Never Expire") { onSet(nil) }.buttonStyle(.kit) }
@@ -295,7 +289,7 @@ struct PairsEditor: View {
             }
             Button("Delete \(field)", role: .destructive) { onDelete(field) }
           }
-          Button("Copy Value") { Clipboard.copy(value) }
+          Button("Copy Value") { KitPasteboard.copy(value) }
         }
         Rectangle().fill(.kitSeparator).frame(height: 0.5).padding(.leading, 12)
       }

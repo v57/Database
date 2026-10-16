@@ -24,10 +24,15 @@ struct QueryEditorView: View {
       }
     }
     .kitPane(.content)
-    .navigationTitle(workspace.selected?.title ?? "Query")
     .navigationMeta(workspace.connection.profile.displayName)
+    #if os(macOS)
+      .kitToolbarTitle(
+        workspace.selected?.title ?? "Query", meta: [workspace.connection.profile.displayName], systemImage: "bolt",
+        hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle)
+    #else
+      .navigationTitle(workspace.selected?.title ?? "Query")
+    #endif
     .toolbar { toolbar }
-    .hidesWindowTitle()
     .sheet(isPresented: .init(get: { savingTitle != nil }, set: { if !$0 { savingTitle = nil } })) {
       KitSheet(title: "Save Query", meta: "Saved queries show under Queries in the sidebar.", systemImage: "square.and.arrow.down", width: 420) {
         TextField("Name", text: Binding(get: { savingTitle ?? "" }, set: { savingTitle = $0 }))
@@ -60,14 +65,6 @@ struct QueryEditorView: View {
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
     #if os(macOS)
-      ToolbarItem(placement: .navigation) {
-        KitTitle(
-          workspace.selected?.title ?? "Query", meta: workspace.connection.profile.displayName, systemImage: "bolt",
-          hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle)
-      }
-      .kitBare()
-    #endif
-    #if os(macOS)
       if #available(macOS 26, *) {
         ToolbarSpacer(.flexible)
       }
@@ -93,7 +90,7 @@ struct QueryEditorView: View {
           .kitHelp("Run", shortcut: "⌘↩", systemImage: "play.fill")
       }
     }
-    .kitBare()
+    .kitToolbarItem()
   }
 }
 
@@ -142,7 +139,7 @@ struct QueryTabView: View {
           Menu {
             Button("CSV…") { onExport(ExportDocument(text: Export.csv(fields: table.0, rows: table.1), type: .commaSeparatedText, name: tab.title + ".csv")) }
             Button("JSON…") { onExport(ExportDocument(text: Export.json(fields: table.0, rows: table.1), type: .json, name: tab.title + ".json")) }
-            Button("Copy as CSV") { Clipboard.copy(Export.csv(fields: table.0, rows: table.1)) }
+            Button("Copy as CSV") { KitPasteboard.copy(Export.csv(fields: table.0, rows: table.1)) }
           } label: {
             Label("Export", systemImage: "square.and.arrow.up")
           }

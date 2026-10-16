@@ -9,8 +9,6 @@ struct KeyRow: Identifiable, Hashable {
   var record: Record?
   var children: [KeyRow]?
   var count: Int = 0
-  /// 1 for a key shown under its open group.
-  var level = 0
 }
 
 /// The selected key's value and the changes made to it.
@@ -119,10 +117,15 @@ struct KeysBrowserView: View {
 
   var body: some View {
     split
-      .navigationTitle(browser.ref.name)
       .navigationMeta("\(browser.connection.profile.displayName) · \(keyCount) keys")
+      #if os(macOS)
+        .kitToolbarTitle(
+          browser.ref.name, meta: [browser.connection.profile.displayName, "\(keyCount) keys"], systemImage: "key",
+          hue: browser.engine.hue, status: browser.isLoading && browser.page != nil ? .working : .idle)
+      #else
+        .navigationTitle(browser.ref.name)
+      #endif
       .toolbar { toolbar }
-      .hidesWindowTitle()
       .sheet(isPresented: $creating) {
         if let model { NewKeySheet(model: model).componentKit(accent: .databaseAccent) }
       }
@@ -212,30 +215,16 @@ struct KeysBrowserView: View {
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
     #if os(macOS)
-      ToolbarItem(placement: .navigation) {
-        KitTitle(
-          browser.ref.name, meta: [browser.connection.profile.displayName, "\(keyCount) keys"], systemImage: "key",
-          hue: browser.engine.hue, status: browser.isLoading && browser.page != nil ? .working : .idle)
-      }
-      .kitBare()
-    #endif
-    #if os(macOS)
       if #available(macOS 26, *) {
         ToolbarSpacer(.flexible)
       }
     #endif
     ToolbarItemGroup(placement: .primaryAction) {
       ToolGroup(iconOnly: true) {
-        Button {
+        Button(commandLine ? "Hide Command Line" : "Show Command Line", systemImage: "apple.terminal") {
           commandLine.toggle()
-        } label: {
-          Label {
-            Text(commandLine ? "Hide Command Line" : "Show Command Line")
-          } icon: {
-            Image(systemName: "apple.terminal")
-              .foregroundStyle(commandLine ? AnyShapeStyle(Hue.accent.text) : AnyShapeStyle(.kitLabel))
-          }
         }
+        .kitToolOn(commandLine)
         Button("Refresh", systemImage: "arrow.clockwise") {
           Task {
             await browser.reload()
@@ -247,7 +236,7 @@ struct KeysBrowserView: View {
         }
       }
     }
-    .kitBare()
+    .kitToolbarItem()
   }
 
   private var typeFilter: Binding<String?> {
@@ -287,7 +276,7 @@ struct KeysBrowserView: View {
     Task { await browser.reload() }
   }
 
-  /// Groups and loose keys, with an open group's keys under it.
+  /// Groups (their keys as children) and loose keys.
   private var rows: [KeyRow] {
     let records = browser.records
     let keys = records.compactMap { $0["key"]?.displayText }
@@ -297,10 +286,9 @@ struct KeysBrowserView: View {
       let id = "group:" + group.prefix
       let children = records.filter { $0["key"]?.displayText.hasPrefix(group.prefix) == true }.map { record in
         let key = record["key"]?.displayText ?? ""
-        return KeyRow(id: record.id, label: String(key.dropFirst(group.prefix.count)), record: record, level: 1)
+        return KeyRow(id: record.id, label: String(key.dropFirst(group.prefix.count)), record: record)
       }
       out.append(KeyRow(id: id, label: group.prefix, children: children, count: group.count))
-      if expanded.contains(id) { out += children }
     }
     out += grouped.loose.compactMap { key in
       records.first { $0["key"]?.displayText == key }.map { KeyRow(id: $0.id, label: key, record: $0) }
@@ -309,11 +297,11 @@ struct KeysBrowserView: View {
   }
 
   private var keyList: some View {
-    KitGrid(rows, columns: columns, selection: $browser.selection)
-      .contextMenu {
-        let keys = browser.selection.filter { $0.hasPrefix("key:") }.map { String($0.dropFirst(4)) }
+    KitGrid(rows, columns: columns, selection: $browser.selection, children: \.children, expanded: $expanded)
+      .rowContextMenu { ids in
+        let keys = ids.filter { $0.hasPrefix("key:") }.sorted().map { String($0.dropFirst(4)) }
         if !keys.isEmpty {
-          Button("Copy Key Name\(keys.count == 1 ? "" : "s")") { Clipboard.copy(keys.joined(separator: "\n")) }
+          Button("Copy Key Name\(keys.count == 1 ? "" : "s")") { KitPasteboard.copy(keys.joined(separator: "\n")) }
           if browser.isEditable {
             Button("Delete \(keys.count == 1 ? "Key" : "\(keys.count) Keys")", systemImage: "trash", role: .destructive) {
               Task { await model?.perform(keys.map { .delete(key: $0) }) }
@@ -326,11 +314,11 @@ struct KeysBrowserView: View {
   private var columns: [KitGridColumn<KeyRow>] {
     [
       KitGridColumn("Key", width: 280, content: { row in
-        KeyCell(row: row, isExpanded: expanded.contains(row.id)) {
-          withKitAnimation {
-            if expanded.contains(row.id) { expanded.remove(row.id) } else { expanded.insert(row.id) }
-          }
+        HStack(spacing: 6) {
+          Text(row.label).kitFont(.mono).fontWeight(row.children != nil ? .semibold : .regular)
+          if row.children != nil { Text("\(row.count) keys").kitFont(.caption) }
         }
+        .lineLimit(1)
       }),
       KitGridColumn("Type", width: 100, content: { row in
         if let type = row.record?["type"]?.displayText { Chip(type: type).controlSize(.small) }
@@ -358,35 +346,6 @@ struct KeysBrowserView: View {
     case "JSON": "1 document"
     default: "\(n.formatted()) member\(n == 1 ? "" : "s")"
     }
-  }
-}
-
-/// A key's name, or a group's prefix with its chevron and count.
-private struct KeyCell: View {
-  let row: KeyRow
-  let isExpanded: Bool
-  let toggle: () -> Void
-
-  var body: some View {
-    HStack(spacing: 6) {
-      if row.children != nil {
-        Button(action: toggle) {
-          Image(systemName: "chevron.right")
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(.kitTertiary)
-            .rotationEffect(.degrees(isExpanded ? 90 : 0))
-            .frame(width: 12, height: 18)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isExpanded ? "Collapse \(row.label)" : "Expand \(row.label)")
-      } else if row.level > 0 {
-        Color.clear.frame(width: 12 + 14)
-      }
-      Text(row.label).kitFont(.mono).fontWeight(row.children != nil ? .semibold : .regular)
-      if row.children != nil { Text("\(row.count) keys").kitFont(.caption) }
-    }
-    .lineLimit(1)
   }
 }
 
@@ -492,11 +451,7 @@ struct NewKeySheet: View {
       FormCard {
         FormRow("Key name", systemImage: "key", hue: .red, field: TextField("Key name", text: $name, prompt: Text("session:1234")))
         FormRow("Type", systemImage: "square.grid.2x2", hue: .gray) {
-          Picker("Type", selection: $type) {
-            ForEach(KeysBrowserView.types.compactMap(\.1), id: \.self) { Text(label($0)).tag($0) }
-          }
-          .labelsHidden()
-          .fixedSize()
+          KitPicker("Type", selection: $type, options: KeysBrowserView.types.compactMap(\.1).map { (label($0), $0) })
         }
         switch type {
         case "hash", "stream":

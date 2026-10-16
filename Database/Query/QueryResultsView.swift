@@ -91,20 +91,17 @@ struct ResultTable: View {
       },
       selection: $selection
     )
+    .rowContextMenu { ids in
+      let picked = ids.sorted().compactMap { rows.indices.contains($0) ? rows[$0] : nil }
+      Button("Copy \(picked.count == 1 ? "Row" : "\(picked.count) Rows") as CSV") {
+        KitPasteboard.copy(Export.csv(fields: fields, rows: picked))
+      }
+      Button("Copy \(picked.count == 1 ? "Row" : "\(picked.count) Rows") as JSON") {
+        KitPasteboard.copy(Export.json(fields: fields, rows: picked))
+      }
+    }
     .padding(.horizontal, KitMetrics.gutter)
     .padding(.bottom, KitMetrics.gutter)
-    .contextMenu {
-      Button("Copy Rows as CSV") {
-        let picked = selection.sorted().compactMap { rows.indices.contains($0) ? rows[$0] : nil }
-        Clipboard.copy(Export.csv(fields: fields, rows: picked))
-      }
-      .disabled(selection.isEmpty)
-      Button("Copy Rows as JSON") {
-        let picked = selection.sorted().compactMap { rows.indices.contains($0) ? rows[$0] : nil }
-        Clipboard.copy(Export.json(fields: fields, rows: picked))
-      }
-      .disabled(selection.isEmpty)
-    }
   }
 }
 

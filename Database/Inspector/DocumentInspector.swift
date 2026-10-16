@@ -45,10 +45,10 @@ struct DocumentInspector: View {
           if browser.isEditable && record.key != nil {
             Button("Edit", action: startEditing)
           }
-          Button("Copy as JSON") { Clipboard.copy(document.text(.extendedJSON, indent: 2)) }
+          Button("Copy as JSON") { KitPasteboard.copy(document.text(.extendedJSON, indent: 2)) }
           if browser.isEditable && record.key != nil {
-            Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
-              .accessibilityLabel("Delete Document…")
+            Button("Delete Document…", systemImage: "trash", role: .destructive, action: onDelete)
+              .labelStyle(.iconOnly)
           }
         }
         InspectorNote("_id can't be changed. Every other field is editable, and you see the change before it's saved.")
@@ -76,11 +76,7 @@ struct DocumentInspector: View {
                   .kitField(mono: true)
                   .frame(maxWidth: 160)
               }
-              Picker("Type", selection: $row.type) {
-                ForEach(documentFieldTypes, id: \.self) { Text($0).tag($0) }
-              }
-              .labelsHidden()
-              .fixedSize()
+              KitPicker("Type", selection: $row.type, options: documentFieldTypes.map { ($0, $0) })
               .disabled(row.name == "_id")
               Spacer()
               if row.name != "_id" {

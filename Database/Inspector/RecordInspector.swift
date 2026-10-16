@@ -97,11 +97,11 @@ struct RecordInspector: View {
       if browser.isEditable && record.key != nil {
         Button("Edit") { startEditing() }
       }
-      Button("Copy as JSON") { Clipboard.copy(Exporter.json(record, fields: browser.fields)) }
-      Button("Copy as INSERT") { Clipboard.copy(Exporter.insert(record, browser: browser)) }
+      Button("Copy as JSON") { KitPasteboard.copy(Exporter.json(record, fields: browser.fields)) }
+      Button("Copy as INSERT") { KitPasteboard.copy(Exporter.insert(record, browser: browser)) }
       if browser.isEditable && record.key != nil {
-        Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
-          .accessibilityLabel("Delete \(browser.noun.capitalized)…")
+        Button("Delete \(browser.noun.capitalized)…", systemImage: "trash", role: .destructive, action: onDelete)
+          .labelStyle(.iconOnly)
       }
     }
   }
@@ -338,11 +338,11 @@ struct MultiSelectionInspector: View {
         systemImage: "square.stack.3d.up", hue: browser.engine.hue)
       ActionBar {
         Button("Copy as JSON") {
-          Clipboard.copy("[\n" + records.map { Exporter.json($0, fields: browser.fields) }.joined(separator: ",\n") + "\n]")
+          KitPasteboard.copy("[\n" + records.map { Exporter.json($0, fields: browser.fields) }.joined(separator: ",\n") + "\n]")
         }
         if browser.isEditable {
-          Button(role: .destructive) { onDelete(records) } label: { Image(systemName: "trash") }
-            .accessibilityLabel("Delete \(browser.noun.count(records.count))…")
+          Button("Delete \(browser.noun.count(records.count))…", systemImage: "trash", role: .destructive) { onDelete(records) }
+            .labelStyle(.iconOnly)
         }
       }
     }

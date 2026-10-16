@@ -237,7 +237,7 @@ struct ConnectionSheet: View {
     if host.auth != .password,
       let line = SSHHostSheet.publicKeyLine(host.auth == .importedKey ? host.keyID.flatMap(UUID.init(uuidString:)) : nil, keys: app.keys)
     {
-      Button("Copy Public Key") { Clipboard.copy(line) }
+      Button("Copy Public Key") { KitPasteboard.copy(line) }
     }
     if isSelected(host), profile.ssh.hostKeyFingerprint != nil {
       Button("Forget Host Key") { profile.ssh.hostKeyFingerprint = nil }
@@ -439,11 +439,11 @@ struct ConnectionSheet: View {
             help: profile.engine == .postgres ? "Needs PostgreSQL 17 or later (direct TLS)." : "For servers that require it, like hosted databases.",
             systemImage: "lock", hue: .green
           ) {
-            Toggle("Encrypted connection (TLS)", isOn: $profile.useTLS).toggleStyle(.kitSwitch).labelsHidden()
+            Toggle("Encrypted connection (TLS)", isOn: $profile.useTLS).toggleStyle(.kitSwitch).kitLabelsHidden()
           }
           if profile.useTLS {
             FormRow("Accept self-signed certificates", systemImage: "checkmark.seal", hue: .orange) {
-              Toggle("Accept self-signed certificates", isOn: $profile.allowUntrustedCertificate).toggleStyle(.kitSwitch).labelsHidden()
+              Toggle("Accept self-signed certificates", isOn: $profile.allowUntrustedCertificate).toggleStyle(.kitSwitch).kitLabelsHidden()
             }
           }
         } else {
@@ -483,10 +483,10 @@ struct ConnectionSheet: View {
         }
       }
       FormRow("Production", help: "Shows a red tag. Every change is reviewed before it's saved.", systemImage: "shield", hue: .red) {
-        Toggle("Production", isOn: $profile.isProduction).toggleStyle(.kitSwitch).labelsHidden()
+        Toggle("Production", isOn: $profile.isProduction).toggleStyle(.kitSwitch).kitLabelsHidden()
       }
       FormRow("Read only", help: "Look, but never change anything.", systemImage: "lock", hue: .gray) {
-        Toggle("Read only", isOn: $profile.isReadOnly).toggleStyle(.kitSwitch).labelsHidden()
+        Toggle("Read only", isOn: $profile.isReadOnly).toggleStyle(.kitSwitch).kitLabelsHidden()
       }
     }
   }
