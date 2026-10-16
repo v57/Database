@@ -292,7 +292,8 @@ struct TreeNodeRow: View {
       SidebarRow(value: SidebarItem.node(connection.id, node), node.title, systemImage: node.symbol) {
         detail
       }
-      .kitRowIndent(leafIndent(level))
+      .disclosureSlot()
+      .kitRowIndent(level)
     }
   }
 
@@ -321,23 +322,21 @@ struct QueryRows: View {
       if isExpanded {
         ForEach(saved) { query in
           SidebarRow(value: SidebarItem.savedQuery(connection.id, query.id), query.title, systemImage: "terminal")
-            .kitRowIndent(leafIndent(level + 1))
+            .disclosureSlot()
+            .kitRowIndent(level + 1)
           .contextMenu {
             Button("Delete", systemImage: "trash", role: .destructive) { app.deleteQuery(query.id) }
           }
         }
         ForEach(tabs) { tab in
           SidebarRow(value: SidebarItem.queryTab(connection.id, tab.id), tab.title, systemImage: "doc.text")
-            .kitRowIndent(leafIndent(level + 1))
+            .disclosureSlot()
+            .kitRowIndent(level + 1)
         }
       }
     }
   }
 }
-
-/// A leaf beside tree rows that open: one step further in, where the chevron's room puts their tiles, so the tiles
-/// line up. (Rows outside a `KitOutline` don't keep the chevron's slot themselves.)
-private func leafIndent(_ level: Int) -> Int { level + 1 }
 
 /// A quiet line in the tree: loading, empty, or what went wrong.
 private struct TreeNote: View {
