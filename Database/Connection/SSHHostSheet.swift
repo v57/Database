@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -32,130 +33,110 @@ struct SSHHostSheet: View {
   }
 
   var body: some View {
-    VStack(spacing: 0) {
+    KitSheet(
+      title: isNew ? "New SSH Configuration" : "Edit SSH Configuration",
+      meta: "Database logs in to this server and reaches the database from there. Shell and the other v57 apps list it too.",
+      systemImage: "server.rack", hue: .teal, width: 540
+    ) {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
-          VStack(alignment: .leading, spacing: 4) {
-            Text(isNew ? "New SSH Configuration" : "Edit SSH Configuration").font(.title2.bold())
-            Text("Database logs in to this server and reaches the database from there. Shell and the other v57 apps list it too.")
-              .foregroundStyle(.secondary)
-          }
-          VStack(spacing: 0) {
-            FormRow("Name") { TextField("Name", text: $host.name, prompt: Text(host.hostname.isEmpty ? "optional" : host.hostname)) }
-            FormRow("Server") {
-              HStack {
-                TextField("Server", text: $host.hostname, prompt: Text("bastion.example.com"))
-                  #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                  #endif
-                Text("Port").foregroundStyle(.secondary)
-                TextField("Port", value: $host.port, format: .number.grouping(.never)).frame(width: 52).multilineTextAlignment(.trailing)
-              }
+          FormCard {
+            FormRow("Name", systemImage: "character.cursor.ibeam", hue: .gray,
+              field: TextField("Name", text: $host.name, prompt: Text(host.hostname.isEmpty ? "optional" : host.hostname)))
+            FormRow("Server", systemImage: "network", field: serverField)
+            FormRow("Port", systemImage: "number", hue: .gray) {
+              TextField("Port", value: $host.port, format: .number.grouping(.never))
+                .kitField(mono: true)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 80)
             }
-            FormRow("User") {
-              TextField("User", text: $host.user, prompt: Text("root"))
-                #if os(iOS)
-                  .textInputAutocapitalization(.never)
-                #endif
-            }
-            FormRow("Sign in with", last: true) {
-              Picker("Sign in with", selection: $auth) {
-                Text("Key").tag(SSHAuthMethod.key)
-                Text("Password").tag(SSHAuthMethod.password)
-              }
-              .pickerStyle(.segmented)
-              .fixedSize()
-              Spacer()
+            FormRow("User", systemImage: "person", hue: .gray, field: userField)
+            FormRow("Sign in with", systemImage: "key", hue: .brown) {
+              KitSegmented(selection: $auth, options: [("Key", SSHAuthMethod.key), ("Password", SSHAuthMethod.password)])
             }
           }
-          .labelsHidden()
-          .textFieldStyle(.plain)
-          .groupBox()
-
           if auth == .key {
             keyPicker
           } else {
-            VStack(alignment: .leading, spacing: 8) {
-              VStack(spacing: 0) {
-                FormRow("Password", last: true) { SecureField("Password", text: $password) }
-              }
-              .labelsHidden()
-              .textFieldStyle(.plain)
-              .groupBox()
-              Toggle("Save password in the Keychain", isOn: $host.savePassword).font(.callout)
+            VStack(alignment: .leading, spacing: 6) {
+              SecureField("Password", text: $password).kitField()
+              Toggle("Save password in the Keychain", isOn: $host.savePassword)
+                .toggleStyle(.kitCheckbox)
+                .padding(.horizontal, 4)
             }
           }
-
           if let fingerprint {
-            VStack(alignment: .leading, spacing: 1) {
-              Text("Remembered host key").font(.caption).foregroundStyle(.secondary)
-              Text(fingerprint).font(.codeSmall).textSelection(.enabled).lineLimit(1).truncationMode(.middle)
+            FormCard {
+              FormRow("Remembered host key", help: fingerprint, systemImage: "checkmark.shield", hue: .green)
             }
           }
         }
-        .padding(24)
+        .padding(.vertical, 4)
       }
-      Divider()
-      HStack(spacing: 10) {
-        Spacer()
-        Button("Cancel") { dismiss() }
-          .keyboardShortcut(.cancelAction)
-        Button(isNew ? "Add" : "Save") { save() }
-          .buttonStyle(.borderedProminent)
-          .keyboardShortcut(.defaultAction)
-          .disabled(host.hostname.trimmingCharacters(in: .whitespaces).isEmpty || host.user.isEmpty || !(1...65535).contains(host.port))
-      }
-      .padding(16)
+      .frame(minHeight: 320, idealHeight: 420)
+    } footer: {
+      Button("Cancel") { dismiss() }
+        .keyboardShortcut(.cancelAction)
+      Button(isNew ? "Add" : "Save") { save() }
+        .buttonStyle(.kitPrimary)
+        .keyboardShortcut(.defaultAction)
+        .disabled(host.hostname.trimmingCharacters(in: .whitespaces).isEmpty || host.user.isEmpty || !(1...65535).contains(host.port))
     }
-    .frame(minWidth: 480, idealWidth: 540, minHeight: 420, idealHeight: 500)
     .fileImporter(isPresented: $importingKey, allowedContentTypes: [.data, .plainText, .item]) { result in
       if case .success(let url) = result { importKey(url) }
     }
   }
 
+  private var serverField: some View {
+    TextField("Server", text: $host.hostname, prompt: Text("bastion.example.com"))
+      #if os(iOS)
+        .textInputAutocapitalization(.never)
+        .keyboardType(.URL)
+      #endif
+  }
+
+  private var userField: some View {
+    TextField("User", text: $host.user, prompt: Text("root"))
+      #if os(iOS)
+        .textInputAutocapitalization(.never)
+      #endif
+  }
+
   private var keyPicker: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Picker("Key", selection: $keyID) {
-          Text("This device’s key (Secure Enclave)").tag(UUID?.none)
-          ForEach(app.keys.keys) { key in
-            Text("\(key.name) (\(key.kind.label))").tag(UUID?.some(key.id))
-          }
-        }
-        .labelsHidden()
-        Spacer()
-        Menu("Add Key") {
-          Button("Create New Key") {
-            if let key = try? app.keys.generate(name: "Database on \(SharedConnections.deviceName)") {
-              app.keysVersion += 1
-              keyID = key.id
+    FormCard {
+      FormRow("Key", help: keyID == nil ? "In this device's Secure Enclave" : nil, systemImage: "key", hue: .brown) {
+        HStack(spacing: 6) {
+          Picker("Key", selection: $keyID) {
+            Text("This device’s key").tag(UUID?.none)
+            ForEach(app.keys.keys) { key in
+              Text("\(key.name) (\(key.kind.label))").tag(UUID?.some(key.id))
             }
           }
-          Button("Import Private Key…") { importingKey = true }
+          .labelsHidden()
+          .fixedSize()
+          Menu("Add Key") {
+            Button("Create New Key") {
+              if let key = try? app.keys.generate(name: "Database on \(SharedConnections.deviceName)") {
+                app.keysVersion += 1
+                keyID = key.id
+              }
+            }
+            Button("Import Private Key…") { importingKey = true }
+          }
+          .menuStyle(.button)
+          .buttonStyle(.kit)
+          .menuIndicator(.hidden)
+          .controlSize(.small)
+          .fixedSize()
         }
-        .fixedSize()
       }
       if let line = SSHHostSheet.publicKeyLine(keyID, keys: app.keys) {
-        VStack(alignment: .leading, spacing: 6) {
-          Text("Add this line to ~/.ssh/authorized_keys on the SSH server:").font(.caption).foregroundStyle(.secondary)
-          HStack(alignment: .top) {
-            Text(line)
-              .font(.codeSmall)
-              .textSelection(.enabled)
-              .lineLimit(3)
-            Spacer()
-            Button("Copy", systemImage: "doc.on.doc") { Clipboard.copy(line) }
-              .labelStyle(.iconOnly)
-              .buttonStyle(.borderless)
-              .help("Copy public key")
-          }
-          .padding(8)
-          .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+        FormRow("Public key", help: "Add this line to ~/.ssh/authorized_keys on the SSH server", systemImage: "doc.on.doc", hue: .gray) {
+          Button("Copy") { Clipboard.copy(line) }.buttonStyle(.kit).controlSize(.small)
         }
       }
       if let keyError {
-        Text(keyError).font(.caption).foregroundStyle(.red)
+        FormRow("Couldn't import the key", systemImage: "exclamationmark.triangle", hue: .red, error: keyError)
       }
     }
     .id(app.keysVersion)
@@ -199,73 +180,3 @@ struct SSHHostSheet: View {
   }
 }
 
-/// A label on the left and a field on the right, with a divider below unless it's the last row of its group.
-struct FormRow<Content: View>: View {
-  let label: String
-  var last = false
-  @ViewBuilder var content: Content
-
-  init(_ label: String, last: Bool = false, @ViewBuilder content: () -> Content) {
-    self.label = label
-    self.last = last
-    self.content = content()
-  }
-
-  var body: some View {
-    VStack(spacing: 0) {
-      HStack(spacing: 10) {
-        Text(label).foregroundStyle(.secondary).frame(width: 92, alignment: .leading)
-        content
-      }
-      .padding(.horizontal, 12)
-      .frame(minHeight: 38)
-      if !last { Divider().padding(.leading, 12) }
-    }
-  }
-}
-
-/// A selectable tile with an icon, a title and a subtitle: the New Connection sheet's database and location pickers.
-struct ChoiceTile<Icon: View>: View {
-  let title: String
-  let subtitle: String
-  var selected = false
-  let action: () -> Void
-  @ViewBuilder var icon: Icon
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: 8) {
-        icon
-        VStack(alignment: .leading, spacing: 1) {
-          Text(title).font(.callout.weight(.semibold)).lineLimit(1)
-          Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-        }
-        Spacer(minLength: 0)
-      }
-      .padding(8)
-      .background(selected ? Color.accentColor.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-          .strokeBorder(selected ? Color.accentColor : Color.secondary.opacity(0.25), lineWidth: selected ? 2 : 1))
-      .contentShape(RoundedRectangle(cornerRadius: 12))
-    }
-    .buttonStyle(.plain)
-    .accessibilityAddTraits(selected ? .isSelected : [])
-  }
-}
-
-/// A symbol in the same rounded tile as `EngineTile`.
-struct SymbolTile: View {
-  let systemName: String
-  var tint: Color = .secondary
-  var size: CGFloat = 28
-
-  var body: some View {
-    Image(systemName: systemName)
-      .font(.system(size: size * 0.48, weight: .semibold))
-      .foregroundStyle(tint)
-      .frame(width: size, height: size)
-      .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: size * 0.27, style: .continuous))
-      .accessibilityHidden(true)
-  }
-}
