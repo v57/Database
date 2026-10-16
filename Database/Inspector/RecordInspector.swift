@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
@@ -14,18 +15,22 @@ struct RecordInspector: View {
   @State private var relatedCounts: [String: Int] = [:]
 
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 16) {
-        header
-        if editing {
-          editor
-        } else {
-          fieldList
-          related
-          actions
+    KitInspector(width: nil) {
+      InspectorHeader(
+        browser.title(for: record), meta: ["\(browser.noun.capitalized) in \(browser.ref.name)", "\(browser.fields.count) fields"],
+        systemImage: browser.ref.symbol, hue: browser.engine.hue)
+      if editing {
+        editor
+      } else {
+        KitSection("Fields", meta: "\(browser.fields.count) fields", systemImage: browser.ref.symbol, hue: browser.engine.hue) {
+          ForEach(browser.fields) { field in
+            FieldRow(browser: browser, record: record, field: field, window: window)
+          }
         }
+        related
+        actions
+        note
       }
-      .padding(16)
     }
     .task(id: record.id) {
       editing = false
@@ -40,63 +45,27 @@ struct RecordInspector: View {
     }
   }
 
-  private var header: some View {
-    HStack(alignment: .top) {
-      VStack(alignment: .leading, spacing: 2) {
-        Text(browser.title(for: record)).font(.title3.bold()).lineLimit(2)
-        Text("\(browser.noun.capitalized) in \(browser.ref.name) · \(browser.fields.count) fields")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-      Spacer()
-      if editing {
-        Button("Cancel") { editing = false }.buttonStyle(.bordered)
-        Button("Done") { finishEditing() }.buttonStyle(.borderedProminent)
-      } else if browser.isEditable && record.key != nil {
-        Button("Edit") { startEditing() }.buttonStyle(.bordered)
-      }
-    }
-  }
-
-  private var fieldList: some View {
-    VStack(spacing: 0) {
-      ForEach(Array(browser.fields.enumerated()), id: \.element.id) { index, field in
-        if index > 0 { Divider().padding(.leading, 12) }
-        FieldRow(browser: browser, record: record, field: field, window: window)
-      }
-    }
-    .groupBox()
-  }
-
   // MARK: Related
 
   @ViewBuilder private var related: some View {
     let incoming = relations.filter { $0.direction == .incoming }
     if !incoming.isEmpty {
-      VStack(alignment: .leading, spacing: 6) {
-        Text("Related").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.leading, 4)
-        VStack(spacing: 0) {
-          ForEach(Array(incoming.enumerated()), id: \.element.id) { index, relation in
-            if index > 0 { Divider().padding(.leading, 12) }
-            Button {
-              openRelated(relation)
-            } label: {
-              HStack {
-                Text(relation.table.name)
-                Spacer()
+      KitSection("Related", meta: "\(incoming.count) \(incoming.count == 1 ? "table" : "tables")", systemImage: "link", hue: .teal) {
+        ForEach(incoming) { relation in
+          Button {
+            openRelated(relation)
+          } label: {
+            InspectorRow(relation.table.name) {
+              HStack(spacing: 4) {
                 if let count = relatedCounts[relation.id] {
-                  Text(count == 0 ? "None" : "\(count) \(count == 1 ? "row" : "rows")").foregroundStyle(.secondary)
+                  Text(count == 0 ? "None" : "\(count) \(count == 1 ? "row" : "rows")")
                 }
-                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(.kitTertiary)
               }
-              .padding(.horizontal, 12)
-              .padding(.vertical, 9)
-              .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
           }
+          .buttonStyle(.plain)
         }
-        .groupBox()
       }
     }
   }
@@ -123,45 +92,46 @@ struct RecordInspector: View {
     Task { await target.reload() }
   }
 
-  @ViewBuilder private var copyButtons: some View {
-    Button("Copy as JSON", systemImage: "doc.on.doc") { Clipboard.copy(Exporter.json(record, fields: browser.fields)) }
-      .lineLimit(1)
-    Button("Copy as INSERT") { Clipboard.copy(Exporter.insert(record, browser: browser)) }
-      .lineLimit(1)
-  }
   private var actions: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      // Side by side when they fit; stacked in a narrow inspector.
-      ViewThatFits(in: .horizontal) {
-        HStack { copyButtons }
-        VStack(alignment: .leading, spacing: 8) { copyButtons }
-      }
-      .buttonStyle(.bordered)
+    ActionBar {
       if browser.isEditable && record.key != nil {
-        Button("Delete \(browser.noun.capitalized)…", systemImage: "trash", role: .destructive, action: onDelete)
-          .buttonStyle(.bordered)
-          .foregroundStyle(.red)
+        Button("Edit") { startEditing() }
       }
-      if record.key == nil && browser.ref.kind == .table {
-        Label("This table has no primary key, so its rows can't be changed here.", systemImage: "info.circle")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      } else if browser.connection.profile.isReadOnly {
-        Label("Read-only connection.", systemImage: "lock").font(.caption).foregroundStyle(.secondary)
+      Button("Copy as JSON") { Clipboard.copy(Exporter.json(record, fields: browser.fields)) }
+      Button("Copy as INSERT") { Clipboard.copy(Exporter.insert(record, browser: browser)) }
+      if browser.isEditable && record.key != nil {
+        Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
+          .accessibilityLabel("Delete \(browser.noun.capitalized)…")
       }
+    }
+  }
+
+  @ViewBuilder private var note: some View {
+    if record.key == nil && browser.ref.kind == .table {
+      InspectorNote("This table has no primary key, so its rows can't be changed here.")
+    } else if browser.connection.profile.isReadOnly {
+      InspectorNote("Read-only connection.", systemImage: "lock")
     }
   }
 
   // MARK: Editing
 
   private var editor: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      ForEach(browser.fields) { field in
-        FieldEditorRow(field: field, draft: binding(for: field), error: errors[field.name], locked: isLocked(field))
+    Group {
+      KitSection("Edit", meta: "\(browser.fields.count) fields", systemImage: "pencil", hue: .orange) {
+        VStack(alignment: .leading, spacing: 10) {
+          ForEach(browser.fields) { field in
+            FieldEditorRow(field: field, draft: binding(for: field), error: errors[field.name], locked: isLocked(field))
+          }
+        }
+        .padding(6)
       }
-      Label("Key fields can't be changed. You'll review every change before it's saved.", systemImage: "info.circle")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+      ActionBar {
+        Button("Cancel") { editing = false }
+        Button("Done") { finishEditing() }
+          .keyboardShortcut(.defaultAction)
+      }
+      InspectorNote("Key fields can't be changed. You'll review every change before it's saved.")
     }
   }
 
@@ -204,7 +174,7 @@ struct RecordInspector: View {
   }
 }
 
-/// One read-only field: name, key badge, value; foreign keys link to their row.
+/// One read-only field: name, key chip, value; foreign keys link to their row.
 struct FieldRow: View {
   let browser: BrowserModel
   let record: Record
@@ -214,49 +184,63 @@ struct FieldRow: View {
   var body: some View {
     let pending = browser.pendingValue(for: record, field: field.name)
     let value = pending ?? record[field.name] ?? .null
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      HStack(spacing: 5) {
-        Text(field.name).foregroundStyle(.secondary)
+    InspectorRow(field.name, copyText: value.isNull ? nil : value.fullText) {
+      HStack(spacing: 6) {
         if field.isPrimaryKey || field.keyRole != nil {
-          TagLabel(text: field.keyRole == .partition ? "Partition key" : field.keyRole == .clustering ? "Clustering" : "Key", color: .brown, systemImage: "key.fill")
+          Chip(
+            field.keyRole == .partition ? "Partition key" : field.keyRole == .clustering ? "Clustering" : "Key",
+            systemImage: "key", hue: .brown
+          )
+          .controlSize(.small)
         }
-      }
-      .help(field.typeName)
-      Spacer(minLength: 8)
-      Group {
-        if value.isNull {
-          Text("empty").italic().foregroundStyle(.tertiary)
-        } else if let reference = field.references {
-          Button {
-            let target = browser.connection.browser(for: reference.target)
-            target.request.filters = [Filter(field: reference.column, op: .equals, value: value.editingText)]
-            window.open(reference.target, in: browser.connection.id)
-            Task { await target.reload() }
-          } label: {
-            HStack(spacing: 3) {
-              Text(value.displayText)
-              Image(systemName: "arrow.up.right").imageScale(.small)
+        Spacer(minLength: 0)
+        Group {
+          if value.isNull {
+            Chip(Text("NULL").monospaced(), style: .quiet).controlSize(.small)
+          } else if let reference = field.references {
+            Button {
+              let target = browser.connection.browser(for: reference.target)
+              target.request.filters = [Filter(field: reference.column, op: .equals, value: value.editingText)]
+              window.open(reference.target, in: browser.connection.id)
+              Task { await target.reload() }
+            } label: {
+              HStack(spacing: 3) {
+                Text(value.displayText)
+                Image(systemName: "arrow.up.right").imageScale(.small)
+              }
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(Hue.accent.text)
+            .accessibilityHint("Opens \(reference.target.name)")
+          } else if field.isStatus {
+            Chip(status: value.displayText)
+          } else {
+            Text(value.displayText)
+              .kitFont(field.isMono ? .mono : .body)
           }
-          .linkButtonStyle()
-          .help("Open \(reference.target.name)")
-        } else if field.category == .text, let color = StatusPill.color(for: value.displayText),
-          field.name.contains("status") || field.name.contains("state")
-        {
-          TagLabel(text: value.displayText, color: color)
-        } else {
-          Text(value.fullText.count > 200 ? value.displayText : value.fullText)
-            .font(field.category == .json || field.category == .document || field.category == .uuid ? .codeSmall : .body)
-            .multilineTextAlignment(.trailing)
-            .textSelection(.enabled)
-            .lineLimit(6)
         }
+        .padding(.horizontal, pending != nil ? 4 : 0)
+        .background(pending != nil ? AnyShapeStyle(Hue.orange.soft()) : AnyShapeStyle(Color.clear), in: RoundedRectangle(cornerRadius: KitMetrics.radiusXS))
       }
-      .padding(.horizontal, pending != nil ? 4 : 0)
-      .background(pending != nil ? Color.orange.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
+  }
+}
+
+/// A quiet note under an inspector's cards.
+struct InspectorNote: View {
+  let text: String
+  var systemImage = "info.circle"
+
+  init(_ text: String, systemImage: String = "info.circle") {
+    self.text = text
+    self.systemImage = systemImage
+  }
+
+  var body: some View {
+    Label(text, systemImage: systemImage)
+      .kitFont(.caption)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.horizontal, 6)
   }
 }
 
@@ -288,51 +272,44 @@ struct FieldEditorRow: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      HStack {
-        Text(field.name).font(.callout.weight(.medium))
-        Text(field.typeName).font(.caption).foregroundStyle(.tertiary)
+      HStack(spacing: 6) {
+        Text(field.name).kitFont(.headline)
+        Chip(type: field.typeName).controlSize(.small)
         Spacer()
         if field.isNullable && !locked {
           Toggle("Empty", isOn: $draft.isNull)
-            .toggleStyle(.checkbox)
-            .font(.caption)
-            .help("Store NULL")
+            .toggleStyle(.kitCheckbox)
+            .kitFont(.caption)
+            .accessibilityHint("Store NULL")
         }
       }
       Group {
         if locked {
           Text(draft.isNull ? "empty" : draft.text)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.kitSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(6)
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
+            .padding(.horizontal, 10)
+            .frame(minHeight: KitMetrics.controlRegular)
+            .background(.kitFillSoft, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
         } else if field.category == .boolean {
-          Picker(field.name, selection: $draft.text) {
-            Text("true").tag("true")
-            Text("false").tag("false")
-          }
-          .pickerStyle(.segmented)
-          .labelsHidden()
-          .disabled(draft.isNull)
+          KitSegmented(selection: $draft.text, options: [("true", "true"), ("false", "false")])
+            .kitSegmentedStyle(.wide)
+            .disabled(draft.isNull)
         } else if [.json, .document, .list].contains(field.category) || draft.text.count > 60 || draft.text.contains("\n") {
           TextEditor(text: $draft.text)
-            .font(.code)
+            .kitFont(.mono)
             .frame(minHeight: 70, maxHeight: 200)
             .scrollContentBackground(.hidden)
-            .padding(4)
-            .background(.background, in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
+            .padding(6)
+            .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
             .disabled(draft.isNull)
         } else {
           TextField(field.name, text: $draft.text, prompt: Text(prompt))
-            .textFieldStyle(.roundedBorder)
-            .labelsHidden()
+            .kitField(status: error == nil ? .none : .error, mono: field.isMono)
             .disabled(draft.isNull)
         }
       }
-      if let error {
-        Label(error, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.red)
-      }
+      .kitFieldError(error)
     }
   }
 
@@ -355,21 +332,20 @@ struct MultiSelectionInspector: View {
 
   var body: some View {
     let records = browser.selectedRecords
-    VStack(spacing: 14) {
-      Image(systemName: "square.stack.3d.up").font(.largeTitle).foregroundStyle(.secondary)
-      Text("\(browser.noun.count(records.count)) selected").font(.headline)
-      Button("Copy as JSON", systemImage: "doc.on.doc") {
-        Clipboard.copy("[\n" + records.map { Exporter.json($0, fields: browser.fields) }.joined(separator: ",\n") + "\n]")
-      }
-      .buttonStyle(.bordered)
-      if browser.isEditable {
-        Button("Delete \(browser.noun.count(records.count))…", systemImage: "trash", role: .destructive) { onDelete(records) }
-          .buttonStyle(.bordered)
-          .foregroundStyle(.red)
+    KitInspector(width: nil) {
+      InspectorHeader(
+        "\(browser.noun.count(records.count)) selected", meta: ["In \(browser.ref.name)"],
+        systemImage: "square.stack.3d.up", hue: browser.engine.hue)
+      ActionBar {
+        Button("Copy as JSON") {
+          Clipboard.copy("[\n" + records.map { Exporter.json($0, fields: browser.fields) }.joined(separator: ",\n") + "\n]")
+        }
+        if browser.isEditable {
+          Button(role: .destructive) { onDelete(records) } label: { Image(systemName: "trash") }
+            .accessibilityLabel("Delete \(browser.noun.count(records.count))…")
+        }
       }
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .padding()
   }
 }
 
@@ -392,14 +368,15 @@ struct RecordDetailScreen: View {
     #if os(iOS)
       .navigationBarTitleDisplayMode(.inline)
     #endif
-    .confirmationDialog("Delete this \(browser.noun.singular)?", isPresented: $deleting, titleVisibility: .visible) {
-      Button("Add to Changes", role: .destructive) {
-        browser.stageDelete([record])
-        browser.showsReview = true
-      }
+    .kitConfirmation(
+      "Delete this \(browser.noun.singular)?", isPresented: $deleting,
+      message: "You'll see the change before anything is deleted.", systemImage: "trash", confirm: "Add to Changes"
+    ) {
+      browser.stageDelete([record])
+      browser.showsReview = true
     }
     .sheet(isPresented: Binding(get: { browser.showsReview }, set: { browser.showsReview = $0 })) {
-      ReviewSheet(browser: browser).appButtonShape()
+      ReviewSheet(browser: browser).componentKit(accent: .databaseAccent)
     }
   }
 }
@@ -414,32 +391,38 @@ struct NewItemSheet: View {
   @State private var documentError: String?
 
   var body: some View {
-    NavigationStack {
-      Form {
-        if browser.engine.family == .document {
-          Section {
+    KitSheet(
+      title: "Add \(browser.noun.capitalized)",
+      meta: "In \(browser.ref.name). It joins the changes you review before saving.",
+      systemImage: "plus", hue: browser.engine.hue, width: 520
+    ) {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 10) {
+          if browser.engine.family == .document {
             CodeEditor(text: $documentText, language: EngineKind.mongodb.highlighting, completions: [])
               .frame(minHeight: 220)
-            if let documentError {
-              Label(documentError, systemImage: "exclamationmark.circle").foregroundStyle(.red).font(.caption)
-            }
-          } footer: {
+              .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+              .clipShape(RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+              .kitFieldError(documentError)
             Text("Write the document in MongoDB Shell syntax, e.g. { name: \"Lamp\", price: 59.0 }. An _id is added if you leave it out.")
-          }
-        } else {
-          ForEach(browser.fields.filter { !$0.isGenerated }) { field in
-            FieldEditorRow(field: field, draft: binding(field), error: errors[field.name], locked: false)
+              .kitFont(.caption)
+          } else {
+            ForEach(browser.fields.filter { !$0.isGenerated }) { field in
+              FieldEditorRow(field: field, draft: binding(field), error: errors[field.name], locked: false)
+            }
           }
         }
+        .padding(12)
       }
-      .formStyle(.grouped)
-      .navigationTitle("Add \(browser.noun.capitalized)")
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-        ToolbarItem(placement: .confirmationAction) { Button("Add to Changes", action: add) }
-      }
+      .frame(minHeight: 260, maxHeight: 520)
+      .kitSurface(.card)
+    } footer: {
+      Button("Cancel") { dismiss() }
+        .keyboardShortcut(.cancelAction)
+      Button("Add to Changes", action: add)
+        .buttonStyle(.kitPrimary)
+        .keyboardShortcut(.defaultAction)
     }
-    .frame(minWidth: 460, minHeight: 420)
     .onAppear {
       if browser.engine.family == .document, let sample = browser.fields.filter({ $0.name != "_id" }).first {
         documentText = "{\n  \(sample.name): \n}"
@@ -488,16 +471,4 @@ struct NewItemSheet: View {
   }
 }
 
-extension View {
-  /// The grouped, rounded container used for field lists.
-  func groupBox() -> some View {
-    background(.background.secondary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-      .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.separator.opacity(0.6)))
-  }
-}
 
-#if os(iOS)
-  extension ToggleStyle where Self == SwitchToggleStyle {
-    static var checkbox: SwitchToggleStyle { .switch }
-  }
-#endif

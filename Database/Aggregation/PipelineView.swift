@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
@@ -12,48 +13,45 @@ struct PipelineView: View {
   var body: some View {
     VStack(spacing: 0) {
       header
-      Divider()
       if pipeline.showsFullBuilder && !pipeline.isSQL {
-        HStack(spacing: 0) {
-          StepLibrary(pipeline: pipeline).frame(width: 260)
-          Divider()
-          stepList.frame(minWidth: 360)
-          Divider()
-          StepInspector(pipeline: pipeline, browser: browser).frame(minWidth: 270, idealWidth: 400)
+        KitWindowLayout {
+          StepLibrary(pipeline: pipeline).frame(width: 260).kitPane(.secondary)
+          stepList.frame(minWidth: 360).kitPane(.content)
+          StepInspector(pipeline: pipeline, browser: browser).frame(minWidth: 270, idealWidth: 400).kitPane(.secondary)
         }
       } else {
-        HStack(spacing: 0) {
-          stepList.frame(minWidth: 420)
-          Divider()
-          OutputPanel(pipeline: pipeline, browser: browser).frame(minWidth: 320, idealWidth: 400)
+        KitWindowLayout {
+          stepList.frame(minWidth: 420).kitPane(.content)
+          OutputPanel(pipeline: pipeline, browser: browser).frame(minWidth: 320, idealWidth: 400).kitPane(.secondary)
         }
       }
     }
     .task {
       if pipeline.steps.isEmpty { pipeline.add(.match) } else { await pipeline.refreshPreview() }
     }
-    .sheet(isPresented: $importing) { importSheet.appButtonShape() }
+    .sheet(isPresented: $importing) { importSheet.componentKit(accent: .databaseAccent) }
   }
 
   private var header: some View {
     HStack(spacing: 10) {
       VStack(alignment: .leading, spacing: 1) {
-        Text("Pipeline").font(.headline)
+        Text("Pipeline").kitFont(.title3)
         Text("Each step works on what the step above passes down. Click a step to see its output.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .kitFont(.caption)
       }
       Spacer()
       if !pipeline.isSQL {
         Toggle(isOn: $pipeline.showsFullBuilder) {
           Label("All Steps", systemImage: "square.grid.2x2")
         }
-        .help("Show every MongoDB step, settings and formulas")
+        .toggleStyle(.kitCheckbox)
+        .accessibilityHint("Show every MongoDB step, settings and formulas")
       }
       Button("Import…") {
         importText = ""
         importing = true
       }
+      .buttonStyle(.kit)
       Menu("Export") {
         if pipeline.isSQL {
           Button("Copy SQL") { Clipboard.copy((try? pipeline.sql()) ?? "") }
@@ -64,15 +62,15 @@ struct PipelineView: View {
           }
         }
       }
+      .menuStyle(.button)
+      .buttonStyle(.kit)
+      .menuIndicator(.hidden)
       .fixedSize()
-      Button {
-        Task { await pipeline.run() }
-      } label: {
-        Label("Run", systemImage: "play.fill")
-      }
-      .buttonStyle(.borderedProminent)
-      .help("Run the whole pipeline (⌘↩)")
+      Button("Run", systemImage: "play.fill") { Task { await pipeline.run() } }
+        .buttonStyle(.kitPrimary)
+        .kitHelp("Run the whole pipeline", shortcut: "⌘↩", systemImage: "play.fill")
     }
+    .controlSize(.small)
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
   }
@@ -83,7 +81,7 @@ struct PipelineView: View {
         ForEach(Array(pipeline.steps.enumerated()), id: \.element.id) { index, step in
           StepCard(pipeline: pipeline, browser: browser, step: step, index: index, inlineEditor: !pipeline.showsFullBuilder)
           if index < pipeline.steps.count - 1 {
-            Rectangle().fill(.separator).frame(width: 2, height: 14).padding(.leading, 44)
+            Rectangle().fill(.kitSeparator).frame(width: 2, height: KitMetrics.gutter).padding(.leading, 44)
           }
         }
         AddStepMenu(pipeline: pipeline)
@@ -92,47 +90,42 @@ struct PipelineView: View {
           PipelineSettings(pipeline: pipeline).padding(.top, 16)
         }
         if let error = pipeline.resultError {
-          Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).padding(.top, 12)
+          Banner(error, systemImage: "exclamationmark.triangle", hue: .red).padding(.top, 12)
         }
         if pipeline.isSQL {
           Text("Pipelines on SQL tables become one SELECT, shown under Code.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .kitFont(.caption)
             .padding(.top, 14)
         }
       }
-      .padding(16)
+      .padding(KitMetrics.gutter)
     }
   }
 
   private var importSheet: some View {
-    NavigationStack {
-      VStack(alignment: .leading, spacing: 8) {
-        Text("Paste db.collection.aggregate([…]), a JSON array of stages, or stages separated by commas.")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-        CodeEditor(text: $importText, language: EngineKind.mongodb.highlighting, completions: [])
-          .frame(minHeight: 240)
-          .groupBox()
-        if let importError { Text(importError).foregroundStyle(.red).font(.caption) }
-      }
-      .padding()
-      .navigationTitle("Import Pipeline")
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { importing = false } }
-        ToolbarItem(placement: .confirmationAction) {
-          Button("Import") {
-            do {
-              try pipeline.importText(importText)
-              importing = false
-            } catch {
-              importError = FriendlyError.message(error)
-            }
-          }
+    KitSheet(
+      title: "Import Pipeline", meta: "Paste db.collection.aggregate([…]), a JSON array of stages, or stages separated by commas.",
+      systemImage: "square.and.arrow.down", width: 560
+    ) {
+      CodeEditor(text: $importText, language: EngineKind.mongodb.highlighting, completions: [])
+        .frame(minHeight: 240)
+        .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+        .kitFieldError(importError)
+    } footer: {
+      Button("Cancel") { importing = false }
+        .keyboardShortcut(.cancelAction)
+      Button("Import") {
+        do {
+          try pipeline.importText(importText)
+          importing = false
+        } catch {
+          importError = FriendlyError.message(error)
         }
       }
+      .buttonStyle(.kitPrimary)
+      .keyboardShortcut(.defaultAction)
     }
-    .frame(minWidth: 520, minHeight: 380)
   }
 }
 
@@ -149,33 +142,28 @@ struct StepCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 8) {
-        Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary).accessibilityHidden(true)
+        Image(systemName: "line.3.horizontal").foregroundStyle(.kitTertiary).accessibilityHidden(true)
         Button {
           pipeline.select(step.id)
         } label: {
           HStack(spacing: 8) {
-            Text("\(index + 1)")
-              .font(.caption.bold())
-              .foregroundStyle(selected ? Color.white : Color.primary)
-              .frame(width: 22, height: 22)
-              .background(selected ? Color.accentColor : Color.secondary.opacity(0.15), in: Circle())
-            Text(step.kind.name).fontWeight(.bold)
-            Text(step.kind.op).font(.codeSmall).foregroundStyle(.secondary)
-            Text("· " + pipeline.summary(step)).foregroundStyle(.secondary).lineLimit(1)
+            StepNumber(index + 1, isCurrent: selected)
+            Text(step.kind.name).kitFont(.headline)
+            Text(step.kind.op).kitFont(.monoSmall).foregroundStyle(.kitSecondary)
+            Text("· " + pipeline.summary(step)).foregroundStyle(.kitSecondary).lineLimit(1)
           }
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         Spacer(minLength: 4)
         if let count = pipeline.counts[step.id], step.isEnabled {
-          Text("\(count.formatted()) out").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+          Text("\(count.formatted()) out").kitFont(.caption).monospacedDigit()
         } else if !step.isEnabled {
-          Text("Off").font(.caption).foregroundStyle(.secondary)
+          Text("Off").kitFont(.caption)
         }
         Toggle("Step \(index + 1) on", isOn: Binding(get: { step.isEnabled }, set: { on in pipeline.update(step.id) { $0.isEnabled = on } }))
-          .toggleStyle(.switch)
+          .toggleStyle(.kitSwitch)
           .labelsHidden()
-          .controlSize(.mini)
         Menu {
           Button("Run Through This Step", systemImage: "play") { pipeline.select(step.id) }
           Button("Move Up", systemImage: "arrow.up") { pipeline.move(step.id, by: -1) }.disabled(index == 0)
@@ -185,17 +173,16 @@ struct StepCard: View {
           Divider()
           Button("Delete Step", systemImage: "trash", role: .destructive) { pipeline.remove(step.id) }
         } label: {
-          Image(systemName: "ellipsis.circle")
+          Label("Step \(index + 1) actions", systemImage: "ellipsis")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.kitIcon)
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel("Step \(index + 1) actions")
       }
       if step.kind.writes && !step.isEnabled {
         Text("Off while you try things out. Turn it on to write the results.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          .kitFont(.caption)
           .padding(.leading, 52)
       }
       if selected && inlineEditor {
@@ -203,12 +190,29 @@ struct StepCard: View {
           .padding(.leading, 52)
       }
     }
-    .padding(12)
-    .background(.background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .strokeBorder(selected ? Color.accentColor : Color.secondary.opacity(step.isEnabled ? 0.25 : 0.4), style: StrokeStyle(lineWidth: selected ? 2 : 1, dash: step.isEnabled ? [] : [4, 3])))
+    .padding(.horizontal, 10)
+    .padding(.vertical, 8)
+    .background {
+      if step.isEnabled {
+        SurfaceShapeCard()
+      }
+    }
+    .overlay {
+      let shape = RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous)
+      if selected {
+        shape.strokeBorder(Hue.accent.fill, lineWidth: 2)
+      } else if !step.isEnabled {
+        shape.strokeBorder(.kitSeparator, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+      }
+    }
     .opacity(step.isEnabled ? 1 : 0.8)
+  }
+}
+
+/// A card's ground, for views that draw their own border over it.
+private struct SurfaceShapeCard: View {
+  var body: some View {
+    Color.clear.kitSurface(.card)
   }
 }
 
@@ -231,9 +235,9 @@ struct AddStepMenu: View {
     } label: {
       Label("Add Step", systemImage: "plus")
     }
-    .menuStyle(.borderlessButton)
+    .menuStyle(.button)
+    .buttonStyle(.kitPlain)
     .fixedSize()
-    .buttonStyle(DashedCapsuleStyle())
   }
 }
 
@@ -261,25 +265,23 @@ struct StepLibrary: View {
     }
     .safeAreaInset(edge: .top, spacing: 10) {
       VStack(alignment: .leading, spacing: 10) {
-        Text("Steps").font(.headline)
-        SearchField(text: $search, prompt: "Search \(StepKind.allCases.count) steps")
+        Text("Steps").kitFont(.title3)
+        KitSearchField(text: $search, prompt: "Search \(StepKind.allCases.count) steps")
       }
       .padding([.horizontal, .top], 12)
-      .background(.background)
+      .background(.kitPanel)
     }
     .safeAreaInset(edge: .bottom) {
       Text("Click a step to add it after the selected one.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .kitFont(.caption)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(.background)
+        .background(.kitPanel)
     }
-    .background(.background)
   }
 }
 
-/// One library group: a colored icon, its name and count, and its steps.
+/// One library group: its tile, name and count, and its steps.
 private struct StepGroupBlock: View {
   let group: String
   let kinds: [StepKind]
@@ -287,33 +289,17 @@ private struct StepGroupBlock: View {
 
   var body: some View {
     let look = StepGroupLook(group)
-    VStack(alignment: .leading, spacing: 1) {
-      HStack(spacing: 8) {
-        Image(systemName: look.symbol)
-          .font(.system(size: 11, weight: .semibold))
-          .foregroundStyle(look.ink)
-          .frame(width: 22, height: 22)
-          .background(look.ink.opacity(0.14), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-          .accessibilityHidden(true)
-        Text(group).font(.callout.weight(.semibold))
-        Spacer()
-        Text("\(kinds.count)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
-      }
-      .padding(.horizontal, 4)
-      .padding(.top, 2)
-      .padding(.bottom, 3)
+    KitSection(group, meta: "\(kinds.count) \(kinds.count == 1 ? "step" : "steps")", systemImage: look.symbol, hue: look.hue) {
       ForEach(kinds) { kind in
-        StepLibraryRow(kind: kind, ink: look.ink) { onAdd(kind) }
+        StepLibraryRow(kind: kind, hue: look.hue) { onAdd(kind) }
       }
     }
-    .padding(4)
-    .groupBox()
   }
 }
 
 private struct StepLibraryRow: View {
   let kind: StepKind
-  let ink: Color
+  let hue: Hue
   let action: () -> Void
   @State private var hovering = false
 
@@ -322,35 +308,35 @@ private struct StepLibraryRow: View {
       HStack(spacing: 8) {
         Text(kind.name).lineLimit(1)
         Spacer(minLength: 4)
-        Text(kind.op).font(.codeSmall).foregroundStyle(ink).lineLimit(1)
+        Text(kind.op).kitFont(.monoSmall).foregroundStyle(hue.text).lineLimit(1)
       }
       .padding(.horizontal, 6)
       .frame(minHeight: 26)
-      .background(hovering ? ink.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+      .background(hovering ? AnyShapeStyle(.kitHover) : AnyShapeStyle(Color.clear), in: RoundedRectangle(cornerRadius: KitMetrics.radiusSmall, style: .continuous))
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .onHover { hovering = $0 }
-    .help(kind.does)
+    .accessibilityHint(kind.does)
     .draggable(kind.rawValue)
   }
 }
 
-/// Each library group's symbol and color. Light mode uses dark inks that read on white; dark mode lighter ones.
+/// Each library group's symbol and hue.
 struct StepGroupLook {
   let symbol: String
-  let ink: Color
+  let hue: Hue
 
   init(_ group: String) {
     switch group {
-    case "Filter and shape": (symbol, ink) = ("line.3.horizontal.decrease", Color(light: 0x0B4A8F, dark: 0x6CA8F0))
-    case "Group and count": (symbol, ink) = ("square.grid.2x2", Color(light: 0x5E2A84, dark: 0xC597E8))
-    case "Arrays": (symbol, ink) = ("list.bullet", Color(light: 0x0F5E5A, dark: 0x5CC8C0))
-    case "Order and pages": (symbol, ink) = ("arrow.up.arrow.down", Color(light: 0x93370D, dark: 0xF2A27A))
-    case "Combine": (symbol, ink) = ("arrow.triangle.merge", Color(light: 0x1E6B35, dark: 0x6CCB86))
-    case "Time and windows": (symbol, ink) = ("clock", Color(light: 0x8A2456, dark: 0xEE8DB9))
-    case "Location": (symbol, ink) = ("mappin", Color(light: 0x6B5200, dark: 0xE3C35A))
-    default: (symbol, ink) = ("square.and.arrow.down", Color(light: 0x3A3A3F, dark: 0xAEAEB2))
+    case "Filter and shape": (symbol, hue) = ("line.3.horizontal.decrease", .blue)
+    case "Group and count": (symbol, hue) = ("square.grid.2x2", .purple)
+    case "Arrays": (symbol, hue) = ("list.bullet", .teal)
+    case "Order and pages": (symbol, hue) = ("arrow.up.arrow.down", .orange)
+    case "Combine": (symbol, hue) = ("arrow.triangle.merge", .green)
+    case "Time and windows": (symbol, hue) = ("clock", .pink)
+    case "Location": (symbol, hue) = ("mappin", .yellow)
+    default: (symbol, hue) = ("square.and.arrow.down", .gray)
     }
   }
 }
@@ -360,20 +346,28 @@ struct PipelineSettings: View {
   @Bindable var pipeline: PipelineModel
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("Pipeline settings").font(.callout.weight(.semibold))
-      Form {
-        Toggle("Big sorts use disk", isOn: $pipeline.allowDiskUse)
-        Stepper("Time limit: \(pipeline.maxTimeSeconds == 0 ? "none" : "\(pipeline.maxTimeSeconds) s")", value: $pipeline.maxTimeSeconds, in: 0...3600, step: 5)
-        TextField("Text comparison language", text: $pipeline.collationLocale, prompt: Text("e.g. en"))
-        if !pipeline.collationLocale.isEmpty {
-          Toggle("Ignore case", isOn: $pipeline.caseInsensitive)
-        }
-        TextField("Tag in server logs", text: $pipeline.comment, prompt: Text("e.g. review-trends"))
+    FormCard("Pipeline settings") {
+      FormRow("Big sorts use disk", systemImage: "internaldrive", hue: .gray) {
+        Toggle("Big sorts use disk", isOn: $pipeline.allowDiskUse).toggleStyle(.kitSwitch).labelsHidden()
       }
-      .formStyle(.grouped)
-      .scrollDisabled(true)
-      .frame(minHeight: 220)
+      FormRow("Time limit", systemImage: "timer", hue: .orange) {
+        KitStepper("Time limit", value: $pipeline.maxTimeSeconds, in: 0...3600, step: 5) { $0 == 0 ? "none" : "\($0) s" }
+      }
+      FormRow("Text comparison language", systemImage: "textformat", hue: .gray) {
+        TextField("Text comparison language", text: $pipeline.collationLocale, prompt: Text("e.g. en"))
+          .kitField()
+          .frame(width: 150)
+      }
+      if !pipeline.collationLocale.isEmpty {
+        FormRow("Ignore case", systemImage: "textformat.size", hue: .gray) {
+          Toggle("Ignore case", isOn: $pipeline.caseInsensitive).toggleStyle(.kitSwitch).labelsHidden()
+        }
+      }
+      FormRow("Tag in server logs", systemImage: "tag", hue: .gray) {
+        TextField("Tag in server logs", text: $pipeline.comment, prompt: Text("e.g. review-trends"))
+          .kitField()
+          .frame(width: 150)
+      }
     }
   }
 }
@@ -385,19 +379,9 @@ struct OutputPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        VStack(alignment: .leading, spacing: 1) {
-          Text(title).font(.headline)
-          Text(subtitle).font(.caption).foregroundStyle(.secondary)
-        }
-        Spacer()
-        Picker("Show", selection: $pipeline.showsCode) {
-          Text("Output").tag(false)
-          Text("Code").tag(true)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
+      RichHeader(title, meta: subtitle, size: .title, systemImage: "square.stack.3d.up", hue: browser.engine.hue,
+        status: pipeline.isPreviewing ? .working : .idle) {
+        KitSegmented(selection: $pipeline.showsCode, options: [("Output", false), ("Code", true)])
       }
       if pipeline.results != nil || pipeline.resultRows != nil {
         resultsView
@@ -407,7 +391,7 @@ struct OutputPanel: View {
         previewView
       }
     }
-    .padding(16)
+    .padding(KitMetrics.gutter)
   }
 
   private var title: String {
@@ -428,7 +412,7 @@ struct OutputPanel: View {
 
   @ViewBuilder private var previewView: some View {
     if let error = pipeline.previewError {
-      Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).font(.callout)
+      Banner(error, systemImage: "exclamationmark.triangle", hue: .red)
       Spacer()
     } else if pipeline.isSQL, let rows = pipeline.previewRows {
       ResultTable(fields: rows.fields, rows: rows.rows)
@@ -439,14 +423,12 @@ struct OutputPanel: View {
             DocumentPreview(document: doc)
           }
           if pipeline.preview.isEmpty && !pipeline.isPreviewing {
-            Text("No documents reach this step.").foregroundStyle(.secondary).padding()
+            Text("No documents reach this step.").foregroundStyle(.kitSecondary).padding()
           }
         }
       }
-      .overlay { if pipeline.isPreviewing { ProgressView() } }
       Label("Output updates as you edit a step. Run applies the whole pipeline.", systemImage: "info.circle")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .kitFont(.caption)
     }
   }
 
@@ -454,16 +436,16 @@ struct OutputPanel: View {
     VStack(alignment: .leading, spacing: 8) {
       ScrollView {
         Text(pipeline.isSQL ? ((try? pipeline.sql()) ?? "") : pipeline.javaScript)
-          .font(.codeSmall)
+          .kitFont(.monoSmall)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(12)
       }
-      .groupBox()
+      .kitSurface(.card)
       Button(pipeline.isSQL ? "Copy SQL" : "Copy as JavaScript") {
         Clipboard.copy(pipeline.isSQL ? ((try? pipeline.sql()) ?? "") : pipeline.javaScript)
       }
-      .buttonStyle(.bordered)
+      .buttonStyle(.kit)
     }
   }
 
@@ -477,7 +459,7 @@ struct OutputPanel: View {
         }
       }
     }
-    Button("Back to Step Output") { pipeline.clearResults() }.buttonStyle(.bordered)
+    Button("Back to Step Output") { pipeline.clearResults() }.buttonStyle(.kit)
   }
 }
 
@@ -491,24 +473,24 @@ struct DocumentPreview: View {
       ForEach(document.elements.prefix(8), id: \.key) { element in
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           HStack(spacing: 4) {
-            Text(element.key).foregroundStyle(.secondary)
-            if highlight.contains(element.key) { TagLabel(text: "NEW", color: .green) }
+            Text(element.key).foregroundStyle(.kitSecondary)
+            if highlight.contains(element.key) { Chip("New", hue: .green).controlSize(.small) }
           }
           .frame(width: 120, alignment: .leading)
           Text(CellValue.bson(element.value).displayText)
-            .font(.codeSmall)
+            .kitFont(.monoSmall)
             .lineLimit(1)
             .truncationMode(.middle)
         }
-        .font(.caption)
+        .kitFont(.caption)
       }
       if document.count > 8 {
-        Text("+ \(document.count - 8) more fields").font(.caption2).foregroundStyle(.tertiary)
+        Text("+ \(document.count - 8) more fields").kitFont(.caption).foregroundStyle(.kitTertiary)
       }
     }
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .groupBox()
+    .kitSurface(.card)
   }
 }
 
@@ -518,36 +500,29 @@ struct StepInspector: View {
   let browser: BrowserModel
 
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 14) {
-        if let step = pipeline.selectedStep, let index = pipeline.selectedIndex {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Step \(index + 1) · \(step.kind.name)").font(.title3.bold())
-            HStack(spacing: 4) {
-              Text(step.kind.op).font(.codeSmall)
-              Text("· " + step.kind.does.lowercased())
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+    KitInspector(width: nil) {
+      if let step = pipeline.selectedStep, let index = pipeline.selectedIndex {
+        InspectorHeader(
+          "Step \(index + 1) · \(step.kind.name)", meta: [step.kind.op, step.kind.does.lowercased()],
+          systemImage: StepGroupLook(step.kind.group).symbol, hue: StepGroupLook(step.kind.group).hue,
+          status: pipeline.isPreviewing ? .working : .idle)
+        StepEditor(pipeline: pipeline, browser: browser, step: step)
+        fieldsHere
+        KitSection(
+          "Output of step \(index + 1)",
+          meta: ["\(pipeline.previewCount?.formatted() ?? "…") documents"] + (pipeline.previewElapsed.map { [formatDuration($0)] } ?? []),
+          systemImage: "doc.on.doc", hue: browser.engine.hue
+        ) {
+          if let error = pipeline.previewError {
+            Text(error).kitFont(.caption).foregroundStyle(Hue.red.text).padding(6)
           }
-          StepEditor(pipeline: pipeline, browser: browser, step: step)
-          fieldsHere
-          VStack(alignment: .leading, spacing: 6) {
-            Text("Output of step \(index + 1) · \(pipeline.previewCount?.formatted() ?? "…") documents\(pipeline.previewElapsed.map { " · " + formatDuration($0) } ?? "")")
-              .font(.caption.weight(.semibold))
-              .foregroundStyle(.secondary)
-            if let error = pipeline.previewError {
-              Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).font(.caption)
-            }
-            ForEach(Array(pipeline.preview.prefix(3).enumerated()), id: \.offset) { _, doc in
-              DocumentPreview(document: doc, highlight: newFields(step))
-            }
+          ForEach(Array(pipeline.preview.prefix(3).enumerated()), id: \.offset) { _, doc in
+            DocumentPreview(document: doc, highlight: newFields(step))
           }
-        } else {
-          ContentUnavailableView("No Step Selected", systemImage: "square.stack.3d.up", description: Text("Pick a step to edit it."))
         }
+      } else {
+        EmptyState(systemImage: "square.stack.3d.up", title: "No Step Selected", message: "Pick a step to edit it.")
       }
-      .padding(16)
     }
   }
 
@@ -561,25 +536,20 @@ struct StepInspector: View {
     let docs = pipeline.preview
     if !docs.isEmpty {
       let names = docs.flatMap(\.keys).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
-      VStack(alignment: .leading, spacing: 6) {
-        Text("Fields here · how often each is filled").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-        VStack(spacing: 0) {
-          ForEach(names.prefix(14), id: \.self) { name in
-            let values = docs.compactMap { $0[name] }
-            let fill = Double(values.count) / Double(docs.count)
+      KitSection("Fields here", meta: "how often each is filled", systemImage: "tablecells", hue: .gray) {
+        ForEach(names.prefix(14), id: \.self) { name in
+          let values = docs.compactMap { $0[name] }
+          let fill = Double(values.count) / Double(docs.count)
+          InspectorRow(name) {
             HStack(spacing: 8) {
-              Text(name).font(.codeSmall).lineLimit(1)
-              Spacer()
-              if let type = values.first?.typeName { TypeBadge(type) }
-              ProgressView(value: fill).frame(width: 54).tint(.blue)
-              Text(fill.formatted(.percent.precision(.fractionLength(0)))).font(.caption).foregroundStyle(.secondary).frame(width: 36, alignment: .trailing)
+              if let type = values.first?.typeName { Chip(type: type).controlSize(.small) }
+              MicroBar(value: fill, width: 54)
+              Text(fill.formatted(.percent.precision(.fractionLength(0))))
+                .kitFont(.caption)
+                .frame(width: 36, alignment: .trailing)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
           }
         }
-        .padding(.vertical, 4)
-        .groupBox()
       }
     }
   }

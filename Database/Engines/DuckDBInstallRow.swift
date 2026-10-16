@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
@@ -11,51 +12,65 @@ struct DuckDBInstallRow: View {
   var body: some View {
     let installer = app.duckDB
     HStack(alignment: .center, spacing: 12) {
-      VStack(alignment: .leading, spacing: 3) {
+      LiveIcon(hue: EngineKind.duckdb.hue, status: status, size: 28) {
+        Text(EngineKind.duckdb.monogram).font(.system(size: 12, weight: .bold))
+      }
+      VStack(alignment: .leading, spacing: 2) {
         switch installer.state {
         case .unavailable:
-          Text("DuckDB isn't available on this device.").foregroundStyle(.secondary)
+          Text("DuckDB isn't available on this device.").foregroundStyle(.kitSecondary)
         case .notInstalled:
-          Text("DuckDB isn't installed.").fontWeight(.medium)
+          Text("DuckDB isn't installed.").kitFont(.headline)
           Text("Database downloads it from GitHub (\(formatBytes(installer.release.size))) only when you choose Download.")
-            .foregroundStyle(.secondary)
+            .kitFont(.caption)
         case .downloading(let fraction):
-          Text("Downloading DuckDB \(installer.release.version)…").fontWeight(.medium)
-          ProgressView(value: fraction).frame(maxWidth: 240)
+          Text("Downloading DuckDB \(installer.release.version)…").kitFont(.headline)
+          Text("\(Int(fraction * 100))% of \(formatBytes(installer.release.size))").kitFont(.caption)
         case .installing:
-          Text("Installing DuckDB…").fontWeight(.medium)
-          ProgressView().controlSize(.small)
+          Text("Installing DuckDB…").kitFont(.headline)
         case .installed(let version):
-          Label("DuckDB \(version) is installed.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+          Text("DuckDB \(version) is installed.").kitFont(.headline)
           if installer.hasUpdate {
             Text("Version \(installer.release.version) is available (\(formatBytes(installer.release.size))).")
-              .foregroundStyle(.secondary)
+              .kitFont(.caption)
           } else if showsRemove, DuckDBLibrary.isLoaded {
-            Text("Removing it takes effect after Database restarts.").foregroundStyle(.secondary)
+            Text("Removing it takes effect after Database restarts.").kitFont(.caption)
           }
         case .failed(let message):
-          Text(message).foregroundStyle(.red).lineLimit(3)
+          Text(message).foregroundStyle(Hue.red.text).lineLimit(3)
         }
       }
-      .font(.callout)
+      .fixedSize(horizontal: false, vertical: true)
       Spacer(minLength: 0)
       switch installer.state {
       case .unavailable:
         EmptyView()
       case .notInstalled, .failed:
-        Button("Download") { installer.install() }.buttonStyle(.borderedProminent)
+        Button("Download") { installer.install() }.buttonStyle(.kitPrimary)
       case .downloading, .installing:
-        Button("Cancel") { installer.cancel() }.disabled({ if case .installing = installer.state { true } else { false } }())
+        Button("Cancel") { installer.cancel() }
+          .buttonStyle(.kit)
+          .disabled({ if case .installing = installer.state { true } else { false } }())
       case .installed:
         if installer.hasUpdate {
-          Button("Update") { installer.install() }
+          Button("Update") { installer.install() }.buttonStyle(.kit)
         }
         if showsRemove {
-          Button("Remove", role: .destructive) { installer.remove() }
+          Button("Remove", role: .destructive) { installer.remove() }.buttonStyle(.kit)
         }
       }
     }
-    .controlSize(.regular)
+    .controlSize(.small)
     .onAppear { installer.refresh() }
+  }
+
+  private var status: WorkStatus {
+    switch app.duckDB.state {
+    case .downloading(let fraction): .working(progress: fraction)
+    case .installing: .working
+    case .installed: .done
+    case .failed(let message): .failed(message)
+    case .unavailable, .notInstalled: .idle
+    }
   }
 }

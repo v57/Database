@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
@@ -20,7 +21,7 @@ struct DatabaseApp: App {
     let app = AppModel.live()
     _app = State(initialValue: app)
     #if DEBUG && os(macOS)
-      DebugPresenter.prepare { ContentView().environment(app).appButtonShape() }
+      DebugPresenter.prepare { ContentView().environment(app).kitToasts().componentKit(accent: .databaseAccent) }
     #endif
     #if os(macOS)
       updater.start()
@@ -31,7 +32,8 @@ struct DatabaseApp: App {
     WindowGroup {
       ContentView()
         .environment(app)
-        .appButtonShape()
+        .kitToasts()
+        .componentKit(accent: .databaseAccent)
     }
     .defaultSize(width: 1440, height: 900)
     .commands {
@@ -44,7 +46,7 @@ struct DatabaseApp: App {
       Settings {
         SettingsView()
           .environment(app)
-          .appButtonShape()
+          .componentKit(accent: .databaseAccent)
       }
     #endif
   }
@@ -87,6 +89,11 @@ struct AppCommands: Commands {
         .keyboardShortcut("i", modifiers: [.command, .option])
     }
   }
+}
+
+extension Color {
+  /// Database's accent (#0066cc), set once on each scene's root.
+  static let databaseAccent = Color(.sRGB, red: 0, green: 0.4, blue: 0.8)
 }
 
 extension FocusedValues {

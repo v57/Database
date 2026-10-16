@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -44,14 +45,13 @@ struct ConnectionSheet: View {
   }
 
   var body: some View {
-    VStack(spacing: 0) {
+    KitSheet(
+      title: original == nil ? "New Connection" : "Edit Connection",
+      meta: "Paste a link from your host, or pick a database and fill in the details.", width: 680,
+      icon: { profile.engine.tile(size: 32) }
+    ) {
       ScrollView {
-        VStack(alignment: .leading, spacing: 20) {
-          VStack(alignment: .leading, spacing: 4) {
-            Text(original == nil ? "New Connection" : "Edit Connection").font(.title2.bold())
-            Text("Paste a link from your host, or pick a database and fill in the details.")
-              .foregroundStyle(.secondary)
-          }
+        VStack(alignment: .leading, spacing: 16) {
           linkField
           engineGrid
           if !profile.engine.isFileBased {
@@ -60,7 +60,7 @@ struct ConnectionSheet: View {
           serverSection
           if !profile.engine.isFileBased {
             ViewThatFits(in: .horizontal) {
-              HStack(alignment: .top, spacing: 16) {
+              HStack(alignment: .top, spacing: KitMetrics.gutter) {
                 passwordSection.frame(maxWidth: .infinity)
                 encryptionSection.frame(maxWidth: .infinity)
               }
@@ -72,15 +72,29 @@ struct ConnectionSheet: View {
           }
           safetySection
         }
-        .padding(24)
+        .padding(.vertical, 4)
       }
       #if DEBUG
         .defaultScrollAnchor(LaunchOptions.flag("--scroll-bottom") ? .bottom : .top)
       #endif
-      Divider()
-      footer
+      .frame(minHeight: 420, idealHeight: 620)
+    } footer: {
+      footerStatus
+      Button(test == .idle ? "Test" : "Test Again") { runTest() }
+        .disabled(!profile.problems.isEmpty || test == .testing)
+      Button("Cancel") { dismiss() }
+        .keyboardShortcut(.cancelAction)
+      Button(original == nil ? "Connect" : "Save") {
+        var saved = profile
+        if saved.name.isEmpty { saved.name = saved.displayName }
+        app.save(saved, password: password, sshPassword: sshPassword)
+        onSave(saved)
+        dismiss()
+      }
+      .buttonStyle(.kitPrimary)
+      .keyboardShortcut(.defaultAction)
+      .disabled(!profile.problems.isEmpty)
     }
-    .frame(minWidth: 620, idealWidth: 780, minHeight: 560, idealHeight: 760)
     .onAppear {
       loadSecrets()
       #if DEBUG
@@ -107,14 +121,14 @@ struct ConnectionSheet: View {
       ) { host, password in
         save(host, password: password)
       }
+      .componentKit(accent: .databaseAccent)
     }
-    .confirmationDialog(
+    .kitConfirmation(
       "Delete “\(deletingHost?.displayName ?? "")”?", isPresented: Binding(get: { deletingHost != nil }, set: { if !$0 { deletingHost = nil } }),
-      presenting: deletingHost
-    ) { host in
-      Button("Delete", role: .destructive) { delete(host) }
-    } message: { _ in
-      Text("Shell and the other v57 apps won’t list it anymore.")
+      message: "Shell and the other v57 apps won’t list it anymore.", systemImage: "trash", confirm: "Delete"
+    ) {
+      if let host = deletingHost { delete(host) }
+      deletingHost = nil
     }
   }
 
@@ -122,25 +136,16 @@ struct ConnectionSheet: View {
 
   private var linkField: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text("Connection link").font(.callout.weight(.semibold))
-      HStack(spacing: 8) {
-        Image(systemName: "link").foregroundStyle(.secondary)
-        TextField("Connection link", text: $link, prompt: Text("postgres://user@host:5432/database"))
-          .textFieldStyle(.plain)
-          .font(.code)
-          .labelsHidden()
-          .onChange(of: link) { _, text in readLink(text) }
-          #if os(iOS)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-          #endif
-      }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 8)
-      .background(.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-      .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(recognized != nil ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: recognized != nil ? 2 : 1))
+      SheetHeading("Connection link")
+      TextField("Connection link", text: $link, prompt: Text("postgres://user@host:5432/database"))
+        .kitField(status: recognized != nil ? .valid : .none, mono: true)
+        .onChange(of: link) { _, text in readLink(text) }
+        #if os(iOS)
+          .textInputAutocapitalization(.never)
+          .autocorrectionDisabled()
+        #endif
       if let recognized {
-        Label(recognized, systemImage: "checkmark").font(.callout).foregroundStyle(.green)
+        Label(recognized, systemImage: "checkmark").kitFont(.caption).foregroundStyle(Hue.green.text).padding(.horizontal, 4)
       }
     }
   }
@@ -168,21 +173,19 @@ struct ConnectionSheet: View {
   // MARK: Engines
 
   private var engineGrid: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("Database").font(.callout.weight(.semibold))
-      LazyVGrid(columns: tileColumns, spacing: 8) {
+    VStack(alignment: .leading, spacing: 6) {
+      SheetHeading("Database")
+      LazyVGrid(columns: tileColumns, spacing: KitMetrics.gutter) {
         ForEach(EngineKind.available) { engine in
-          ChoiceTile(title: engine.displayName, subtitle: engine.kindLabel, selected: profile.engine == engine) {
-            choose(engine)
-          } icon: {
-            EngineTile(engine: engine, size: 28)
+          ChoiceCard(isOn: Binding(get: { profile.engine == engine }, set: { if $0 { choose(engine) } })) {
+            ChoiceCardLabel(engine.displayName, subtitle: engine.kindLabel) { engine.tile(size: 26) }
           }
         }
       }
     }
   }
 
-  private var tileColumns: [GridItem] { [GridItem(.adaptive(minimum: 132), spacing: 8)] }
+  private var tileColumns: [GridItem] { [GridItem(.adaptive(minimum: 140), spacing: KitMetrics.gutter)] }
 
   private func choose(_ engine: EngineKind) {
     let old = profile.engine
@@ -197,43 +200,34 @@ struct ConnectionSheet: View {
 
   /// This device, then every shared SSH configuration (Shell's saved hosts), then a tile to add one.
   private var locationGrid: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("Location").font(.callout.weight(.semibold))
-      LazyVGrid(columns: tileColumns, spacing: 8) {
-        ChoiceTile(title: Self.thisDevice, subtitle: "Localhost", selected: !profile.ssh.enabled) {
-          profile.ssh.enabled = false
-          test = .idle
-        } icon: {
-          SymbolTile(systemName: Self.thisDeviceSymbol, tint: .accentColor)
-        }
+    VStack(alignment: .leading, spacing: 6) {
+      SheetHeading("Location")
+      LazyVGrid(columns: tileColumns, spacing: KitMetrics.gutter) {
+        ChoiceCard(
+          Self.thisDevice, subtitle: "Localhost", systemImage: Self.thisDeviceSymbol,
+          isOn: Binding(get: { !profile.ssh.enabled }, set: { if $0 { profile.ssh.enabled = false; test = .idle } }))
         ForEach(app.vault.hosts) { host in
-          ChoiceTile(title: host.name.isEmpty ? host.hostname : host.name, subtitle: address(of: host), selected: isSelected(host)) {
-            use(host)
-          } icon: {
-            SymbolTile(systemName: "server.rack", tint: .teal)
-          }
+          ChoiceCard(
+            host.name.isEmpty ? host.hostname : host.name, subtitle: address(of: host), systemImage: "server.rack", hue: .teal,
+            isOn: Binding(get: { isSelected(host) }, set: { if $0 { use(host) } }))
           .contextMenu { menu(for: host) }
         }
         // SSH settings no saved configuration matches (made before configurations were shared).
         if profile.ssh.enabled, !app.vault.hosts.contains(where: isSelected) {
-          ChoiceTile(title: profile.ssh.host.isEmpty ? "SSH server" : profile.ssh.host, subtitle: "Not saved", selected: true) {
-            editingHost = HostDraft(host: unsavedHost, isNew: true)
-          } icon: {
-            SymbolTile(systemName: "server.rack", tint: .teal)
-          }
+          ChoiceCard(
+            profile.ssh.host.isEmpty ? "SSH server" : profile.ssh.host, subtitle: "Not saved", systemImage: "server.rack", hue: .teal,
+            isOn: Binding(get: { true }, set: { _ in editingHost = HostDraft(host: unsavedHost, isNew: true) }))
           .contextMenu {
             Button("Save as Configuration…") { editingHost = HostDraft(host: unsavedHost, isNew: true) }
           }
         }
-        ChoiceTile(title: "New SSH", subtitle: "Configuration") {
-          editingHost = HostDraft(host: VaultHost(hostname: "", source: "databasepro"), isNew: true)
-        } icon: {
-          SymbolTile(systemName: "plus", tint: .secondary)
-        }
+        ChoiceCard(
+          "New SSH", subtitle: "Configuration", systemImage: "plus", hue: .gray,
+          isOn: Binding(get: { false }, set: { _ in editingHost = HostDraft(host: VaultHost(hostname: "", source: "databasepro"), isNew: true) }))
       }
       if let host = app.vault.hosts.first(where: isSelected) {
         Text("Connects through \(host.displayName) to \(profile.host.isEmpty ? "the database" : profile.host):\(profile.port.formatted(.number.grouping(.never))). Right-click a configuration to edit it.")
-          .font(.caption).foregroundStyle(.secondary)
+          .kitFont(.caption).padding(.horizontal, 4)
       }
     }
   }
@@ -333,8 +327,8 @@ struct ConnectionSheet: View {
   }
 
   private var serverSection: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text(profile.engine.isFileBased ? "File" : "Server").font(.callout.weight(.semibold))
+    VStack(alignment: .leading, spacing: 6) {
+      SheetHeading(profile.engine.isFileBased ? "File" : "Server")
       if profile.engine.isFileBased {
         fileForm
       } else if editsServer || hasServerProblem {
@@ -351,18 +345,11 @@ struct ConnectionSheet: View {
 
   /// The server in one line, with Edit to change it.
   private var serverSummary: some View {
-    HStack(spacing: 10) {
-      EngineTile(engine: profile.engine, size: 28)
-      VStack(alignment: .leading, spacing: 1) {
-        Text("\(profile.host):\(profile.port.formatted(.number.grouping(.never)))")
-          .font(.callout.weight(.semibold)).lineLimit(1).truncationMode(.middle)
-        Text(serverDetails).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-      }
-      Spacer()
-      Button("Edit") { editsServer = true }
-    }
-    .padding(12)
-    .groupBox()
+    RichHeader(
+      Text("\(profile.host):\(profile.port.formatted(.number.grouping(.never)))"),
+      icon: { profile.engine.tile(size: 24) }, meta: { Text(serverDetails) },
+      accessory: { Button("Edit") { editsServer = true }.buttonStyle(.kit).controlSize(.small) })
+    .kitCard()
   }
 
   /// "Database shop · User app".
@@ -375,162 +362,133 @@ struct ConnectionSheet: View {
   }
 
   private var serverForm: some View {
-    VStack(spacing: 0) {
-      FormRow("Host") {
-        HStack {
-          TextField("Host", text: $profile.host, prompt: Text("db.example.com"))
-            #if os(iOS)
-              .textInputAutocapitalization(.never)
-              .keyboardType(.URL)
-            #endif
-          Text("Port").foregroundStyle(.secondary)
-          TextField("Port", value: $profile.port, format: .number.grouping(.never))
-            .frame(width: 64)
-            .multilineTextAlignment(.trailing)
-        }
+    FormCard {
+      FormRow("Host", systemImage: "network", field: hostField)
+      FormRow("Port", help: "\(profile.engine.displayName) listens on \(profile.engine.defaultPort.formatted(.number.grouping(.never))) by default", systemImage: "number", hue: .gray) {
+        TextField("Port", value: $profile.port, format: .number.grouping(.never))
+          .kitField(mono: true)
+          .multilineTextAlignment(.trailing)
+          .frame(width: 80)
       }
-      FormRow(databaseLabel) {
-        TextField(databaseLabel, text: $profile.database, prompt: Text(profile.engine == .redis ? "0" : "optional"))
-      }
-      FormRow("User", last: profile.engine != .mongodb) {
-        TextField("User", text: $profile.user, prompt: Text(profile.engine == .redis || profile.engine == .mongodb ? "optional" : ""))
-          #if os(iOS)
-            .textInputAutocapitalization(.never)
-          #endif
-      }
+      FormRow(databaseLabel, systemImage: "cylinder", hue: profile.engine.hue,
+        field: TextField(databaseLabel, text: $profile.database, prompt: Text(profile.engine == .redis ? "0" : "optional")))
+      FormRow("User", systemImage: "person", hue: .gray, field: userField)
       if profile.engine == .mongodb {
-        FormRow("Auth database", last: true) {
-          TextField("Auth database", text: Binding(get: { profile.options["authSource"] ?? "" }, set: { profile.options["authSource"] = $0.isEmpty ? nil : $0 }), prompt: Text("admin"))
-        }
+        FormRow("Auth database", systemImage: "person.badge.key", hue: .gray,
+          field: TextField("Auth database", text: Binding(get: { profile.options["authSource"] ?? "" }, set: { profile.options["authSource"] = $0.isEmpty ? nil : $0 }), prompt: Text("admin")))
       }
     }
-    .labelsHidden()
-    .textFieldStyle(.plain)
-    .groupBox()
+  }
+
+  private var hostField: some View {
+    TextField("Host", text: $profile.host, prompt: Text("db.example.com"))
+      #if os(iOS)
+        .textInputAutocapitalization(.never)
+        .keyboardType(.URL)
+      #endif
+  }
+
+  private var userField: some View {
+    TextField("User", text: $profile.user, prompt: Text(profile.engine == .redis || profile.engine == .mongodb ? "optional" : ""))
+      #if os(iOS)
+        .textInputAutocapitalization(.never)
+      #endif
   }
 
   private var fileForm: some View {
-    VStack(spacing: 0) {
-      FormRow("File", last: profile.engine != .duckdb) {
-        HStack {
-          Text(profile.filePath.isEmpty ? "No file chosen" : (profile.filePath as NSString).abbreviatingWithTildeInPath)
-            .foregroundStyle(profile.filePath.isEmpty ? .secondary : .primary)
-            .lineLimit(1)
-            .truncationMode(.middle)
-          Spacer()
-          Button("Choose…") { pickingFile = true }
+    VStack(alignment: .leading, spacing: KitMetrics.gutter) {
+      FormCard(footer: profile.engine == .duckdb ? "A .duckdb file, or a Parquet, CSV or JSON file to query directly." : nil) {
+        FormRow(
+          profile.filePath.isEmpty ? "No file chosen" : (profile.filePath as NSString).lastPathComponent,
+          help: profile.filePath.isEmpty ? nil : (profile.filePath as NSString).abbreviatingWithTildeInPath,
+          systemImage: "doc", hue: profile.engine.hue
+        ) {
+          Button("Choose…") { pickingFile = true }.buttonStyle(.kit).controlSize(.small)
         }
       }
-      if profile.engine == .duckdb {
-        Text("A .duckdb file, or a Parquet, CSV or JSON file to query directly.")
-          .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 6)
-          .frame(maxWidth: .infinity, alignment: .leading)
-        if !app.duckDB.isInstalled {
-          Divider()
-          DuckDBInstallRow().padding(.horizontal, 12).padding(.vertical, 8)
-        }
+      if profile.engine == .duckdb, !app.duckDB.isInstalled {
+        DuckDBInstallRow().kitCard(padding: 10)
       }
     }
-    .groupBox()
   }
 
   // MARK: Password and encryption
 
   private var passwordSection: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("Password").font(.callout.weight(.semibold))
-      HStack {
-        SecureField("Password", text: $password, prompt: Text(profile.user.isEmpty ? "Password" : "Password for \(profile.user)"))
-          .textFieldStyle(.plain)
-          .labelsHidden()
-        if profile.savePassword {
-          Label("Keychain", systemImage: "lock.fill").font(.caption).foregroundStyle(.secondary)
+    VStack(alignment: .leading, spacing: 6) {
+      SheetHeading("Password")
+      SecureField("Password", text: $password, prompt: Text(profile.user.isEmpty ? "Password" : "Password for \(profile.user)"))
+        .kitField {
+          if profile.savePassword {
+            Label("Keychain", systemImage: "lock").kitFont(.caption)
+          }
         }
-      }
-      .padding(.horizontal, 12)
-      .frame(minHeight: 38)
-      .groupBox()
-      Toggle("Save password in the Keychain", isOn: $profile.savePassword).font(.callout)
+      Toggle("Save password in the Keychain", isOn: $profile.savePassword)
+        .toggleStyle(.kitCheckbox)
+        .padding(.horizontal, 4)
     }
   }
 
   private var encryptionSection: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("Encryption").font(.callout.weight(.semibold))
-      VStack(alignment: .leading, spacing: 0) {
+    VStack(alignment: .leading, spacing: 6) {
+      SheetHeading("Encryption")
+      FormCard {
         if profile.engine.supportsDirectTLS {
-          SwitchRow("Encrypted connection (TLS)", caption: profile.engine == .postgres ? "Needs PostgreSQL 17 or later (direct TLS)." : "For servers that require it, like hosted databases.", isOn: $profile.useTLS)
-            .padding(12)
+          FormRow(
+            "Encrypted connection (TLS)",
+            help: profile.engine == .postgres ? "Needs PostgreSQL 17 or later (direct TLS)." : "For servers that require it, like hosted databases.",
+            systemImage: "lock", hue: .green
+          ) {
+            Toggle("Encrypted connection (TLS)", isOn: $profile.useTLS).toggleStyle(.kitSwitch).labelsHidden()
+          }
           if profile.useTLS {
-            Divider().padding(.leading, 12)
-            SwitchRow("Accept self-signed certificates", isOn: $profile.allowUntrustedCertificate)
-              .padding(12)
+            FormRow("Accept self-signed certificates", systemImage: "checkmark.seal", hue: .orange) {
+              Toggle("Accept self-signed certificates", isOn: $profile.allowUntrustedCertificate).toggleStyle(.kitSwitch).labelsHidden()
+            }
           }
         } else {
-          Label("\(profile.engine.displayName) encrypts after the connection starts. Connect through SSH to encrypt it end to end.", systemImage: "lock.shield")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .padding(12)
+          FormRow(
+            "Encrypted after it starts",
+            help: "\(profile.engine.displayName) encrypts after the connection starts. Connect through SSH to encrypt it end to end.",
+            systemImage: "lock.shield", hue: .gray)
         }
       }
-      .groupBox()
     }
   }
 
   // MARK: Safety
 
   private var safetySection: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("Name and safety").font(.callout.weight(.semibold))
-      VStack(spacing: 0) {
-        FormRow("Name") {
-          TextField("Name", text: $profile.name, prompt: Text(profile.displayName))
-            .textFieldStyle(.plain)
-            .labelsHidden()
-        }
-        FormRow("Color") {
+    FormCard("Name and safety") {
+      FormRow("Name", systemImage: "character.cursor.ibeam", hue: .gray, field: TextField("Name", text: $profile.name, prompt: Text(profile.displayName)))
+      FormRow("Color", help: "A dot beside its name in the sidebar", systemImage: "paintpalette", hue: profile.color.hue ?? .gray) {
+        HStack(spacing: 2) {
           ForEach(ColorTag.allCases) { tag in
             Button {
-              profile.color = tag
+              withKitAnimation { profile.color = tag }
             } label: {
               Circle()
-                .fill(tag.color ?? .clear)
-                .overlay(Circle().strokeBorder(tag == .none ? Color.secondary : .clear, style: StrokeStyle(lineWidth: 1, dash: [2])))
-                .frame(width: 20, height: 20)
-                .padding(2)
-                .overlay(Circle().strokeBorder(profile.color == tag ? Color.primary : .clear, lineWidth: 2))
+                .fill(tag.hue.map { AnyShapeStyle($0.fill) } ?? AnyShapeStyle(Color.clear))
+                .overlay {
+                  if tag == .none { Circle().strokeBorder(.kitTertiary, style: StrokeStyle(lineWidth: 1, dash: [2])) }
+                }
+                .frame(width: 16, height: 16)
+                .padding(3)
+                .overlay(Circle().strokeBorder(profile.color == tag ? AnyShapeStyle(.kitLabel) : AnyShapeStyle(Color.clear), lineWidth: 2))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(tag == .none ? "No color" : tag.label)
             .accessibilityAddTraits(profile.color == tag ? .isSelected : [])
           }
-          Spacer(minLength: 0)
-        }
-        ViewThatFits(in: .horizontal) {
-          HStack(alignment: .top, spacing: 0) {
-            productionRow
-            Divider()
-            readOnlyRow
-          }
-          VStack(spacing: 0) {
-            productionRow
-            Divider().padding(.leading, 12)
-            readOnlyRow
-          }
         }
       }
-      .groupBox()
+      FormRow("Production", help: "Shows a red tag. Every change is reviewed before it's saved.", systemImage: "shield", hue: .red) {
+        Toggle("Production", isOn: $profile.isProduction).toggleStyle(.kitSwitch).labelsHidden()
+      }
+      FormRow("Read only", help: "Look, but never change anything.", systemImage: "lock", hue: .gray) {
+        Toggle("Read only", isOn: $profile.isReadOnly).toggleStyle(.kitSwitch).labelsHidden()
+      }
     }
-  }
-
-  private var productionRow: some View {
-    SwitchRow("Production", caption: "Shows a red tag. Every change is reviewed before it's saved.", isOn: $profile.isProduction)
-      .padding(12)
-  }
-
-  private var readOnlyRow: some View {
-    SwitchRow("Read only", caption: "Look, but never change anything.", isOn: $profile.isReadOnly)
-      .padding(12)
   }
 
   private var fileTypes: [UTType] {
@@ -541,43 +499,28 @@ struct ConnectionSheet: View {
 
   // MARK: Footer
 
-  private var footer: some View {
-    HStack(spacing: 10) {
-      Group {
-        switch test {
-        case .idle:
-          if let problem = profile.problems.first {
-            Text(problem).foregroundStyle(.secondary)
-          }
-        case .testing:
-          HStack(spacing: 6) {
-            ProgressView().controlSize(.small)
-            Text("Connecting…").foregroundStyle(.secondary)
-          }
-        case .success(let text):
-          Label(text, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-        case .failure(let text):
-          Label(text, systemImage: "xmark.octagon.fill").foregroundStyle(.red).lineLimit(3)
-        }
+  /// The footer's lead: what's missing, the test while it runs, then how it went.
+  @ViewBuilder private var footerStatus: some View {
+    switch test {
+    case .idle:
+      if let problem = profile.problems.first {
+        SheetStatus(problem, systemImage: "exclamationmark", hue: .orange)
+      } else {
+        SheetStatus(readyText, systemImage: "checkmark", status: .done)
       }
-      .font(.callout)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      Button(test == .idle ? "Test" : "Test Again") { runTest() }
-        .disabled(!profile.problems.isEmpty || test == .testing)
-      Button("Cancel") { dismiss() }
-        .keyboardShortcut(.cancelAction)
-      Button(original == nil ? "Connect" : "Save") {
-        var saved = profile
-        if saved.name.isEmpty { saved.name = saved.displayName }
-        app.save(saved, password: password, sshPassword: sshPassword)
-        onSave(saved)
-        dismiss()
-      }
-      .buttonStyle(.borderedProminent)
-      .keyboardShortcut(.defaultAction)
-      .disabled(!profile.problems.isEmpty)
+    case .testing:
+      SheetStatus("Connecting…", systemImage: "bolt", status: .working)
+    case .success(let text):
+      SheetStatus(text, systemImage: "bolt", status: .done)
+    case .failure(let text):
+      SheetStatus(text, systemImage: "bolt", status: .failed(text))
     }
-    .padding(16)
+  }
+
+  private var readyText: String {
+    profile.engine.isFileBased
+      ? "\(profile.engine.displayName) file"
+      : "\(profile.engine.displayName) at \(profile.host)"
   }
 
   private func runTest() {
@@ -607,28 +550,13 @@ struct ConnectionSheet: View {
   }
 }
 
-/// A title and caption on the left, a switch on the right: the settings-row layout.
-struct SwitchRow: View {
+/// A heading over a group in a sheet.
+struct SheetHeading: View {
   let title: String
-  var caption: String?
-  @Binding var isOn: Bool
 
-  init(_ title: String, caption: String? = nil, isOn: Binding<Bool>) {
-    self.title = title
-    self.caption = caption
-    _isOn = isOn
-  }
+  init(_ title: String) { self.title = title }
 
   var body: some View {
-    HStack(spacing: 12) {
-      VStack(alignment: .leading, spacing: 1) {
-        Text(title)
-        if let caption { Text(caption).font(.caption).foregroundStyle(.secondary) }
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      Toggle(title, isOn: $isOn)
-        .labelsHidden()
-        .toggleStyle(.switch)
-    }
+    Text(title).kitFont(.headline).padding(.horizontal, 4).accessibilityAddTraits(.isHeader)
   }
 }

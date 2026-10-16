@@ -1,80 +1,91 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
-/// Sorts records by a field (the Table's sort descriptor; the server does the real sorting).
-struct FieldComparator: SortComparator {
-  var field: String
-  var order: SortOrder = .forward
-  func compare(_ lhs: Record, _ rhs: Record) -> ComparisonResult {
-    let a = lhs[field]?.displayText ?? ""
-    let b = rhs[field]?.displayText ?? ""
-    let result = a.localizedStandardCompare(b)
-    return order == .forward ? result : result.reversed
-  }
-}
-
-extension ComparisonResult {
-  var reversed: ComparisonResult {
-    switch self {
-    case .orderedAscending: .orderedDescending
-    case .orderedDescending: .orderedAscending
-    case .orderedSame: .orderedSame
-    }
-  }
-}
-
-/// The rows as a native table with one column per field.
+/// The rows in the kit's grid: one column per field, edited in place (Return or a double click), with unsaved rows
+/// marked in the gutter.
 struct RecordTable: View {
   @Bindable var browser: BrowserModel
   @Bindable var window: WindowModel
   let onDelete: ([Record]) -> Void
 
-  private var sortOrder: Binding<[FieldComparator]> {
+  private var sort: Binding<KitGridSort?> {
     Binding(
-      get: { browser.request.sort.map { FieldComparator(field: $0.field, order: $0.ascending ? .forward : .reverse) } },
+      get: { browser.request.sort.first.map { KitGridSort($0.field, ascending: $0.ascending) } },
       set: { new in
-        browser.request.sort = new.prefix(1).map { SortKey(field: $0.field, ascending: $0.order == .forward) }
+        browser.request.sort = new.map { [SortKey(field: $0.column, ascending: $0.ascending)] } ?? []
         Task { await browser.reload() }
       })
   }
 
   var body: some View {
-    Table(browser.records, selection: $browser.selection, sortOrder: sortOrder) {
-      TableColumnForEach(browser.visibleFields) { field in
-        TableColumn(Text(columnTitle(field)), sortUsing: FieldComparator(field: field.name)) { record in
-          CellView(browser: browser, record: record, field: field)
-        }
-        .width(min: 50, ideal: idealWidth(field))
-        .customizationID(field.name)
-      }
-    }
-    .stripedTableStyle()
-    .contextMenu(forSelectionType: Record.ID.self) { ids in
-      RecordMenu(browser: browser, ids: ids, onDelete: onDelete)
-    } primaryAction: { ids in
-      if let id = ids.first {
-        browser.selection = [id]
-        window.showsInspector = true
-        browser.editRequest = id
-      }
+    KitGrid(
+      browser.records, columns: browser.visibleFields.map(column), selection: $browser.selection, sort: sort,
+      rowState: rowState)
+    .contextMenu {
+      RecordMenu(browser: browser, ids: browser.selection, onDelete: onDelete)
     }
   }
 
-  private func columnTitle(_ field: FieldInfo) -> String {
-    field.isPrimaryKey ? "🔑\u{FE0E} " + field.name : field.name
+  private func rowState(_ record: Record) -> KitGridRowState? {
+    if browser.isPendingDelete(record) { return .deleted }
+    return browser.isPendingUpdate(record) ? .edited : nil
+  }
+
+  private func column(_ field: FieldInfo) -> KitGridColumn<Record> {
+    let width = idealWidth(field)
+    let image = field.isPrimaryKey || field.keyRole != nil ? "key" : nil
+    if field.isStatus {
+      return KitGridColumn(field.name, id: field.name, systemImage: image, width: width, content: { record in
+        StatusCell(value: browser.pendingValue(for: record, field: field.name) ?? record[field.name])
+      })
+    }
+    let editable = browser.isEditable && !field.isPrimaryKey && !field.isGenerated && field.keyRole == nil
+    return KitGridColumn(
+      field.name, id: field.name, systemImage: image, width: width,
+      alignment: field.category.isNumeric ? .trailing : .leading, mono: field.isMono,
+      value: { record in
+        let value = browser.pendingValue(for: record, field: field.name) ?? record[field.name]
+        guard let value, !value.isNull, value != .unset else { return nil }
+        return value.displayText
+      },
+      edit: editable ? { record, text in browser.stageCell(record, field: field, text: text) } : nil)
   }
 
   private func idealWidth(_ field: FieldInfo) -> CGFloat {
     if field.isPrimaryKey { return 90 }
     switch field.category {
-    case .integer, .boolean: return 80
+    case .integer, .boolean: return 90
     case .decimal, .float: return 100
     case .date: return 110
-    case .dateTime, .time: return 180
+    case .dateTime, .time: return 200
     case .uuid: return 280
     case .document, .list, .json: return 220
-    default: return 170
+    default: return field.isStatus ? 110 : 160
     }
+  }
+}
+
+/// A status word as a chip, or NULL.
+private struct StatusCell: View {
+  let value: CellValue?
+
+  var body: some View {
+    if let value, !value.isNull {
+      Chip(status: value.displayText)
+    } else {
+      Text("NULL").kitFont(.monoSmall).foregroundStyle(.kitQuiet)
+    }
+  }
+}
+
+extension FieldInfo {
+  /// A text field named like a status ("status", "state"): its words show as chips.
+  var isStatus: Bool { category == .text && (name.contains("status") || name.contains("state")) }
+
+  /// Values that read better monospaced: ids, dates, JSON.
+  var isMono: Bool {
+    isPrimaryKey || category == .uuid || category.isTemporal || category == .json || category == .binary
   }
 }
 
@@ -114,48 +125,6 @@ struct RecordMenu: View {
   }
 }
 
-/// One cell: the value, a status pill, NULL in grey, and pending edits highlighted.
-struct CellView: View {
-  let browser: BrowserModel
-  let record: Record
-  let field: FieldInfo
-
-  var body: some View {
-    let pending = browser.pendingValue(for: record, field: field.name)
-    let value = pending ?? record[field.name]
-    Group {
-      if let value, !value.isNull {
-        let text = value.displayText
-        if field.category == .text, (field.name.contains("status") || field.name.contains("state")),
-          let color = StatusPill.color(for: text)
-        {
-          Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 1)
-            .background(color.opacity(0.15), in: Capsule())
-        } else if field.category.isNumeric {
-          Text(text).monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing)
-        } else if field.isPrimaryKey || field.category == .uuid || value.bsonValue.map({ if case .objectId = $0 { true } else { false } }) == true {
-          Text(text).font(.codeSmall).foregroundStyle(.secondary)
-        } else {
-          Text(text)
-        }
-      } else if value == .unset || value == nil {
-        Text("—").foregroundStyle(.tertiary)
-      } else {
-        Text("NULL").italic().foregroundStyle(.tertiary)
-      }
-    }
-    .lineLimit(1)
-    .strikethrough(browser.isPendingDelete(record), color: .red)
-    .padding(.horizontal, pending != nil ? 4 : 0)
-    .background(pending != nil ? Color.orange.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
-    .help(pending != nil ? "Changed, not saved yet" : "")
-  }
-}
-
 /// Documents as cards: a title, a few fields, and chips for arrays and sub-documents.
 struct CardsView: View {
   @Bindable var browser: BrowserModel
@@ -167,8 +136,9 @@ struct CardsView: View {
           card(record)
         }
       }
-      .padding(16)
+      .padding(KitMetrics.gutter)
     }
+    .kitPane(.content)
   }
 
   private func card(_ record: Record) -> some View {
@@ -185,18 +155,18 @@ struct CardsView: View {
       VStack(alignment: .leading, spacing: 10) {
         HStack(alignment: .firstTextBaseline) {
           Text(browser.displayName(for: record) ?? record.key?.summary ?? "Document")
-            .font(.headline)
+            .kitFont(.headline)
             .lineLimit(1)
           Spacer()
           if let id = record["_id"] {
-            Text(shortID(id.displayText)).font(.codeSmall).foregroundStyle(.secondary)
+            Text(shortID(id.displayText)).kitFont(.monoSmall).foregroundStyle(.kitSecondary)
           }
         }
         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 4) {
           GridRow {
             ForEach(scalars.filter { $0.name != titleField(record) }.prefix(3)) { field in
               VStack(alignment: .leading, spacing: 1) {
-                Text(field.name).font(.caption).foregroundStyle(.secondary)
+                Text(field.name).kitFont(.caption)
                 Text(record[field.name]?.displayText ?? "—").monospacedDigit().lineLimit(1)
               }
             }
@@ -208,12 +178,14 @@ struct CardsView: View {
       }
       .padding(14)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(.background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-          .strokeBorder(selected ? Color.accentColor : Color.secondary.opacity(0.25), lineWidth: selected ? 2 : 1)
-      )
-      .shadow(color: selected ? Color.accentColor.opacity(0.2) : .black.opacity(0.04), radius: selected ? 4 : 1, y: 1)
+      .kitSurface(.card)
+      .overlay {
+        if selected {
+          RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous)
+            .strokeBorder(Hue.accent.fill, lineWidth: 2)
+        }
+      }
+      .opacity(browser.isPendingDelete(record) ? 0.5 : 1)
     }
     .buttonStyle(.plain)
     .strikethrough(browser.isPendingDelete(record), color: .red)
@@ -226,38 +198,46 @@ struct CardsView: View {
   private func shortID(_ text: String) -> String { text.count > 10 ? "…" + text.suffix(4) : text }
 }
 
-/// Small grey chips laid out on one line.
+/// Arrays and sub-documents as quiet chips on one line.
 struct FlowChips: View {
   let items: [String]
   var body: some View {
     HStack(spacing: 6) {
       ForEach(items, id: \.self) { item in
-        Text(item)
-          .font(.codeSmall)
-          .lineLimit(1)
-          .padding(.horizontal, 7)
-          .padding(.vertical, 2)
-          .background(.quaternary.opacity(0.7), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        Chip(Text(item).monospaced(), style: .quiet)
       }
     }
   }
 }
 
-/// Each item as pretty JSON (Extended JSON for documents).
+/// Each item as pretty JSON (Extended JSON for documents), each a card; the selected one ringed.
 struct JSONListView: View {
   @Bindable var browser: BrowserModel
 
   var body: some View {
-    List(selection: $browser.selection) {
-      ForEach(browser.records) { record in
-        Text(Exporter.json(record, fields: browser.fields))
-          .font(.codeSmall)
-          .textSelection(.enabled)
-          .padding(.vertical, 4)
-          .tag(record.id)
+    ScrollView {
+      LazyVStack(spacing: KitMetrics.gutter) {
+        ForEach(browser.records) { record in
+          let selected = browser.selection.contains(record.id)
+          Text(Exporter.json(record, fields: browser.fields))
+            .kitFont(.monoSmall)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .kitSurface(.card)
+            .overlay {
+              if selected {
+                RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous)
+                  .strokeBorder(Hue.accent.fill, lineWidth: 2)
+              }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { browser.selection = [record.id] }
+        }
       }
+      .padding(KitMetrics.gutter)
     }
-    .listStyle(.inset)
+    .kitPane(.content)
   }
 }
 
@@ -277,7 +257,7 @@ struct PhoneRecordList: View {
           }
         }
         if browser.page?.hasMore == true {
-          Button("Load More") { Task { await browser.nextPage() } }
+          Button("Load More") { Task { await browser.nextPage() } }.buttonStyle(.kitPlain)
         }
       }
     }
@@ -302,10 +282,10 @@ struct PhoneRecordRow: View {
     let date = browser.fields.first { $0.category.isTemporal }
     HStack(spacing: 10) {
       VStack(alignment: .leading, spacing: 2) {
-        Text(title).fontWeight(.semibold).lineLimit(1)
+        Text(title).kitFont(.headline).lineLimit(1)
         Text([key, date.flatMap { record[$0.name]?.displayText }].compactMap { $0 }.joined(separator: " · "))
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
+          .kitFont(.callout)
+          .foregroundStyle(.kitSecondary)
           .lineLimit(1)
       }
       Spacer()
@@ -313,13 +293,8 @@ struct PhoneRecordRow: View {
         if let numeric, let value = record[numeric.name], !value.isNull {
           Text(value.displayText).monospacedDigit()
         }
-        if let status, let text = record[status.name]?.displayText, let color = StatusPill.color(for: text) {
-          Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 1)
-            .background(color.opacity(0.15), in: Capsule())
+        if let status, let text = record[status.name]?.displayText {
+          Chip(status: text)
         }
       }
     }

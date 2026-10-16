@@ -8,6 +8,9 @@
       location = "group:../Code">
    </FileRef>
    <FileRef
+      location = "group:../Component">
+   </FileRef>
+   <FileRef
       location = "group:../Dev">
    </FileRef>
    <FileRef

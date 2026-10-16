@@ -1,3 +1,4 @@
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
@@ -14,19 +15,15 @@ struct QueryResultsView: View {
   var body: some View {
     VStack(spacing: 0) {
       if shown.count > 1 {
-        Picker("Result", selection: $index) {
-          ForEach(shown.indices, id: \.self) { Text("Result \($0 + 1)").tag($0) }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .padding(8)
+        KitSegmented(selection: $index, options: shown.indices.map { ("Result \($0 + 1)", $0) })
+          .padding(KitMetrics.gutter)
       }
       if shown.indices.contains(index) {
         OutputView(output: shown[index])
       } else if let message = outputs.compactMap({ if case .message(let m) = $0 { m } else { nil } }).last {
-        ContentUnavailableView(message, systemImage: "checkmark.circle")
+        EmptyState(systemImage: "checkmark.circle", title: message)
       } else {
-        ContentUnavailableView("No Results", systemImage: "tray")
+        EmptyState(systemImage: "tray", title: "No Results")
       }
     }
     .onChange(of: outputs.count) { index = max(0, shown.count - 1) }
@@ -42,25 +39,29 @@ struct OutputView: View {
     case .table(let fields, let rows, _):
       ResultTable(fields: fields, rows: rows)
     case .documents(let docs, _):
-      List {
-        ForEach(Array(docs.enumerated()), id: \.offset) { _, doc in
-          Text(doc.text(.shell, indent: 2))
-            .font(.codeSmall)
-            .textSelection(.enabled)
-            .padding(.vertical, 3)
+      ScrollView {
+        LazyVStack(spacing: KitMetrics.gutter) {
+          ForEach(Array(docs.enumerated()), id: \.offset) { _, doc in
+            Text(doc.text(.shell, indent: 2))
+              .kitFont(.monoSmall)
+              .textSelection(.enabled)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(12)
+              .kitSurface(.card)
+          }
         }
+        .padding(KitMetrics.gutter)
       }
-      .listStyle(.inset)
     case .text(let text):
       ScrollView {
         Text(text)
-          .font(.code)
+          .kitFont(.mono)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(12)
       }
     case .message(let text):
-      ContentUnavailableView(text, systemImage: "checkmark.circle")
+      EmptyState(systemImage: "checkmark.circle", title: text)
     }
   }
 }
@@ -70,40 +71,39 @@ struct ResultRow: Identifiable {
   let cells: [CellValue]
 }
 
-/// Query rows in a native table.
+/// Query rows in the kit's grid.
 struct ResultTable: View {
   let fields: [FieldInfo]
   let rows: [[CellValue]]
   @State private var selection: Set<Int> = []
 
-  private var indexedFields: [IndexedField] { fields.enumerated().map { IndexedField(index: $0.offset, field: $0.element) } }
-
   var body: some View {
-    Table(rows.enumerated().map { ResultRow(id: $0.offset, cells: $0.element) }, selection: $selection) {
-      TableColumnForEach(indexedFields) { column in
-        TableColumn(Text(column.field.name)) { row in
-          let value = column.index < row.cells.count ? row.cells[column.index] : .null
-          if value.isNull {
-            Text("NULL").italic().foregroundStyle(.tertiary)
-          } else if column.field.category.isNumeric {
-            Text(value.displayText).monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing)
-          } else {
-            Text(value.displayText).lineLimit(1)
-          }
+    KitGrid(
+      rows.enumerated().map { ResultRow(id: $0.offset, cells: $0.element) },
+      columns: fields.enumerated().map { index, field in
+        KitGridColumn<ResultRow>(
+          field.name, id: "\(index)", width: field.category.isNumeric ? 100 : 160,
+          alignment: field.category.isNumeric ? .trailing : .leading, mono: field.isMono
+        ) { row in
+          let value = index < row.cells.count ? row.cells[index] : .null
+          return value.isNull ? nil : value.displayText
         }
-        .width(min: 50, ideal: column.field.category.isNumeric ? 100 : 160)
-      }
-    }
-    .stripedTableStyle()
-    .contextMenu(forSelectionType: Int.self) { ids in
+      },
+      selection: $selection
+    )
+    .padding(.horizontal, KitMetrics.gutter)
+    .padding(.bottom, KitMetrics.gutter)
+    .contextMenu {
       Button("Copy Rows as CSV") {
-        let picked = ids.sorted().compactMap { rows.indices.contains($0) ? rows[$0] : nil }
+        let picked = selection.sorted().compactMap { rows.indices.contains($0) ? rows[$0] : nil }
         Clipboard.copy(Export.csv(fields: fields, rows: picked))
       }
+      .disabled(selection.isEmpty)
       Button("Copy Rows as JSON") {
-        let picked = ids.sorted().compactMap { rows.indices.contains($0) ? rows[$0] : nil }
+        let picked = selection.sorted().compactMap { rows.indices.contains($0) ? rows[$0] : nil }
         Clipboard.copy(Export.json(fields: fields, rows: picked))
       }
+      .disabled(selection.isEmpty)
     }
   }
 }
