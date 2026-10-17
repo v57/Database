@@ -60,10 +60,12 @@ private struct WindowContent: View {
 
   var body: some View {
     NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
-      SidebarView(window: window)
+      SidebarView(window: window, columnVisibility: $columnVisibility)
+        .toolbar(removing: .sidebarToggle)
         .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 380)
     } detail: {
       DetailView(window: window)
+        .kitSidebarToggle(columnVisibility: $columnVisibility)
     }
     .focusedSceneValue(\.window, window)
     .sheet(isPresented: $window.showsNewConnection) {
@@ -178,6 +180,14 @@ struct ConnectionOverview: View {
     .padding(32)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .kitPane(.content)
-    .navigationTitle(connection.profile.displayName)
+    .kitToolbar(connection.profile.displayName) {
+      Text(connection.profile.displayName).kitFont(.title2)
+    } tools: {
+      if connection.isConnected {
+        ToolGroup(iconOnly: true) {
+          Button("Refresh", systemImage: "arrow.clockwise") { Task { await connection.refreshTree() } }
+        }
+      }
+    }
   }
 }

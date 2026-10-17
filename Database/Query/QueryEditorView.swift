@@ -24,15 +24,12 @@ struct QueryEditorView: View {
       }
     }
     .kitPane(.content)
-    .navigationMeta(workspace.connection.profile.displayName)
-    #if os(macOS)
-      .kitToolbarTitle(
-        workspace.selected?.title ?? "Query", meta: [workspace.connection.profile.displayName], systemImage: "bolt",
-        hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle)
-    #else
-      .navigationTitle(workspace.selected?.title ?? "Query")
-    #endif
-    .toolbar { toolbar }
+    .kitToolbar(
+      workspace.selected?.title ?? "Query", meta: [workspace.connection.profile.displayName], systemImage: "bolt",
+      hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle
+    ) {
+      tools
+    }
     .sheet(isPresented: .init(get: { savingTitle != nil }, set: { if !$0 { savingTitle = nil } })) {
       KitSheet(title: "Save Query", meta: "Saved queries show under Queries in the sidebar.", systemImage: "square.and.arrow.down", width: 420) {
         TextField("Name", text: Binding(get: { savingTitle ?? "" }, set: { savingTitle = $0 }))
@@ -63,34 +60,40 @@ struct QueryEditorView: View {
       selection: $workspace.selectedID, onClose: { workspace.close($0) }, onAdd: { window.newQuery() })
   }
 
-  @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-    #if os(macOS)
-      if #available(macOS 26, *) {
-        ToolbarSpacer(.flexible)
-      }
-    #endif
-    ToolbarItemGroup(placement: .primaryAction) {
-      if let tab = workspace.selected {
+  /// Format and Explain fold into "…" first, then Save; Run never folds.
+  @ToolbarSlotBuilder private var tools: [ToolbarSlot] {
+    if let tab = workspace.selected {
+      let formats = workspace.connection.profile.engine.family == .sql || workspace.connection.profile.engine.family == .wideColumn
+      ToolbarSlot(priority: 0) {
         ToolGroup {
           Chip(workspace.connection.profile.engine.queryLanguage, hue: workspace.connection.profile.engine.hue)
             .padding(.horizontal, 4)
-          if workspace.connection.profile.engine.family == .sql || workspace.connection.profile.engine.family == .wideColumn {
+          if formats {
             Button("Format") { tab.text = SQLFormatter.format(tab.text) }
           }
           Button("Explain") { Task { await workspace.explainSelected() } }
             .disabled(tab.isRunning)
         }
+      } menu: {
+        if formats {
+          Button("Format", systemImage: "text.alignleft") { tab.text = SQLFormatter.format(tab.text) }
+        }
+        Button("Explain", systemImage: "list.bullet.indent") { Task { await workspace.explainSelected() } }
+          .disabled(tab.isRunning)
+      }
+      ToolbarSlot(priority: 1) {
         ToolGroup(iconOnly: true) {
           Button("Save…", systemImage: "square.and.arrow.down") { savingTitle = tab.savedID == nil ? "" : tab.title }
         }
-        Button("Run", systemImage: "play.fill") { Task { await workspace.runSelected() } }
-          .buttonStyle(.kitPrimary)
-          .keyboardShortcut(.return, modifiers: .command)
-          .disabled(tab.isRunning)
-          .kitHelp("Run", shortcut: "⌘↩", systemImage: "play.fill")
+      } menu: {
+        Button("Save…", systemImage: "square.and.arrow.down") { savingTitle = tab.savedID == nil ? "" : tab.title }
       }
+      Button("Run", systemImage: "play.fill") { Task { await workspace.runSelected() } }
+        .buttonStyle(.kitPrimary)
+        .keyboardShortcut(.return, modifiers: .command)
+        .disabled(tab.isRunning)
+        .kitHelp("Run", shortcut: "⌘↩", systemImage: "play.fill")
     }
-    .kitToolbarItem()
   }
 }
 

@@ -6,7 +6,9 @@ import SwiftUI
 /// connection in the Connections card.
 struct SidebarView: View {
   @Bindable var window: WindowModel
+  @Binding var columnVisibility: NavigationSplitViewVisibility
   @Environment(AppModel.self) private var app
+  @Environment(\.kitIdiom) private var idiom
   @State private var deleting: ConnectionProfile?
 
   private var query: String { window.searchText.trimmingCharacters(in: .whitespaces) }
@@ -32,7 +34,8 @@ struct SidebarView: View {
   var body: some View {
     let current = current
     let others = profiles.filter { $0.id != current?.id }
-    KitSidebar(selection: $window.selection, searchText: $window.searchText) {
+    // The Mac's toggle hides the sidebar through the window's split view; iPad and iPhone need the binding.
+    KitSidebar(selection: $window.selection, searchText: $window.searchText, columnVisibility: idiom.isTouch ? $columnVisibility : nil) {
       if let current {
         CurrentConnectionSection(connection: current, window: window) { deleting = current.profile }
       }
