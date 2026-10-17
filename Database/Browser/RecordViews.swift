@@ -110,7 +110,7 @@ struct RecordMenu: View {
       if browser.engine.family == .sql || browser.engine.family == .wideColumn {
         Button("Copy as INSERT") { KitPasteboard.copy(Exporter.insert(record, browser: browser)) }
       }
-      Menu("Filter by Value") {
+      KitSubmenu("Filter by Value", systemImage: "line.3.horizontal.decrease") {
         ForEach(browser.visibleFields.prefix(12)) { field in
           if let value = record[field.name], !value.isNull, field.category != .list, field.category != .document {
             Button("\(field.name) is \(value.displayText)") {

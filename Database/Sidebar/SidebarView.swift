@@ -173,8 +173,7 @@ struct ConnectionRow: View {
           if profile.isProduction { Chip.production.controlSize(.small) }
         }
       }
-      // The system's menu: the row drags to reorder, and on touch the kit's long press would take the drag's.
-      .contextMenu { ConnectionMenu(connection: connection, window: window, onDelete: onDelete) }
+      .kitContextMenu { ConnectionMenu(connection: connection, window: window, onDelete: onDelete) }
       .accessibilityLabel("\(profile.displayName), \(profile.engine.displayName)")
       if isExpanded.wrappedValue {
         ConnectionContents(connection: connection, window: window, level: 1)

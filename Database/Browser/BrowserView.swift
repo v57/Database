@@ -206,26 +206,20 @@ struct BrowserView: View {
   @ToolbarSlotBuilder private var tools: [ToolbarSlot] {
     if hasModes {
       ToolbarSlot(priority: 1) {
-        KitSegmented(selection: modeSelection, segments: BrowserModel.Mode.allCases.map {
-          KitSegment($0.rawValue, value: $0, systemImage: $0 == .find ? "magnifyingglass" : "square.stack.3d.up")
-        })
+        KitSegmented(selection: modeSelection, segments: modeSegments)
       } menu: {
-        Picker("Mode", selection: modeSelection) {
-          ForEach(BrowserModel.Mode.allCases) { mode in
-            Label(mode.rawValue, systemImage: mode == .find ? "magnifyingglass" : "square.stack.3d.up").tag(mode)
-          }
+        KitSubmenu("Mode", systemImage: "square.stack.3d.up") {
+          KitMenuOptions(selection: modeSelection, segments: modeSegments)
         }
-        .pickerStyle(.inline)
       }
     }
     if browser.mode == .find {
       ToolbarSlot(priority: 0) {
         KitSegmented(selection: $browser.viewMode, options: availableModes.map { ($0.rawValue, $0) })
       } menu: {
-        Picker("Show As", selection: $browser.viewMode) {
-          ForEach(availableModes) { Text($0.rawValue).tag($0) }
+        KitSubmenu("Show As", systemImage: "rectangle.grid.1x2") {
+          KitMenuOptions(selection: $browser.viewMode, options: availableModes.map { ($0.rawValue, $0) })
         }
-        .pickerStyle(.inline)
       }
     }
     if !browser.pending.isEmpty {
@@ -279,6 +273,12 @@ struct BrowserView: View {
   }
 
   private var hasModes: Bool { browser.engine.family == .document || browser.engine.family == .sql }
+
+  private var modeSegments: [KitSegment<BrowserModel.Mode>] {
+    BrowserModel.Mode.allCases.map {
+      KitSegment($0.rawValue, value: $0, systemImage: $0 == .find ? "magnifyingglass" : "square.stack.3d.up")
+    }
+  }
 
   private var modeSelection: Binding<BrowserModel.Mode> {
     Binding(get: { browser.mode }, set: { mode in Task { await browser.switchMode(mode) } })
