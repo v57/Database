@@ -31,9 +31,6 @@
         window.contentViewController = controller
         window.setContentSize(NSSize(width: 1440, height: 900))
         window.toolbarStyle = .unified
-        // The kit's toolbar draws in the title bar; a hosting controller doesn't bridge SwiftUI's hidden toolbar
-        // background, so the title bar's own would cover it.
-        window.titlebarAppearsTransparent = true
         window.collectionBehavior.insert(.moveToActiveSpace)
         window.orderFrontRegardless()
         hostWindow = window
