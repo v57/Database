@@ -52,20 +52,16 @@ struct PipelineView: View {
         importing = true
       }
       .buttonStyle(.kit)
-      Menu("Export") {
+      KitMenuButton("Export") {
         if pipeline.isSQL {
-          Button("Copy SQL") { KitPasteboard.copy((try? pipeline.sql()) ?? "") }
+          Button("Copy SQL", systemImage: "doc.on.doc") { KitPasteboard.copy((try? pipeline.sql()) ?? "") }
         } else {
-          Button("Copy as JavaScript") { KitPasteboard.copy(pipeline.javaScript) }
-          Button("Copy as JSON") {
+          Button("Copy as JavaScript", systemImage: "doc.on.doc") { KitPasteboard.copy(pipeline.javaScript) }
+          Button("Copy as JSON", systemImage: "curlybraces") {
             KitPasteboard.copy(BSON.array(((try? pipeline.stages()) ?? []).map(BSON.document)).text(.extendedJSON, indent: 2))
           }
         }
       }
-      .menuStyle(.button)
-      .buttonStyle(.kit)
-      .menuIndicator(.hidden)
-      .fixedSize()
       Button("Run", systemImage: "play.fill") { Task { await pipeline.run() } }
         .buttonStyle(.kitPrimary)
         .kitHelp("Run the whole pipeline", shortcut: "⌘↩", systemImage: "play.fill")
@@ -136,6 +132,7 @@ struct StepCard: View {
   let step: PipelineStep
   let index: Int
   let inlineEditor: Bool
+  @State private var showsActions = false
 
   private var selected: Bool { pipeline.selectedID == step.id }
 
@@ -164,21 +161,17 @@ struct StepCard: View {
         Toggle("Step \(index + 1) on", isOn: Binding(get: { step.isEnabled }, set: { on in pipeline.update(step.id) { $0.isEnabled = on } }))
           .toggleStyle(.kitSwitch)
           .kitLabelsHidden()
-        Menu {
-          Button("Run Through This Step", systemImage: "play") { pipeline.select(step.id) }
-          Button("Move Up", systemImage: "arrow.up") { pipeline.move(step.id, by: -1) }.disabled(index == 0)
-          Button("Move Down", systemImage: "arrow.down") { pipeline.move(step.id, by: 1) }
-            .disabled(index == pipeline.steps.count - 1)
-          Button("Duplicate", systemImage: "plus.square.on.square") { pipeline.duplicate(step.id) }
-          Divider()
-          Button("Delete Step", systemImage: "trash", role: .destructive) { pipeline.remove(step.id) }
-        } label: {
-          Label("Step \(index + 1) actions", systemImage: "ellipsis")
-        }
-        .menuStyle(.button)
-        .buttonStyle(.kitIcon)
-        .menuIndicator(.hidden)
-        .fixedSize()
+        Button("Step \(index + 1) actions", systemImage: "ellipsis") { showsActions = true }
+          .buttonStyle(.kitIcon)
+          .kitMenu(isPresented: $showsActions) {
+            Button("Run Through This Step", systemImage: "play") { pipeline.select(step.id) }
+            Button("Move Up", systemImage: "arrow.up") { pipeline.move(step.id, by: -1) }.disabled(index == 0)
+            Button("Move Down", systemImage: "arrow.down") { pipeline.move(step.id, by: 1) }
+              .disabled(index == pipeline.steps.count - 1)
+            Button("Duplicate", systemImage: "plus.square.on.square") { pipeline.duplicate(step.id) }
+            Divider()
+            Button("Delete Step", systemImage: "trash", role: .destructive) { pipeline.remove(step.id) }
+          }
       }
       if step.kind.writes && !step.isEnabled {
         Text("Off while you try things out. Turn it on to write the results.")
@@ -218,26 +211,25 @@ private struct SurfaceShapeCard: View {
 
 struct AddStepMenu: View {
   let pipeline: PipelineModel
+  @State private var isOpen = false
 
   var body: some View {
-    Menu {
-      ForEach(pipeline.isSQL ? StepKind.common.filter { StepKind.sqlCompatible.contains($0) } : StepKind.common) { kind in
-        Button("\(kind.name) — \(kind.does)") { pipeline.add(kind) }
-      }
-      if !pipeline.isSQL {
-        Divider()
-        Menu("More Steps") {
-          ForEach(StepKind.allCases.filter { !StepKind.common.contains($0) }) { kind in
-            Button("\(kind.name) — \(kind.does)") { pipeline.add(kind) }
+    Button("Add Step", systemImage: "plus") { isOpen = true }
+      .buttonStyle(.kitPlain)
+      .fixedSize()
+      .kitMenu(isPresented: $isOpen) {
+        ForEach(pipeline.isSQL ? StepKind.common.filter { StepKind.sqlCompatible.contains($0) } : StepKind.common) { kind in
+          Button("\(kind.name) — \(kind.does)") { pipeline.add(kind) }
+        }
+        if !pipeline.isSQL {
+          Divider()
+          KitSubmenu("More Steps") {
+            ForEach(StepKind.allCases.filter { !StepKind.common.contains($0) }) { kind in
+              Button("\(kind.name) — \(kind.does)") { pipeline.add(kind) }
+            }
           }
         }
       }
-    } label: {
-      Label("Add Step", systemImage: "plus")
-    }
-    .menuStyle(.button)
-    .buttonStyle(.kitPlain)
-    .fixedSize()
   }
 }
 

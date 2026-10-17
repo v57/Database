@@ -99,6 +99,7 @@ struct FieldField: View {
   let value: String
   let fields: [String]
   let onChange: (String) -> Void
+  @State private var picking = false
 
   var body: some View {
     HStack(spacing: 2) {
@@ -106,15 +107,14 @@ struct FieldField: View {
         .textFieldStyle(.plain)
         .kitFont(.mono)
         .frame(minWidth: 70, maxWidth: 160)
-      Menu {
-        ForEach(fields, id: \.self) { name in Button(name) { onChange(name) } }
-      } label: {
-        Image(systemName: "chevron.down").imageScale(.small)
-      }
-      .menuStyle(.button)
-      .buttonStyle(.plain)
-      .menuIndicator(.hidden)
-      .fixedSize()
+      Button("Pick a field", systemImage: "chevron.down") { picking = true }
+        .labelStyle(.iconOnly)
+        .imageScale(.small)
+        .buttonStyle(.plain)
+        .fixedSize()
+        .kitMenu(isPresented: $picking) {
+          ForEach(fields, id: \.self) { name in Button(name) { onChange(name) } }
+        }
     }
     .padding(.horizontal, 8)
     .frame(minHeight: KitMetrics.controlSmall)
@@ -169,6 +169,7 @@ struct GroupEditor: View {
   let outputs: [GroupOutput]
   let fields: [String]
   let onChange: ([String], [GroupOutput]) -> Void
+  @State private var adding = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -181,19 +182,15 @@ struct GroupEditor: View {
             onChange(b.filter { !$0.isEmpty }, outputs)
           }
         }
-        Menu {
-          ForEach(fields, id: \.self) { name in Button(name) { onChange(by + [name], outputs) } }
-          if !by.isEmpty {
-            Divider()
-            Button("Group everything together") { onChange([], outputs) }
+        Button("Add a field to group by", systemImage: "plus.circle") { adding = true }
+          .buttonStyle(.kitIcon)
+          .kitMenu(isPresented: $adding) {
+            ForEach(fields, id: \.self) { name in Button(name) { onChange(by + [name], outputs) } }
+            if !by.isEmpty {
+              Divider()
+              Button("Group everything together") { onChange([], outputs) }
+            }
           }
-        } label: {
-          Label("Add a field to group by", systemImage: "plus.circle")
-        }
-        .menuStyle(.button)
-        .buttonStyle(.kitIcon)
-        .menuIndicator(.hidden)
-        .fixedSize()
       }
       ForEach(Array(outputs.enumerated()), id: \.element.id) { index, output in
         HStack(spacing: 6) {

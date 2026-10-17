@@ -210,14 +210,14 @@ struct ConnectionSheet: View {
           ChoiceCard(
             host.name.isEmpty ? host.hostname : host.name, subtitle: address(of: host), systemImage: "server.rack", hue: .teal,
             isOn: Binding(get: { isSelected(host) }, set: { if $0 { use(host) } }))
-          .contextMenu { menu(for: host) }
+          .kitContextMenu { menu(for: host) }
         }
         // SSH settings no saved configuration matches (made before configurations were shared).
         if profile.ssh.enabled, !app.vault.hosts.contains(where: isSelected) {
           ChoiceCard(
             profile.ssh.host.isEmpty ? "SSH server" : profile.ssh.host, subtitle: "Not saved", systemImage: "server.rack", hue: .teal,
             isOn: Binding(get: { true }, set: { _ in editingHost = HostDraft(host: unsavedHost, isNew: true) }))
-          .contextMenu {
+          .kitContextMenu {
             Button("Save as Configuration…") { editingHost = HostDraft(host: unsavedHost, isNew: true) }
           }
         }

@@ -281,7 +281,7 @@ struct PairsEditor: View {
           editingField = field
           draft = value
         }
-        .contextMenu {
+        .kitContextMenu {
           if editable {
             Button("Edit Value") {
               editingField = field
@@ -345,7 +345,7 @@ struct ListValueEditor: View {
           editing = index
           draft = item
         }
-        .contextMenu {
+        .kitContextMenu {
           if editable {
             Button("Edit") {
               editing = index
@@ -484,7 +484,7 @@ struct SortedSetEditor: View {
           editing = entry.member
           draftScore = entry.score.formatted(.number.grouping(.never))
         }
-        .contextMenu {
+        .kitContextMenu {
           if editable {
             Button("Change Score") {
               editing = entry.member

@@ -136,18 +136,13 @@ struct QueryTabView: View {
         }
         Spacer()
         if let table = currentTable {
-          Menu {
+          KitMenuButton("Export", systemImage: "square.and.arrow.up") {
             Button("CSV…") { onExport(ExportDocument(text: Export.csv(fields: table.0, rows: table.1), type: .commaSeparatedText, name: tab.title + ".csv")) }
             Button("JSON…") { onExport(ExportDocument(text: Export.json(fields: table.0, rows: table.1), type: .json, name: tab.title + ".json")) }
-            Button("Copy as CSV") { KitPasteboard.copy(Export.csv(fields: table.0, rows: table.1)) }
-          } label: {
-            Label("Export", systemImage: "square.and.arrow.up")
+            Divider()
+            Button("Copy as CSV", systemImage: "doc.on.doc") { KitPasteboard.copy(Export.csv(fields: table.0, rows: table.1)) }
           }
-          .menuStyle(.button)
-          .buttonStyle(.kit)
-          .menuIndicator(.hidden)
           .controlSize(.small)
-          .fixedSize()
         }
       }
       .padding(.horizontal, KitMetrics.gutter)
@@ -216,18 +211,18 @@ struct ContextBar: View {
   var body: some View {
     HStack(spacing: 8) {
       if !databases.isEmpty {
-        Picker("Run in", selection: Binding(
-          get: { tab.context.database ?? "" },
-          set: { name in
-            tab.context.database = name.isEmpty ? nil : name
-            tab.context.schema = nil
-            Task { await workspace.loadCompletions(for: tab.context) }
-          })
-        ) {
-          Text("Default").tag("")
-          ForEach(databases) { Text($0.title).tag($0.database ?? $0.title) }
+        KitMenuButton("Runs in \(tab.context.database ?? "the default database")", systemImage: "cylinder") {
+          KitMenuOptions(
+            selection: Binding(
+              get: { tab.context.database ?? "" },
+              set: { name in
+                tab.context.database = name.isEmpty ? nil : name
+                tab.context.schema = nil
+                Task { await workspace.loadCompletions(for: tab.context) }
+              }),
+            options: [("Default", "")] + databases.map { ($0.title, $0.database ?? $0.title) })
         }
-        .fixedSize()
+        .controlSize(.small)
       } else {
         Text(tab.context.database.map { "Runs in \($0)" } ?? "Runs in the default database")
       }
