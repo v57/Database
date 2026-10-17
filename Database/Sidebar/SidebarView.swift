@@ -6,7 +6,9 @@ import SwiftUI
 /// connection in the Connections card.
 struct SidebarView: View {
   @Bindable var window: WindowModel
+  @Binding var columnVisibility: NavigationSplitViewVisibility
   @Environment(AppModel.self) private var app
+  @Environment(\.kitIdiom) private var idiom
   @State private var deleting: ConnectionProfile?
 
   private var query: String { window.searchText.trimmingCharacters(in: .whitespaces) }
@@ -32,7 +34,8 @@ struct SidebarView: View {
   var body: some View {
     let current = current
     let others = profiles.filter { $0.id != current?.id }
-    KitSidebar(selection: $window.selection, searchText: $window.searchText) {
+    // The Mac's toggle hides the sidebar through the window's split view; iPad and iPhone need the binding.
+    KitSidebar(selection: $window.selection, searchText: $window.searchText, columnVisibility: idiom.isTouch ? $columnVisibility : nil) {
       if let current {
         CurrentConnectionSection(connection: current, window: window) { deleting = current.profile }
       }
@@ -92,6 +95,7 @@ private struct CurrentConnectionSection: View {
   let connection: LiveConnection
   @Bindable var window: WindowModel
   var onDelete: () -> Void
+  @State private var showsActions = false
 
   var body: some View {
     let profile = connection.profile
@@ -103,18 +107,16 @@ private struct CurrentConnectionSection: View {
       MetaLine([profile.engine.displayName, profile.serverSummary])
         .truncationMode(.tail)
     } accessory: {
-      Menu {
-        ConnectionMenu(connection: connection, window: window, onDelete: onDelete)
-      } label: {
-        Image(systemName: "ellipsis")
-      }
-      .menuIndicator(.hidden)
-      .accessibilityLabel("\(profile.displayName) actions")
+      Button("\(profile.displayName) actions", systemImage: "ellipsis") { showsActions = true }
+        .labelStyle(.iconOnly)
+        .kitMenu(isPresented: $showsActions) {
+          ConnectionMenu(connection: connection, window: window, onDelete: onDelete)
+        }
     }
     .titleAccessory {
       if profile.isProduction { Chip.production.controlSize(.small) }
     }
-    .contextMenu { ConnectionMenu(connection: connection, window: window, onDelete: onDelete) }
+    .kitContextMenu { ConnectionMenu(connection: connection, window: window, onDelete: onDelete) }
   }
 }
 
@@ -171,6 +173,7 @@ struct ConnectionRow: View {
           if profile.isProduction { Chip.production.controlSize(.small) }
         }
       }
+      // The system's menu: the row drags to reorder, and on touch the kit's long press would take the drag's.
       .contextMenu { ConnectionMenu(connection: connection, window: window, onDelete: onDelete) }
       .accessibilityLabel("\(profile.displayName), \(profile.engine.displayName)")
       if isExpanded.wrappedValue {
@@ -324,7 +327,7 @@ struct QueryRows: View {
           SidebarRow(value: SidebarItem.savedQuery(connection.id, query.id), query.title, systemImage: "terminal")
             .disclosureSlot()
             .kitRowIndent(level + 1)
-          .contextMenu {
+          .kitContextMenu {
             Button("Delete", systemImage: "trash", role: .destructive) { app.deleteQuery(query.id) }
           }
         }

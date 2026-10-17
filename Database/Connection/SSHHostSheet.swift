@@ -109,20 +109,16 @@ struct SSHHostSheet: View {
           KitPicker(
             "Key", selection: $keyID,
             options: [("This device’s key", UUID?.none)] + app.keys.keys.map { ("\($0.name) (\($0.kind.label))", UUID?.some($0.id)) })
-          Menu("Add Key") {
-            Button("Create New Key") {
+          KitMenuButton("Add Key") {
+            Button("Create New Key", systemImage: "key") {
               if let key = try? app.keys.generate(name: "Database on \(SharedConnections.deviceName)") {
                 app.keysVersion += 1
                 keyID = key.id
               }
             }
-            Button("Import Private Key…") { importingKey = true }
+            Button("Import Private Key…", systemImage: "square.and.arrow.down") { importingKey = true }
           }
-          .menuStyle(.button)
-          .buttonStyle(.kit)
-          .menuIndicator(.hidden)
           .controlSize(.small)
-          .fixedSize()
         }
       }
       if let line = SSHHostSheet.publicKeyLine(keyID, keys: app.keys) {

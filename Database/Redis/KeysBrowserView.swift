@@ -117,15 +117,12 @@ struct KeysBrowserView: View {
 
   var body: some View {
     split
-      .navigationMeta("\(browser.connection.profile.displayName) · \(keyCount) keys")
-      #if os(macOS)
-        .kitToolbarTitle(
-          browser.ref.name, meta: [browser.connection.profile.displayName, "\(keyCount) keys"], systemImage: "key",
-          hue: browser.engine.hue, status: browser.isLoading && browser.page != nil ? .working : .idle)
-      #else
-        .navigationTitle(browser.ref.name)
-      #endif
-      .toolbar { toolbar }
+      .kitToolbar(
+        browser.ref.name, meta: [browser.connection.profile.displayName, "\(keyCount) keys"], systemImage: "key",
+        hue: browser.engine.hue, status: browser.isLoading && browser.page != nil ? .working : .idle
+      ) {
+        tools
+      }
       .sheet(isPresented: $creating) {
         if let model { NewKeySheet(model: model).componentKit(accent: .databaseAccent) }
       }
@@ -213,30 +210,24 @@ struct KeysBrowserView: View {
     .kitPane(.content)
   }
 
-  @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-    #if os(macOS)
-      if #available(macOS 26, *) {
-        ToolbarSpacer(.flexible)
+  @ToolbarSlotBuilder private var tools: [ToolbarSlot] {
+    ToolGroup(iconOnly: true) {
+      Button(commandLine ? "Hide Command Line" : "Show Command Line", systemImage: "apple.terminal") {
+        commandLine.toggle()
       }
-    #endif
-    ToolbarItemGroup(placement: .primaryAction) {
-      ToolGroup(iconOnly: true) {
-        Button(commandLine ? "Hide Command Line" : "Show Command Line", systemImage: "apple.terminal") {
-          commandLine.toggle()
-        }
-        .kitToolOn(commandLine)
-        Button("Refresh", systemImage: "arrow.clockwise") {
-          Task {
-            await browser.reload()
-            await model?.load()
-          }
-        }
-        if browser.isEditable {
-          Button("Add Key", systemImage: "plus") { creating = true }
-        }
+      .kitToolOn(commandLine)
+      Button("Refresh", systemImage: "arrow.clockwise") { refresh() }
+      if browser.isEditable {
+        Button("Add Key", systemImage: "plus") { creating = true }
       }
     }
-    .kitToolbarItem()
+  }
+
+  private func refresh() {
+    Task {
+      await browser.reload()
+      await model?.load()
+    }
   }
 
   private var typeFilter: Binding<String?> {

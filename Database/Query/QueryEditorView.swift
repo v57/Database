@@ -24,15 +24,12 @@ struct QueryEditorView: View {
       }
     }
     .kitPane(.content)
-    .navigationMeta(workspace.connection.profile.displayName)
-    #if os(macOS)
-      .kitToolbarTitle(
-        workspace.selected?.title ?? "Query", meta: [workspace.connection.profile.displayName], systemImage: "bolt",
-        hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle)
-    #else
-      .navigationTitle(workspace.selected?.title ?? "Query")
-    #endif
-    .toolbar { toolbar }
+    .kitToolbar(
+      workspace.selected?.title ?? "Query", meta: [workspace.connection.profile.displayName], systemImage: "bolt",
+      hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle
+    ) {
+      tools
+    }
     .sheet(isPresented: .init(get: { savingTitle != nil }, set: { if !$0 { savingTitle = nil } })) {
       KitSheet(title: "Save Query", meta: "Saved queries show under Queries in the sidebar.", systemImage: "square.and.arrow.down", width: 420) {
         TextField("Name", text: Binding(get: { savingTitle ?? "" }, set: { savingTitle = $0 }))
@@ -63,34 +60,40 @@ struct QueryEditorView: View {
       selection: $workspace.selectedID, onClose: { workspace.close($0) }, onAdd: { window.newQuery() })
   }
 
-  @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-    #if os(macOS)
-      if #available(macOS 26, *) {
-        ToolbarSpacer(.flexible)
-      }
-    #endif
-    ToolbarItemGroup(placement: .primaryAction) {
-      if let tab = workspace.selected {
+  /// Format and Explain fold into "…" first, then Save; Run never folds.
+  @ToolbarSlotBuilder private var tools: [ToolbarSlot] {
+    if let tab = workspace.selected {
+      let formats = workspace.connection.profile.engine.family == .sql || workspace.connection.profile.engine.family == .wideColumn
+      ToolbarSlot(priority: 0) {
         ToolGroup {
           Chip(workspace.connection.profile.engine.queryLanguage, hue: workspace.connection.profile.engine.hue)
             .padding(.horizontal, 4)
-          if workspace.connection.profile.engine.family == .sql || workspace.connection.profile.engine.family == .wideColumn {
+          if formats {
             Button("Format") { tab.text = SQLFormatter.format(tab.text) }
           }
           Button("Explain") { Task { await workspace.explainSelected() } }
             .disabled(tab.isRunning)
         }
+      } menu: {
+        if formats {
+          Button("Format", systemImage: "text.alignleft") { tab.text = SQLFormatter.format(tab.text) }
+        }
+        Button("Explain", systemImage: "list.bullet.indent") { Task { await workspace.explainSelected() } }
+          .disabled(tab.isRunning)
+      }
+      ToolbarSlot(priority: 1) {
         ToolGroup(iconOnly: true) {
           Button("Save…", systemImage: "square.and.arrow.down") { savingTitle = tab.savedID == nil ? "" : tab.title }
         }
-        Button("Run", systemImage: "play.fill") { Task { await workspace.runSelected() } }
-          .buttonStyle(.kitPrimary)
-          .keyboardShortcut(.return, modifiers: .command)
-          .disabled(tab.isRunning)
-          .kitHelp("Run", shortcut: "⌘↩", systemImage: "play.fill")
+      } menu: {
+        Button("Save…", systemImage: "square.and.arrow.down") { savingTitle = tab.savedID == nil ? "" : tab.title }
       }
+      Button("Run", systemImage: "play.fill") { Task { await workspace.runSelected() } }
+        .buttonStyle(.kitPrimary)
+        .keyboardShortcut(.return, modifiers: .command)
+        .disabled(tab.isRunning)
+        .kitHelp("Run", shortcut: "⌘↩", systemImage: "play.fill")
     }
-    .kitToolbarItem()
   }
 }
 
@@ -136,18 +139,13 @@ struct QueryTabView: View {
         }
         Spacer()
         if let table = currentTable {
-          Menu {
+          KitMenuButton("Export", systemImage: "square.and.arrow.up") {
             Button("CSV…") { onExport(ExportDocument(text: Export.csv(fields: table.0, rows: table.1), type: .commaSeparatedText, name: tab.title + ".csv")) }
             Button("JSON…") { onExport(ExportDocument(text: Export.json(fields: table.0, rows: table.1), type: .json, name: tab.title + ".json")) }
-            Button("Copy as CSV") { KitPasteboard.copy(Export.csv(fields: table.0, rows: table.1)) }
-          } label: {
-            Label("Export", systemImage: "square.and.arrow.up")
+            Divider()
+            Button("Copy as CSV", systemImage: "doc.on.doc") { KitPasteboard.copy(Export.csv(fields: table.0, rows: table.1)) }
           }
-          .menuStyle(.button)
-          .buttonStyle(.kit)
-          .menuIndicator(.hidden)
           .controlSize(.small)
-          .fixedSize()
         }
       }
       .padding(.horizontal, KitMetrics.gutter)
@@ -216,18 +214,18 @@ struct ContextBar: View {
   var body: some View {
     HStack(spacing: 8) {
       if !databases.isEmpty {
-        Picker("Run in", selection: Binding(
-          get: { tab.context.database ?? "" },
-          set: { name in
-            tab.context.database = name.isEmpty ? nil : name
-            tab.context.schema = nil
-            Task { await workspace.loadCompletions(for: tab.context) }
-          })
-        ) {
-          Text("Default").tag("")
-          ForEach(databases) { Text($0.title).tag($0.database ?? $0.title) }
+        KitMenuButton("Runs in \(tab.context.database ?? "the default database")", systemImage: "cylinder") {
+          KitMenuOptions(
+            selection: Binding(
+              get: { tab.context.database ?? "" },
+              set: { name in
+                tab.context.database = name.isEmpty ? nil : name
+                tab.context.schema = nil
+                Task { await workspace.loadCompletions(for: tab.context) }
+              }),
+            options: [("Default", "")] + databases.map { ($0.title, $0.database ?? $0.title) })
         }
-        .fixedSize()
+        .controlSize(.small)
       } else {
         Text(tab.context.database.map { "Runs in \($0)" } ?? "Runs in the default database")
       }

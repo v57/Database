@@ -75,14 +75,3 @@ func formatTTL(milliseconds ms: Int64) -> String {
 }
 
 func formatBytes(_ n: Int64) -> String { ByteCountFormatter.string(fromByteCount: n, countStyle: .memory) }
-
-extension View {
-  /// The pane's meta line under its title: the window subtitle on the Mac, the navigation subtitle on iPad.
-  @ViewBuilder func navigationMeta(_ text: String) -> some View {
-    #if os(macOS)
-      navigationSubtitle(text)
-    #else
-      if #available(iOS 26, *) { navigationSubtitle(text) } else { self }
-    #endif
-  }
-}

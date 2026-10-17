@@ -29,13 +29,9 @@ struct BrowserView: View {
 
   private var titled: some View {
     split
-      .navigationMeta(subtitle)
-      #if os(macOS)
-        .kitToolbarTitle(browser.ref.name, meta: [subtitle], systemImage: browser.ref.symbol, hue: browser.engine.hue, status: titleStatus)
-      #else
-        .navigationTitle(browser.ref.name)
-      #endif
-      .toolbar { toolbar }
+      .kitToolbar(browser.ref.name, meta: [subtitle], systemImage: browser.ref.symbol, hue: browser.engine.hue, status: titleStatus) {
+        tools
+      }
   }
 
   @ViewBuilder private var split: some View {
@@ -205,36 +201,52 @@ struct BrowserView: View {
     .padding(.top, KitMetrics.gutter)
   }
 
-  @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-    #if os(macOS)
-      if #available(macOS 26, *) {
-        ToolbarSpacer(.flexible)
+  /// The pane's tools. As the bar narrows, "show as" folds into "…" first, then the mode, then the query editor,
+  /// refresh and add; reviewing changes never folds.
+  @ToolbarSlotBuilder private var tools: [ToolbarSlot] {
+    if hasModes {
+      ToolbarSlot(priority: 1) {
+        KitSegmented(selection: modeSelection, segments: BrowserModel.Mode.allCases.map {
+          KitSegment($0.rawValue, value: $0, systemImage: $0 == .find ? "magnifyingglass" : "square.stack.3d.up")
+        })
+      } menu: {
+        Picker("Mode", selection: modeSelection) {
+          ForEach(BrowserModel.Mode.allCases) { mode in
+            Label(mode.rawValue, systemImage: mode == .find ? "magnifyingglass" : "square.stack.3d.up").tag(mode)
+          }
+        }
+        .pickerStyle(.inline)
       }
-    #endif
-    ToolbarItemGroup(placement: .primaryAction) {
-      if sizeClass == .compact {
-        compactViewMenu
-      } else {
-        viewControls
+    }
+    if browser.mode == .find {
+      ToolbarSlot(priority: 0) {
+        KitSegmented(selection: $browser.viewMode, options: availableModes.map { ($0.rawValue, $0) })
+      } menu: {
+        Picker("Show As", selection: $browser.viewMode) {
+          ForEach(availableModes) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.inline)
       }
-      if !browser.pending.isEmpty {
-        ToolGroup {
-          Button {
-            browser.showsReview = true
-          } label: {
-            Label {
-              HStack(spacing: 4) {
-                Text("Review Changes").foregroundStyle(Hue.accent.text)
-                Count(browser.pending.count, .attention)
-              }
-            } icon: {
-              Image(systemName: "checklist").foregroundStyle(Hue.accent.text)
+    }
+    if !browser.pending.isEmpty {
+      ToolGroup {
+        Button {
+          browser.showsReview = true
+        } label: {
+          Label {
+            HStack(spacing: 4) {
+              Text("Review Changes").foregroundStyle(Hue.accent.text)
+              Count(browser.pending.count, .attention)
             }
+          } icon: {
+            Image(systemName: "checklist").foregroundStyle(Hue.accent.text)
           }
         }
       }
+    }
+    ToolbarSlot(priority: 2) {
       ToolGroup(iconOnly: true) {
-        if browser.mode == .find && sizeClass != .compact {
+        if browser.mode == .find {
           Button(
             browser.showsQueryEditor ? "Hide Query Editor" : "Show Query Editor",
             systemImage: "chevron.left.forwardslash.chevron.right"
@@ -244,13 +256,22 @@ struct BrowserView: View {
           .kitToolOn(browser.showsQueryEditor)
         }
         Button("Refresh", systemImage: "arrow.clockwise") { Task { await browser.reload() } }
-        if browser.isEditable && browser.mode == .find {
+        if canAdd {
           Button("Add \(browser.noun.capitalized)", systemImage: "plus") { adding = true }
         }
       }
+    } menu: {
+      if browser.mode == .find {
+        Toggle("Query Editor", systemImage: "chevron.left.forwardslash.chevron.right", isOn: $browser.showsQueryEditor)
+      }
+      Button("Refresh", systemImage: "arrow.clockwise") { Task { await browser.reload() } }
+      if canAdd {
+        Button("Add \(browser.noun.capitalized)", systemImage: "plus") { adding = true }
+      }
     }
-    .kitToolbarItem()
   }
+
+  private var canAdd: Bool { browser.isEditable && browser.mode == .find }
 
   /// The title's live icon: the arc while the page loads.
   private var titleStatus: WorkStatus {
@@ -258,41 +279,6 @@ struct BrowserView: View {
   }
 
   private var hasModes: Bool { browser.engine.family == .document || browser.engine.family == .sql }
-
-  /// Mode and "show as", side by side in a wide toolbar.
-  @ViewBuilder private var viewControls: some View {
-    if hasModes {
-      KitSegmented(selection: modeSelection, segments: BrowserModel.Mode.allCases.map {
-        KitSegment($0.rawValue, value: $0, systemImage: $0 == .find ? "magnifyingglass" : "square.stack.3d.up")
-      })
-    }
-    if browser.mode == .find {
-      KitSegmented(selection: $browser.viewMode, options: availableModes.map { ($0.rawValue, $0) })
-    }
-  }
-
-  /// The same choices in one menu, for a phone's toolbar.
-  private var compactViewMenu: some View {
-    Menu {
-      if hasModes {
-        Picker("Mode", selection: modeSelection) {
-          ForEach(BrowserModel.Mode.allCases) { mode in
-            Label(mode.rawValue, systemImage: mode == .find ? "magnifyingglass" : "square.stack.3d.up").tag(mode)
-          }
-        }
-        .pickerStyle(.inline)
-      }
-      if browser.mode == .find {
-        Picker("Show As", selection: $browser.viewMode) {
-          ForEach(availableModes) { Text($0.rawValue).tag($0) }
-        }
-        .pickerStyle(.inline)
-        Toggle("Query Editor", systemImage: "chevron.left.forwardslash.chevron.right", isOn: $browser.showsQueryEditor)
-      }
-    } label: {
-      Label("View", systemImage: "line.3.horizontal.decrease")
-    }
-  }
 
   private var modeSelection: Binding<BrowserModel.Mode> {
     Binding(get: { browser.mode }, set: { mode in Task { await browser.switchMode(mode) } })
