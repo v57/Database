@@ -410,7 +410,7 @@ struct OutputPanel: View {
       ResultTable(fields: rows.fields, rows: rows.rows)
     } else {
       ScrollView {
-        VStack(spacing: 8) {
+        KitLazyStack(spacing: 8) {
           ForEach(Array(pipeline.preview.enumerated()), id: \.offset) { _, doc in
             DocumentPreview(document: doc)
           }
@@ -446,7 +446,8 @@ struct OutputPanel: View {
       ResultTable(fields: rows.fields, rows: rows.rows)
     } else if let results = pipeline.results {
       ScrollView {
-        VStack(spacing: 8) {
+        // Up to 1,000 documents: a LazyVStack never lays out the ones it hasn't built.
+        LazyVStack(spacing: 8) {
           ForEach(Array(results.enumerated()), id: \.offset) { _, doc in DocumentPreview(document: doc) }
         }
       }

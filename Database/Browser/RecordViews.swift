@@ -224,7 +224,8 @@ struct JSONListView: View {
 
   var body: some View {
     ScrollView {
-      LazyVStack(spacing: KitMetrics.gutter) {
+      // A page of tall cards: built near the screen, a few a frame, keeping the heights of those let go.
+      KitLazyStack(spacing: KitMetrics.gutter) {
         ForEach(browser.records) { record in
           let selected = browser.selection.contains(record.id)
           Text(Exporter.json(record, fields: browser.fields))
