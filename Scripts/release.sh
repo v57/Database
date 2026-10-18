@@ -26,6 +26,8 @@ echo "==> Archiving Database $VERSION"
 xcodebuild -project Database.xcodeproj -scheme Database -configuration Release \
   -destination 'generic/platform=macOS' -archivePath $ARCHIVE archive \
   MARKETING_VERSION=$VERSION \
+  SWIFT_LTO=YES ALTERNATE_LINKER_PATH=$PWD/Scripts/ld-archive-prelink \
+  'OTHER_SWIFT_FLAGS=$(inherited) -Xfrontend -internalize-at-link -Xfrontend -conditional-runtime-records' \
   CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Developer ID Application" DEVELOPMENT_TEAM=$TEAM \
   OTHER_CODE_SIGN_FLAGS=--timestamp -quiet
 ditto $ARCHIVE/Products/Applications/Database.app $APP
