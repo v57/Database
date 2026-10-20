@@ -206,9 +206,13 @@ struct ConnectionSheet: View {
         ChoiceCard(
           Self.thisDevice, subtitle: "Localhost", systemImage: Self.thisDeviceSymbol,
           isOn: Binding(get: { !profile.ssh.enabled }, set: { if $0 { profile.ssh.enabled = false; test = .idle } }))
+        // Devices on the user's Hub (kept by the Vault app) come with the rest, reached at their Hub Network address.
         ForEach(app.vault.hosts) { host in
           ChoiceCard(
-            host.name.isEmpty ? host.hostname : host.name, subtitle: address(of: host), systemImage: "server.rack", hue: .teal,
+            host.name.isEmpty ? host.hostname : host.name,
+            subtitle: host.isViaHub ? "Via Hub · \(address(of: host))" : address(of: host),
+            systemImage: host.isViaHub ? "point.3.connected.trianglepath.dotted" : "server.rack",
+            hue: host.isViaHub ? .purple : .teal,
             isOn: Binding(get: { isSelected(host) }, set: { if $0 { use(host) } }))
           .kitContextMenu { menu(for: host) }
         }
