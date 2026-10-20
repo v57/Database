@@ -121,7 +121,7 @@ services:
       interval: 10s
       retries: 30
 
-  # An SSH bastion for the tunnel tests: user "tunnel", password "tunnelpass", or the key in
+  # An SSH bastion for the tunnel and SFTP tests: user "tunnel", password "tunnelpass", or the key in
   # .testing/ssh (create it with: ssh-keygen -t ed25519 -N '' -f .testing/ssh/id_ed25519).
   # From here the other services are reachable by name (postgres:5432, redis:6379, …).
   sshd:
@@ -130,7 +130,7 @@ services:
       - sh
       - -c
       - >-
-        apk add --no-cache openssh-server >/dev/null
+        apk add --no-cache openssh-server openssh-sftp-server >/dev/null
         && ssh-keygen -A
         && (id tunnel >/dev/null 2>&1 || adduser -D -s /bin/sh tunnel)
         && echo 'tunnel:tunnelpass' | chpasswd
