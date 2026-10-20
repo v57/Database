@@ -1,6 +1,8 @@
 import Foundation
 import SSHTunnel
-import Security
+#if canImport(Security)
+  import Security
+#endif
 
 /// Where passwords and private keys are kept.
 public protocol SecretStore: Sendable {
@@ -21,6 +23,7 @@ extension SecretStore {
   public func setSSHPassword(_ password: String?, for id: UUID) throws { try setString("ssh.\(id.uuidString)", password) }
 }
 
+#if canImport(Security)
 public struct KeychainError: Error, LocalizedError {
   public var status: OSStatus
   public var errorDescription: String? {
@@ -67,6 +70,21 @@ public struct KeychainStore: SecretStore {
     if status != errSecSuccess { throw KeychainError(status: status) }
   }
 }
+#else
+  /// Where the Keychain is missing nothing was ever kept in it: reads find nothing (the app's secrets are the
+  /// vault's, `VaultSecrets`).
+  public struct KeychainStore: SecretStore {
+    public let service: String
+
+    public init(service: String = "dev.v57.db") { self.service = service }
+
+    public func read(_ account: String) -> Data? { nil }
+
+    public func write(_ account: String, _ data: Data?) throws {
+      throw CocoaError(.featureUnsupported)
+    }
+  }
+#endif
 
 /// For tests and previews.
 public final class MemorySecretStore: SecretStore, @unchecked Sendable {

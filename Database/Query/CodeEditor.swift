@@ -210,7 +210,7 @@ enum SyntaxColoring {
       } while index < NSMaxRange(characters) && index < text.length
     }
   }
-#else
+#elseif os(iOS)
   import UIKit
 
   extension SyntaxKind {
@@ -282,6 +282,26 @@ enum SyntaxColoring {
         storage.endEditing()
         view.selectedRange = selected
       }
+    }
+  }
+#else
+  /// A plain monospaced editor where neither AppKit nor UIKit is around (Windows, Linux); ⌘↩ runs.
+  struct CodeEditor: View {
+    @Binding var text: String
+    var language: String
+    var completions: [Completion]
+    var isEditable = true
+    var onRun: (() -> Void)?
+
+    var body: some View {
+      TextEditor(text: $text)
+        .font(.system(.body, design: .monospaced))
+        .disabled(!isEditable)
+        .onKeyPress(.return, phases: .down) { press in
+          guard press.modifiers.contains(.command), let onRun else { return .ignored }
+          onRun()
+          return .handled
+        }
     }
   }
 #endif

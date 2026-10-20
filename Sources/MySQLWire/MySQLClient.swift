@@ -1,5 +1,9 @@
 import Foundation
-import Security
+#if canImport(Security)
+  import Security
+#else
+  import _CryptoExtras
+#endif
 import WireKit
 
 /// A MySQL / MariaDB client speaking the classic protocol (COM_QUERY, text results).
@@ -466,18 +470,29 @@ enum RSAPublicKey {
   static func encryptOAEP(_ plain: [UInt8], pem: String) throws -> [UInt8] {
     let base64 = pem.split(whereSeparator: \.isNewline).filter { !$0.hasPrefix("-----") }.joined()
     guard let der = Data(base64Encoded: base64) else { throw WireError.protocolViolation("bad RSA key") }
-    let pkcs1 = try stripSubjectPublicKeyInfo([UInt8](der))
-    let attributes: [String: Any] = [
-      kSecAttrKeyType as String: kSecAttrKeyTypeRSA, kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
-    ]
-    var error: Unmanaged<CFError>?
-    guard let key = SecKeyCreateWithData(Data(pkcs1) as CFData, attributes as CFDictionary, &error) else {
-      throw WireError.protocolViolation("the server's RSA key couldn't be read")
-    }
-    guard
-      let encrypted = SecKeyCreateEncryptedData(key, .rsaEncryptionOAEPSHA1, Data(plain) as CFData, &error)
-    else { throw WireError.authenticationFailed("couldn't encrypt the password") }
-    return [UInt8](encrypted as Data)
+    #if canImport(Security)
+      let pkcs1 = try stripSubjectPublicKeyInfo([UInt8](der))
+      let attributes: [String: Any] = [
+        kSecAttrKeyType as String: kSecAttrKeyTypeRSA, kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
+      ]
+      var error: Unmanaged<CFError>?
+      guard let key = SecKeyCreateWithData(Data(pkcs1) as CFData, attributes as CFDictionary, &error) else {
+        throw WireError.protocolViolation("the server's RSA key couldn't be read")
+      }
+      guard
+        let encrypted = SecKeyCreateEncryptedData(key, .rsaEncryptionOAEPSHA1, Data(plain) as CFData, &error)
+      else { throw WireError.authenticationFailed("couldn't encrypt the password") }
+      return [UInt8](encrypted as Data)
+    #else
+      // swift-crypto reads SubjectPublicKeyInfo and PKCS#1; PKCS1_OAEP is OAEP with SHA-1.
+      guard let key = try? _RSA.Encryption.PublicKey(unsafeDERRepresentation: der) else {
+        throw WireError.protocolViolation("the server's RSA key couldn't be read")
+      }
+      guard let encrypted = try? key.encrypt(Data(plain), padding: .PKCS1_OAEP) else {
+        throw WireError.authenticationFailed("couldn't encrypt the password")
+      }
+      return [UInt8](encrypted)
+    #endif
   }
 
   /// SubjectPublicKeyInfo → the inner PKCS#1 RSAPublicKey. Returns the input if it's already PKCS#1.

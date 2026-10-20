@@ -4,6 +4,9 @@ import Foundation
 import Observation
 import SwiftUI
 
+/// DatabaseKit's row, not Combine's `Record` publisher (SwiftUI brings Combine along).
+typealias Record = DatabaseKit.Record
+
 /// State of one open table, collection or Redis database.
 @Observable @MainActor
 final class BrowserModel {

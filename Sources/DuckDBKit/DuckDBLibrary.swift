@@ -1,6 +1,10 @@
 import Cduckdb
 import Foundation
 
+#if os(Windows)
+  import WinSDK
+#endif
+
 /// The DuckDB build Database downloads when asked: a signed `libduckdb.dylib` for Apple silicon Macs, published
 /// by `Scripts/release-binaries.sh duckdb` (which also updates `DuckDBLibrary.release` below).
 public struct DuckDBRelease: Sendable, Equatable {
@@ -152,13 +156,24 @@ struct DuckDBAPI: @unchecked Sendable {
 
   /// Opens the library at `path`. With the hardened runtime, dyld only accepts a library signed by the app's team.
   init(path: String) throws {
-    guard let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) else {
-      let reason = dlerror().map { String(cString: $0) } ?? "unknown error"
-      throw DuckDBError(message: "Couldn't load DuckDB: \(reason)")
-    }
+    #if os(Windows)
+      guard let module = path.withCString(encodedAs: UTF16.self, { LoadLibraryW($0) }) else {
+        throw DuckDBError(message: "Couldn't load DuckDB: error \(GetLastError())")
+      }
+      let handle = UnsafeMutableRawPointer(module)
+      func address(_ name: String) -> UnsafeMutableRawPointer? {
+        GetProcAddress(module, name).map { unsafeBitCast($0, to: UnsafeMutableRawPointer.self) }
+      }
+    #else
+      guard let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) else {
+        let reason = dlerror().map { String(cString: $0) } ?? "unknown error"
+        throw DuckDBError(message: "Couldn't load DuckDB: \(reason)")
+      }
+      func address(_ name: String) -> UnsafeMutableRawPointer? { dlsym(handle, name) }
+    #endif
     self.handle = handle
     func symbol<T>(_ name: String) throws -> T {
-      guard let pointer = dlsym(handle, name) else {
+      guard let pointer = address(name) else {
         throw DuckDBError(message: "The installed DuckDB library has no \(name). Remove it in Settings and download it again.")
       }
       return unsafeBitCast(pointer, to: T.self)

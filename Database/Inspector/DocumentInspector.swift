@@ -66,45 +66,9 @@ struct DocumentInspector: View {
   private var editor: some View {
     KitSection("Edit", meta: "\(rows.count) fields", systemImage: "pencil", hue: .orange) {
       VStack(alignment: .leading, spacing: 8) {
-        ForEach($rows) { $row in
-          VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-              if row.name == "_id" {
-                Text(row.name).kitFont(.headline)
-              } else {
-                TextField("Field", text: $row.name)
-                  .kitField(mono: true)
-                  .frame(maxWidth: 160)
-              }
-              KitPicker("Type", selection: $row.type, options: documentFieldTypes.map { ($0, $0) })
-              .disabled(row.name == "_id")
-              Spacer()
-              if row.name != "_id" {
-                Button("Remove \(row.name)", systemImage: "minus.circle", role: .destructive) { rows.removeAll { $0.id == row.id } }
-                  .buttonStyle(.kitIcon)
-              }
-            }
-            if row.name == "_id" {
-              Text(row.text).kitFont(.monoSmall).foregroundStyle(.kitSecondary)
-            } else if row.type == "Boolean" {
-              KitSegmented(selection: $row.text, options: [("true", "true"), ("false", "false")])
-                .kitSegmentedStyle(.wide)
-            } else if row.type == "Null" {
-              Text("null").italic().foregroundStyle(.kitSecondary)
-            } else if ["Object", "Array"].contains(row.type) || !documentFieldTypes.contains(row.type) || row.text.contains("\n") {
-              TextEditor(text: $row.text)
-                .kitFont(.mono)
-                .frame(minHeight: 60, maxHeight: 220)
-                .scrollContentBackground(.hidden)
-                .padding(6)
-                .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
-            } else {
-              TextField("Value", text: $row.text, prompt: Text(row.type == "Date" ? "2026-10-12T10:02:00Z" : ""))
-                .kitField(status: errors[row.id] == nil ? .none : .error, mono: row.type != "String")
-            }
-          }
-          .kitFieldError(errors[row.id])
-          .padding(.vertical, 4)
+        ForEach($rows) { row in
+          let id = row.wrappedValue.id
+          FieldEditor(row: row, error: errors[id]) { rows.removeAll { $0.id == id } }
         }
         Button("Add Field", systemImage: "plus") {
           rows.append(EditableField(name: "", type: "String", text: "", original: nil))
@@ -222,5 +186,54 @@ struct BSONTreeRow: View {
     case .string(let s): "\"\(s.count > 80 ? String(s.prefix(80)) + "…" : s)\""
     default: CellValue.bson(value).displayText
     }
+  }
+}
+
+/// One field of the document being edited. (`ForEach($rows) { $row in … }` crashes the Windows toolchain's
+/// compiler, an assertion on the `$row` parameter: the closure takes the binding as is.)
+private struct FieldEditor: View {
+  @Binding var row: DocumentInspector.EditableField
+  var error: String?
+  var onRemove: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack(spacing: 6) {
+        if row.name == "_id" {
+          Text(row.name).kitFont(.headline)
+        } else {
+          TextField("Field", text: $row.name)
+            .kitField(mono: true)
+            .frame(maxWidth: 160)
+        }
+        KitPicker("Type", selection: $row.type, options: documentFieldTypes.map { ($0, $0) })
+        .disabled(row.name == "_id")
+        Spacer()
+        if row.name != "_id" {
+          Button("Remove \(row.name)", systemImage: "minus.circle", role: .destructive) { onRemove() }
+            .buttonStyle(.kitIcon)
+        }
+      }
+      if row.name == "_id" {
+        Text(row.text).kitFont(.monoSmall).foregroundStyle(.kitSecondary)
+      } else if row.type == "Boolean" {
+        KitSegmented(selection: $row.text, options: [("true", "true"), ("false", "false")])
+          .kitSegmentedStyle(.wide)
+      } else if row.type == "Null" {
+        Text("null").italic().foregroundStyle(.kitSecondary)
+      } else if ["Object", "Array"].contains(row.type) || !documentFieldTypes.contains(row.type) || row.text.contains("\n") {
+        TextEditor(text: $row.text)
+          .kitFont(.mono)
+          .frame(minHeight: 60, maxHeight: 220)
+          .scrollContentBackground(.hidden)
+          .padding(6)
+          .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+      } else {
+        TextField("Value", text: $row.text, prompt: Text(row.type == "Date" ? "2026-10-12T10:02:00Z" : ""))
+          .kitField(status: error == nil ? .none : .error, mono: row.type != "String")
+      }
+    }
+    .kitFieldError(error)
+    .padding(.vertical, 4)
   }
 }

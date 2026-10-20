@@ -79,3 +79,86 @@ let package = Package(
     .testTarget(name: "DatabaseKitTests", dependencies: ["DatabaseKit"], swiftSettings: concurrency),
   ]
 )
+
+#if os(Windows) || os(Linux)
+/// Another v57 repository: GitHub's main branch, or the checkout next to this one with `V57_LOCAL=1`.
+func v57(_ name: String) -> Package.Dependency {
+  Context.environment["V57_LOCAL"] == nil
+    ? .package(url: "https://github.com/v57/\(name).git", branch: "main") : .package(path: "../\(name)")
+}
+// Off Apple platforms CryptoKit, Network, SQLite3 and os are v57/SwiftUI's stand-ins, RSA is swift-crypto's
+// _CryptoExtras (Security.framework's on Apple platforms), and libssh2 builds from source (Sources/CLibssh2) with
+// the platform's crypto (WinCNG on Windows) in place of the prebuilt xcframework.
+package.dependencies += [
+  v57("SwiftUI"), .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0"),
+]
+package.targets.removeAll { $0.name == "Libssh2" }
+package.targets.append(
+  .target(
+    name: "CLibssh2", path: "Sources/CLibssh2",
+    exclude: [
+      "COPYING", "README.md",
+      // crypto.c includes the backend's file, agent.c the Windows agents'.
+      "src/openssl.c", "src/libgcrypt.c", "src/mbedtls.c", "src/os400qc3.c", "src/wincng.c", "src/agent_win.c",
+    ],
+    sources: ["src"],
+    // ECDSA (ecdh-sha2-nistp* key exchange, ECDSA host keys) needs Windows 10's BCrypt: OpenSSH 10 servers offer
+    // no finite-field Diffie-Hellman, so without it they can't be reached.
+    cSettings: [
+      .define("LIBSSH2_WINCNG"), .define("LIBSSH2_ECDSA_WINCNG"), .define("LIBSSH2_LIBRARY"), .unsafeFlags(["-w"]),
+    ]))
+package.products.removeAll { $0.name == "Libssh2" }
+package.products.append(.library(name: "Libssh2", targets: ["CLibssh2"]))
+let swiftUI: [String: [Target.Dependency]] = [
+  "WireKit": [.product(name: "CryptoKit", package: "SwiftUI"), .product(name: "Network", package: "SwiftUI")],
+  "SSHTunnel": [
+    "CLibssh2", .product(name: "CryptoKit", package: "SwiftUI"), .product(name: "_CryptoExtras", package: "swift-crypto"),
+  ],
+  "MySQLWire": [.product(name: "_CryptoExtras", package: "swift-crypto")],
+  "SQLiteKit": [.product(name: "SQLite3", package: "SwiftUI")],
+  "DuckDBKit": [.product(name: "CryptoKit", package: "SwiftUI")],
+]
+for target in package.targets {
+  if target.name == "SSHTunnel" { target.dependencies.removeAll { "\($0)".contains("Libssh2") } }
+  target.dependencies += swiftUI[target.name] ?? []
+  if target.type == .regular, target.name != "CLibssh2", target.name != "Cduckdb" {
+    target.dependencies += [
+      .product(name: "SwiftUIPortability", package: "SwiftUI"), .product(name: "os", package: "SwiftUI"),
+    ]
+  }
+  // URLSession lives in FoundationNetworking, Apple's Foundation extras (`URL.applicationSupportDirectory`, …)
+  // in SwiftUIPortability: imported everywhere, as Foundation is on Apple platforms.
+  if target.type == .regular || target.type == .test, target.name != "CLibssh2", target.name != "Cduckdb" {
+    target.swiftSettings = (target.swiftSettings ?? []) + [
+      .unsafeFlags(
+        ["FoundationNetworking", "SwiftUIPortability"].flatMap { ["-Xfrontend", "-import-module", "-Xfrontend", $0] })
+    ]
+  }
+}
+#if os(Windows)
+// The app: a DLL the SwiftUI WinUI host loads (SwiftUI's Windows/scripts/build-app.ps1 -PackagePath <this package>
+// -Product DatabaseWinUI), built from the Xcode project's sources with its settings.
+package.dependencies += [v57("Component"), v57("UpdateKit"), v57("Code"), v57("Dev"), v57("Vault")]
+package.targets.append(
+  .target(
+    name: "DatabaseApp",
+    dependencies: [
+      "DatabaseKit", "SSHTunnel", .product(name: "SwiftUI", package: "SwiftUI"),
+      .product(name: "CryptoKit", package: "SwiftUI"),
+      .product(name: "ComponentKit", package: "Component"), .product(name: "UpdateKit", package: "UpdateKit"),
+      .product(name: "VaultKit", package: "Vault"), .product(name: "CodeHighlighting", package: "Code"),
+      .product(name: "DevScreenshots", package: "Dev"),
+    ],
+    path: "Database",
+    exclude: ["Assets.xcassets", "Database.entitlements", "Database-iOS.entitlements", "Info.plist", "PrivacyInfo.xcprivacy"],
+    swiftSettings: [
+      .swiftLanguageMode(.v5), .defaultIsolation(MainActor.self), .enableUpcomingFeature("ApproachableConcurrency"),
+      .enableUpcomingFeature("MemberImportVisibility"),
+      // On Apple platforms `import Foundation` brings URLSession and the file APIs SwiftUIPortability adds along:
+      // every file gets them here too.
+      .unsafeFlags(
+        ["Combine", "FoundationNetworking", "SwiftUIPortability"].flatMap { ["-Xfrontend", "-import-module", "-Xfrontend", $0] }),
+    ]))
+package.products.append(.library(name: "DatabaseWinUI", type: .dynamic, targets: ["DatabaseApp"]))
+#endif
+#endif

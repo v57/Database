@@ -1,3 +1,4 @@
+#if !os(Windows)
 import Darwin
 import Foundation
 import Network
@@ -196,3 +197,94 @@ private final class SharedSocket: @unchecked Sendable {
     if last { Darwin.close(fd) }
   }
 }
+#else
+import Foundation
+import Network
+
+extension WireConnection {
+  /// TLS over a stream it didn't open, like an SSH channel: on Windows SChannel's `TLSSession` (the Network
+  /// stand-in's) runs over the stream itself.
+  public static func connect(
+    over stream: any WireStream, serverName: String, tls: TLSSettings, timeout: TimeInterval = 15
+  ) async throws -> WireConnection {
+    WireConnection(stream: try await TLSWireStream.start(over: stream, serverName: serverName, tls: tls))
+  }
+}
+
+/// A stream that encrypts what it sends and decrypts what it receives over another stream. SSPI's calls block,
+/// so the handshake and each read run on a thread of their own and wait for the inner stream there.
+private final class TLSWireStream: WireStream, @unchecked Sendable {
+  private let inner: any WireStream
+  private let session: TLSSession
+
+  private init(inner: any WireStream, session: TLSSession) {
+    self.inner = inner
+    self.session = session
+  }
+
+  static func start(over inner: any WireStream, serverName: String, tls: TLSSettings) async throws -> TLSWireStream {
+    try await withCheckedThrowingContinuation { continuation in
+      Thread.detachNewThread {
+        do {
+          let session = try TLSSession.connect(
+            serverName: serverName, alpn: tls.alpn, allowUntrusted: tls.allowUntrusted,
+            write: { data in try Self.blocking { try await inner.send(Array(data)) } },
+            read: { try Self.receive(from: inner) })
+          continuation.resume(returning: TLSWireStream(inner: inner, session: session))
+        } catch {
+          inner.close()
+          continuation.resume(throwing: error)
+        }
+      }
+    }
+  }
+
+  func send(_ bytes: [UInt8]) async throws {
+    try await inner.send(Array(try session.encrypt(Data(bytes))))
+  }
+
+  func receive() async throws -> [UInt8] {
+    let (session, inner) = (session, inner)
+    return try await withCheckedThrowingContinuation { continuation in
+      Thread.detachNewThread {
+        do {
+          let data = try session.decrypt(read: { try Self.receive(from: inner) })
+          if data.isEmpty { throw WireError.closed }
+          continuation.resume(returning: Array(data))
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+    }
+  }
+
+  var isOpen: Bool { inner.isOpen }
+
+  func close() { inner.close() }
+
+  /// The inner stream's next bytes, empty at its end.
+  private static func receive(from inner: any WireStream) throws -> Data {
+    do {
+      return Data(try blocking { try await inner.receive() })
+    } catch WireError.closed {
+      return Data()
+    }
+  }
+
+  /// Runs `operation` and blocks this thread until it's done.
+  private static func blocking<T: Sendable>(_ operation: @escaping @Sendable () async throws -> T) throws -> T {
+    let box = ResultBox<T>()
+    let done = DispatchSemaphore(value: 0)
+    Task {
+      do { box.result = .success(try await operation()) } catch { box.result = .failure(error) }
+      done.signal()
+    }
+    done.wait()
+    return try box.result!.get()
+  }
+}
+
+private final class ResultBox<T>: @unchecked Sendable {
+  var result: Result<T, Error>?
+}
+#endif
