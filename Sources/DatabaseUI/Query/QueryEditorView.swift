@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 struct QueryEditorView: View {
   @Bindable var workspace: QueryWorkspace
   @Bindable var window: WindowModel
-  @Environment(AppModel.self) private var app
+  @Environment(DatabaseModel.self) private var app
   @State private var savingTitle: String?
   @State private var exporting: ExportDocument?
 

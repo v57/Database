@@ -5,7 +5,7 @@ import SwiftUI
 /// Where DuckDB stands (not installed, downloading, installed) with the button that changes it. The app ships without
 /// DuckDB; it's downloaded from GitHub only when the person asks here.
 struct DuckDBInstallRow: View {
-  @Environment(AppModel.self) private var app
+  @Environment(DatabaseModel.self) private var app
   /// Whether "Remove" is offered (Settings) or only Download (the connection sheet, a failed connection).
   var showsRemove = false
 

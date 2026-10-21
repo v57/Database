@@ -9,7 +9,7 @@ import VaultKit
 struct ConnectionSheet: View {
   let original: ConnectionProfile?
   let onSave: (ConnectionProfile) -> Void
-  @Environment(AppModel.self) private var app
+  @Environment(DatabaseModel.self) private var app
   @Environment(\.dismiss) private var dismiss
 
   @State private var profile: ConnectionProfile
@@ -23,6 +23,8 @@ struct ConnectionSheet: View {
   @State private var pickingFile = false
   @State private var editingHost: HostDraft?
   @State private var deletingHost: VaultHost?
+  /// The SSH configuration a new connection starts out going through.
+  private let startHost: VaultHost?
 
   enum TestState: Equatable {
     case idle, testing
@@ -37,8 +39,9 @@ struct ConnectionSheet: View {
     var id: String { host.id }
   }
 
-  init(profile: ConnectionProfile?, onSave: @escaping (ConnectionProfile) -> Void) {
+  init(profile: ConnectionProfile?, through host: VaultHost? = nil, onSave: @escaping (ConnectionProfile) -> Void) {
     original = profile
+    startHost = profile == nil ? host : nil
     self.onSave = onSave
     _profile = State(initialValue: profile ?? ConnectionProfile(engine: .postgres))
     _editsServer = State(initialValue: profile == nil)
@@ -97,6 +100,7 @@ struct ConnectionSheet: View {
     }
     .onAppear {
       loadSecrets()
+      if let startHost { use(startHost) }
       #if DEBUG
         if let link = DebugDriver.pendingLink {
           self.link = link

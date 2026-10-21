@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		2669A0EF3031C45000C52779 /* DatabaseKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0EE3031C45000C52779 /* DatabaseKit */; };
+		2669A0F13031C45000C52779 /* DatabaseUI in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0F03031C45000C52779 /* DatabaseUI */; };
 		5C56F8A6336B183BEBF30E38 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = 699545B0CBF14D31A04E078E /* VaultKit */; };
 		C0DE4161000000000000000003 /* CodeHighlighting in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE4161000000000000000002 /* CodeHighlighting */; };
 		DE5C0DE0000000000000000003 /* DevScreenshots in Frameworks */ = {isa = PBXBuildFile; productRef = DE5C0DE0000000000000000002 /* DevScreenshots */; };
@@ -46,6 +47,7 @@
 			files = (
 				C0DE4161000000000000000003 /* CodeHighlighting in Frameworks */,
 				2669A0EF3031C45000C52779 /* DatabaseKit in Frameworks */,
+				2669A0F13031C45000C52779 /* DatabaseUI in Frameworks */,
 				DE5C0DE0000000000000000003 /* DevScreenshots in Frameworks */,
 				D5C0DE000000000000000003 /* UpdateKit in Frameworks */,
 				C0C0DE000000000000000003 /* ComponentKit in Frameworks */,
@@ -90,6 +92,7 @@
 			name = Database;
 			packageProductDependencies = (
 				2669A0EE3031C45000C52779 /* DatabaseKit */,
+				2669A0F03031C45000C52779 /* DatabaseUI */,
 				D5C0DE000000000000000002 /* UpdateKit */,
 				C0C0DE000000000000000002 /* ComponentKit */,
 				C0DE4161000000000000000002 /* CodeHighlighting */,
@@ -474,6 +477,10 @@
 		2669A0EE3031C45000C52779 /* DatabaseKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = DatabaseKit;
+		};
+		2669A0F03031C45000C52779 /* DatabaseUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DatabaseUI;
 		};
 		699545B0CBF14D31A04E078E /* VaultKit */ = {
 			isa = XCSwiftPackageProductDependency;

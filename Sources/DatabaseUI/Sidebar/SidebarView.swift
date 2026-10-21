@@ -4,12 +4,17 @@ import SwiftUI
 
 /// The kit's sidebar: the open connection as its own card (its databases, tables and queries), then every saved
 /// connection in the Connections card.
-struct SidebarView: View {
+public struct SidebarView: View {
   @Bindable var window: WindowModel
   @Binding var columnVisibility: NavigationSplitViewVisibility
-  @Environment(AppModel.self) private var app
+  @Environment(DatabaseModel.self) private var app
   @Environment(\.kitIdiom) private var idiom
   @State private var deleting: ConnectionProfile?
+
+  public init(window: WindowModel, columnVisibility: Binding<NavigationSplitViewVisibility>) {
+    self.window = window
+    _columnVisibility = columnVisibility
+  }
 
   private var query: String { window.searchText.trimmingCharacters(in: .whitespaces) }
 
@@ -31,7 +36,7 @@ struct SidebarView: View {
     return app.connection(for: id)
   }
 
-  var body: some View {
+  public var body: some View {
     let current = current
     let others = profiles.filter { $0.id != current?.id }
     // The Mac's toggle hides the sidebar through the window's split view; iPad and iPhone need the binding.
@@ -120,13 +125,20 @@ private struct CurrentConnectionSection: View {
   }
 }
 
-/// What a connection holds once open: its tree and its queries, or how far connecting got.
-private struct ConnectionContents: View {
+/// What a connection holds once open: its tree and its queries, or how far connecting got. Shell shows it under its
+/// own sidebar row for the connection; its rows tag the selection through `databaseSidebarTag`.
+public struct ConnectionContents: View {
   let connection: LiveConnection
   @Bindable var window: WindowModel
   let level: Int
 
-  var body: some View {
+  public init(connection: LiveConnection, window: WindowModel, level: Int) {
+    self.connection = connection
+    self.window = window
+    self.level = level
+  }
+
+  public var body: some View {
     switch connection.status {
     case .connected:
       TreeChildren(connection: connection, parent: nil, window: window, level: level)
@@ -144,6 +156,7 @@ struct ConnectionRow: View {
   let connection: LiveConnection
   @Bindable var window: WindowModel
   var onDelete: () -> Void
+  @Environment(\.databaseSidebarTag) private var tag
 
   private var isExpanded: Binding<Bool> {
     Binding(
@@ -162,7 +175,7 @@ struct ConnectionRow: View {
     let profile = connection.profile
     VStack(alignment: .leading, spacing: 2) {
       SidebarRow(
-        value: SidebarItem.connection(connection.id), profile.displayName, subtitle: profile.subtitle,
+        value: tag(.connection(connection.id)), profile.displayName, subtitle: profile.subtitle,
         isExpanded: isExpanded
       ) {
         connection.liveTile(size: 22)
@@ -182,14 +195,26 @@ struct ConnectionRow: View {
   }
 }
 
-/// A connection's actions, for its context menu and the open connection's "…" menu.
-private struct ConnectionMenu: View {
+/// A connection's actions, for its context menu and the open connection's "…" menu. `extra` adds the app's own
+/// (Shell's Rename).
+public struct ConnectionMenu<Extra: View>: View {
   let connection: LiveConnection
   @Bindable var window: WindowModel
   var onDelete: () -> Void
-  @Environment(AppModel.self) private var app
+  var extra: Extra
+  @Environment(DatabaseModel.self) private var app
 
-  var body: some View {
+  public init(
+    connection: LiveConnection, window: WindowModel, onDelete: @escaping () -> Void,
+    @ViewBuilder extra: () -> Extra = { EmptyView() }
+  ) {
+    self.connection = connection
+    self.window = window
+    self.onDelete = onDelete
+    self.extra = extra()
+  }
+
+  public var body: some View {
     if connection.isConnected {
       Button("New Query", systemImage: "terminal") {
         window.selection = .connection(connection.id)
@@ -201,6 +226,7 @@ private struct ConnectionMenu: View {
       Button("Connect", systemImage: "bolt") { window.connect(connection.id) }
     }
     Divider()
+    extra
     Button("Edit Connection…", systemImage: "pencil") { window.editingProfileID = connection.id }
     Button("Duplicate", systemImage: "plus.square.on.square") { app.duplicate(connection.id) }
     Button("Copy Link", systemImage: "link") { KitPasteboard.copy(ConnectionLink.url(for: connection.profile)) }
@@ -211,7 +237,7 @@ private struct ConnectionMenu: View {
 
 extension LiveConnection {
   /// The engine's two-letter tile, carrying the connection's state (the arc while it connects, red when it failed).
-  func liveTile(size: CGFloat) -> LiveIcon<Text> {
+  public func liveTile(size: CGFloat) -> LiveIcon<Text> {
     let status: WorkStatus =
       switch self.status {
       case .connecting: .working
@@ -269,6 +295,7 @@ struct TreeNodeRow: View {
   let node: TreeNode
   @Bindable var window: WindowModel
   var level: Int
+  @Environment(\.databaseSidebarTag) private var tag
 
   private var isExpanded: Binding<Bool> {
     Binding(
@@ -291,7 +318,7 @@ struct TreeNodeRow: View {
         TreeChildren(connection: connection, parent: node, window: window, level: level + 1)
       }
     } else {
-      SidebarRow(value: SidebarItem.node(connection.id, node), node.title, systemImage: node.symbol) {
+      SidebarRow(value: tag(.node(connection.id, node)), node.title, systemImage: node.symbol) {
         detail
       }
       .disclosureSlot()
@@ -309,7 +336,8 @@ struct QueryRows: View {
   let connection: LiveConnection
   @Bindable var window: WindowModel
   var level: Int
-  @Environment(AppModel.self) private var app
+  @Environment(DatabaseModel.self) private var app
+  @Environment(\.databaseSidebarTag) private var tag
   @State private var isExpanded = true
 
   var body: some View {
@@ -323,7 +351,7 @@ struct QueryRows: View {
       .kitRowIndent(level)
       if isExpanded {
         ForEach(saved) { query in
-          SidebarRow(value: SidebarItem.savedQuery(connection.id, query.id), query.title, systemImage: "terminal")
+          SidebarRow(value: tag(.savedQuery(connection.id, query.id)), query.title, systemImage: "terminal")
             .disclosureSlot()
             .kitRowIndent(level + 1)
           .kitContextMenu {
@@ -331,7 +359,7 @@ struct QueryRows: View {
           }
         }
         ForEach(tabs) { tab in
-          SidebarRow(value: SidebarItem.queryTab(connection.id, tab.id), tab.title, systemImage: "doc.text")
+          SidebarRow(value: tag(.queryTab(connection.id, tab.id)), tab.title, systemImage: "doc.text")
             .disclosureSlot()
             .kitRowIndent(level + 1)
         }

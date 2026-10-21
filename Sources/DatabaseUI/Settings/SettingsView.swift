@@ -4,10 +4,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Settings: how much the browser loads, the DuckDB download, and SSH keys.
-struct SettingsView: View {
+public struct SettingsView: View {
   @AppStorage("settings.pane") private var pane = "General"
 
-  var body: some View {
+  public init() {}
+
+  public var body: some View {
     KitSettings(selection: $pane) {
       SettingsPane("General", systemImage: "gearshape") { GeneralSettings() }
       SettingsPane("SSH Keys", systemImage: "key", hue: .brown) { SSHKeysView() }
@@ -34,7 +36,7 @@ struct GeneralSettings: View {
 
 /// The SSH keys Database keeps in the Keychain.
 struct SSHKeysView: View {
-  @Environment(AppModel.self) private var app
+  @Environment(DatabaseModel.self) private var app
   @State private var importing = false
   @State private var error: String?
   @State private var deleting: StoredSSHKey?

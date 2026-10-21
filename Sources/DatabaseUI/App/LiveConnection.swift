@@ -4,41 +4,44 @@ import Observation
 
 /// One open (or opening) connection and its sidebar tree.
 @Observable @MainActor
-final class LiveConnection: Identifiable {
-  enum Status: Equatable {
+public final class LiveConnection: Identifiable {
+  public enum Status: Equatable {
     case idle
     case connecting
     case connected
     case failed(String)
   }
 
-  var profile: ConnectionProfile
-  private(set) var status: Status = .idle
+  public internal(set) var profile: ConnectionProfile
+  public private(set) var status: Status = .idle
   private(set) var session: DatabaseSession?
+  /// Closes what the app opened along with the session (its own SSH connection).
+  @ObservationIgnored private var closeTunnel: (@MainActor () -> Void)?
   private(set) var report: ConnectionReport?
   /// Children by parent node id ("" for the top level).
   private(set) var children: [String: [TreeNode]] = [:]
   private(set) var loading: Set<String> = []
   private(set) var treeErrors: [String: String] = [:]
-  var expanded: Set<String> = []
+  /// The open rows of the tree, by node id (`rootID` for the connection itself).
+  public var expanded: Set<String> = []
   /// Open browsers, kept so switching back keeps filters and scroll.
   private var browsers: [String: BrowserModel] = [:]
-  @ObservationIgnored private weak var app: AppModel?
+  @ObservationIgnored private weak var app: DatabaseModel?
   /// Open query tabs.
   @ObservationIgnored private(set) lazy var queries = QueryWorkspace(connection: self)
   @ObservationIgnored private var connectTask: Task<Void, Never>?
 
-  var id: UUID { profile.id }
+  public var id: UUID { profile.id }
 
-  init(profile: ConnectionProfile, app: AppModel) {
+  init(profile: ConnectionProfile, app: DatabaseModel) {
     self.profile = profile
     self.app = app
   }
 
-  var isConnected: Bool { status == .connected }
+  public var isConnected: Bool { status == .connected }
 
   /// Connects once; later calls wait for the same attempt.
-  func connect() async {
+  public func connect() async {
     if status == .connected { return }
     if let connectTask {
       await connectTask.value
@@ -57,15 +60,16 @@ final class LiveConnection: Identifiable {
     status = .connecting
     if let latest = app.profile(profile.id) { profile = latest }
     do {
-      let (session, report) = try await Connector.connect(profile, credentials: app.credentials(for: profile))
-      self.session = session
+      let opened = try await app.open(profile, credentials: app.credentials(for: profile)) { [weak self] reason in
+        self?.tunnelClosed(reason)
+      }
+      let report = opened.report
+      session = opened.session
+      closeTunnel = opened.onClose
       self.report = report
       status = .connected
       app.rememberHostKey(report.sshHostKeyFingerprint, for: profile.id)
       app.markUsed(profile.id)
-      session.onTunnelClosed { [weak self] reason in
-        Task { @MainActor in self?.tunnelClosed(reason) }
-      }
       await loadChildren(of: nil)
       expanded.insert(Self.rootID)
     } catch {
@@ -77,23 +81,27 @@ final class LiveConnection: Identifiable {
     guard status == .connected else { return }
     status = .failed(reason ?? "The SSH tunnel closed.")
     session = nil
+    closeTunnel?()
+    closeTunnel = nil
   }
 
-  func close() async {
+  public func close() async {
     connectTask?.cancel()
     await session?.close()
     session = nil
+    closeTunnel?()
+    closeTunnel = nil
     status = .idle
     children = [:]
     browsers = [:]
   }
 
-  func reconnect() async {
+  public func reconnect() async {
     await close()
     await connect()
   }
 
-  static let rootID = "root"
+  public static let rootID = "root"
 
   func key(_ node: TreeNode?) -> String { node?.id ?? Self.rootID }
 
@@ -113,7 +121,7 @@ final class LiveConnection: Identifiable {
     }
   }
 
-  func refreshTree() async {
+  public func refreshTree() async {
     let open = expanded
     children = [:]
     await loadChildren(of: nil, force: true)
@@ -157,7 +165,7 @@ final class LiveConnection: Identifiable {
 
 extension DatabaseSession {
   /// Calls back when this session's SSH tunnel drops.
-  func onTunnelClosed(_ handler: @escaping @Sendable (String?) -> Void) {
+  public func onTunnelClosed(_ handler: @escaping @Sendable (String?) -> Void) {
     (self as? TunnelOwning)?.tunnel?.onClosed(handler)
   }
 }

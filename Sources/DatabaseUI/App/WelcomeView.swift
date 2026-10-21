@@ -5,7 +5,7 @@ import SwiftUI
 /// First screen: the kit's welcome, with New Connection and the recent connections.
 struct WelcomeView: View {
   @Bindable var window: WindowModel
-  @Environment(AppModel.self) private var app
+  @Environment(DatabaseModel.self) private var app
 
   private var recent: [ConnectionProfile] {
     app.profiles.filter { $0.lastUsed != nil }.sorted { ($0.lastUsed ?? .distantPast) > ($1.lastUsed ?? .distantPast) }

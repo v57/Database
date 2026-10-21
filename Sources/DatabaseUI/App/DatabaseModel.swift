@@ -16,20 +16,26 @@ struct SavedQuery: Codable, Hashable, Identifiable {
   var schema: String?
 }
 
-/// Everything the app keeps: saved connections, SSH keys, saved queries, and the live connections.
+/// Everything the app keeps: saved connections, SSH keys, saved queries, and the live connections. Shell keeps one
+/// too, for its sidebar's database connections, and carries their SSH tunnels itself (`opener`).
 ///
 /// Saved connections are the ones the v57 apps share (`SharedConnections`, through the vault): Database
 /// and Shell list them, an SSH server is one of Shell's saved hosts, accepted host keys are trusted by
 /// every app, and changes from the other apps and devices appear as they happen.
 @Observable @MainActor
-final class AppModel {
-  private(set) var profiles: [ConnectionProfile] = []
+public final class DatabaseModel {
+  public private(set) var profiles: [ConnectionProfile] = []
   private(set) var savedQueries: [SavedQuery] = []
-  private(set) var live: [UUID: LiveConnection] = [:]
+  public private(set) var live: [UUID: LiveConnection] = [:]
   let secrets: SecretStore
   let keys: SSHKeyStore
   /// The shared store: connections, SSH hosts, known host keys.
-  let vault: Vault
+  public let vault: Vault
+  /// How a connection opens, when the app opens them itself (Shell logs in to SSH on its own connections); nil uses
+  /// DatabaseKit's `Connector`.
+  @ObservationIgnored public var opener: DatabaseOpener?
+  /// Called after a connection closed (Disconnect, a changed or deleted connection), for apps that show it open.
+  @ObservationIgnored public var onDisconnect: ((UUID) -> Void)?
   /// The vault id of each profile (a UUID string, except for records another app made).
   @ObservationIgnored private var vaultIDs: [UUID: String] = [:]
   @ObservationIgnored private var observer: VaultChangeObserver?
@@ -39,7 +45,7 @@ final class AppModel {
   /// Bumped when SSH keys change, so views listing them refresh.
   var keysVersion = 0
 
-  init(folder: URL?, secrets: SecretStore, vault: Vault) {
+  public init(folder: URL?, secrets: SecretStore, vault: Vault) {
     self.folder = folder
     self.secrets = secrets
     self.vault = vault
@@ -55,20 +61,26 @@ final class AppModel {
     }
   }
 
-  static func live() -> AppModel {
+  /// The model of an app that keeps its connections in the shared vault, its passwords in the shared keychain group
+  /// and its saved queries (and DuckDB) in `folder`.
+  public convenience init(folder: URL?, vault: Vault) {
+    self.init(folder: folder, secrets: VaultSecretStore(), vault: vault)
+  }
+
+  public static func live() -> DatabaseModel {
     #if DEBUG
       // Development runs can point at a scratch folder and keep secrets in a file there,
       // so testing never touches the real connections or the Keychain.
       if let path = LaunchOptions.value("--data-dir") {
         let folder = URL(fileURLWithPath: path, isDirectory: true)
         let secrets = FileSecretStore(url: folder.appendingPathComponent("secrets-dev.json"))
-        return AppModel(folder: folder, secrets: secrets, vault: scratchVault(in: folder, secrets: secrets))
+        return DatabaseModel(folder: folder, secrets: secrets, vault: scratchVault(in: folder, secrets: secrets))
       }
     #endif
     let folder = URL.applicationSupportDirectory.appendingPathComponent("dev.v57.db", isDirectory: true)
     let vault = Vault.shared
     vault.startSync()
-    return AppModel(folder: folder, secrets: VaultSecretStore(), vault: vault)
+    return DatabaseModel(folder: folder, secrets: VaultSecretStore(), vault: vault)
   }
 
   #if DEBUG
@@ -124,10 +136,10 @@ final class AppModel {
     vaultIDs = ids
   }
 
-  func vaultID(for id: UUID) -> String { vaultIDs[id] ?? id.uuidString }
+  public func vaultID(for id: UUID) -> String { vaultIDs[id] ?? id.uuidString }
 
   /// The shared host a profile tunnels through.
-  func hostID(for id: UUID) -> String? {
+  public func hostID(for id: UUID) -> String? {
     vault.databases.first { $0.id == vaultID(for: id) }?.sshHostID
   }
 
@@ -160,11 +172,11 @@ final class AppModel {
 
   // MARK: Connections
 
-  func profile(_ id: UUID) -> ConnectionProfile? { profiles.first { $0.id == id } }
+  public func profile(_ id: UUID) -> ConnectionProfile? { profiles.first { $0.id == id } }
 
   /// Adds or replaces a profile in the shared store; passwords go to the shared Keychain group (or are
   /// forgotten). An SSH server becomes (or updates) a shared host.
-  func save(_ profile: ConnectionProfile, password: String?, sshPassword: String?) {
+  public func save(_ profile: ConnectionProfile, password: String?, sshPassword: String?) {
     var hostID: String?
     if profile.ssh.enabled, !profile.ssh.host.isEmpty, !profile.engine.isFileBased {
       let host = SharedConnections.host(for: profile.ssh, among: vault.hosts)
@@ -189,13 +201,13 @@ final class AppModel {
       try? secrets.setString("db.\(id)", nil)
     }
     reloadProfiles()
-    // A changed profile reconnects next time it's used.
-    if let connection = live[profile.id], connection.profile != profile {
-      Task { await disconnect(profile.id) }
+    // A changed profile reconnects with its new settings, keeping its query tabs.
+    if let connection = live[profile.id], let saved = self.profile(profile.id), connection.profile != saved {
+      if connection.status == .idle { connection.profile = saved } else { Task { await connection.reconnect() } }
     }
   }
 
-  func delete(_ id: UUID) {
+  public func delete(_ id: UUID) {
     Task { await disconnect(id) }
     let vaultID = vaultID(for: id)
     vault.perform { try $0.delete(id: vaultID) }
@@ -205,7 +217,17 @@ final class AppModel {
     reloadProfiles()
   }
 
-  func duplicate(_ id: UUID) {
+  /// Renames a connection in the shared store (an empty name falls back to the engine and server). An open
+  /// connection keeps its session and takes the new name.
+  public func rename(_ id: UUID, to name: String) {
+    guard var record = vault.databases.first(where: { $0.id == vaultID(for: id) }) else { return }
+    record.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    vault.save(record)
+    reloadProfiles()
+    if let connection = live[id], let renamed = profile(id) { connection.profile.name = renamed.name }
+  }
+
+  public func duplicate(_ id: UUID) {
     guard var copy = profile(id) else { return }
     let password = databasePassword(for: id)
     let sshPassword = sshPassword(for: id)
@@ -215,7 +237,7 @@ final class AppModel {
     save(copy, password: password, sshPassword: sshPassword)
   }
 
-  func move(from source: IndexSet, to destination: Int) {
+  public func move(from source: IndexSet, to destination: Int) {
     var ordered = profiles
     ordered.move(fromOffsets: source, toOffset: destination)
     vault.perform { store in
@@ -238,12 +260,12 @@ final class AppModel {
     reloadProfiles()
   }
 
-  func databasePassword(for id: UUID) -> String? { secrets.string("db.\(vaultID(for: id))") }
+  public func databasePassword(for id: UUID) -> String? { secrets.string("db.\(vaultID(for: id))") }
 
   /// The SSH password saved for the profile's host.
-  func sshPassword(for id: UUID) -> String? { hostID(for: id).flatMap { secrets.hostPassword(for: $0) } }
+  public func sshPassword(for id: UUID) -> String? { hostID(for: id).flatMap { secrets.hostPassword(for: $0) } }
 
-  func credentials(for profile: ConnectionProfile, password: String? = nil, sshPassword: String? = nil) -> Credentials {
+  public func credentials(for profile: ConnectionProfile, password: String? = nil, sshPassword: String? = nil) -> Credentials {
     // A key login with no imported key uses this device's Secure Enclave key, the one every v57 app shares.
     let key: SSHKey? =
       profile.ssh.auth == .key
@@ -256,21 +278,22 @@ final class AppModel {
 
   // MARK: Live connections
 
-  func connection(for id: UUID) -> LiveConnection {
+  public func connection(for id: UUID) -> LiveConnection {
     if let existing = live[id] { return existing }
     let connection = LiveConnection(profile: profile(id) ?? ConnectionProfile(engine: .postgres), app: self)
     live[id] = connection
     return connection
   }
 
-  func disconnect(_ id: UUID) async {
+  public func disconnect(_ id: UUID) async {
     guard let connection = live[id] else { return }
     live[id] = nil
     await connection.close()
+    onDisconnect?(id)
   }
 
   /// Closes every connection, so the next use starts from scratch: its tree, tables and query tabs.
-  func disconnectAll() async {
+  public func disconnectAll() async {
     for id in live.keys { await disconnect(id) }
   }
 
@@ -281,12 +304,22 @@ final class AppModel {
     reloadProfiles()
   }
 
+  /// Opens a session for a profile: through `opener` when the app has one, else DatabaseKit's `Connector`.
+  func open(_ profile: ConnectionProfile, credentials: Credentials, tunnelClosed: @escaping @MainActor (String?) -> Void)
+    async throws -> OpenedSession
+  {
+    if let opener { return try await opener(profile, credentials, tunnelClosed) }
+    let (session, report) = try await Connector.connect(profile, credentials: credentials)
+    session.onTunnelClosed { reason in Task { @MainActor in tunnelClosed(reason) } }
+    return OpenedSession(session: session, report: report)
+  }
+
   /// Tries a profile without saving it.
   func test(_ profile: ConnectionProfile, password: String?, sshPassword: String?) async throws -> ConnectionReport {
-    let (session, report) = try await Connector.connect(
-      profile, credentials: credentials(for: profile, password: password, sshPassword: sshPassword))
-    await session.close()
-    return report
+    let opened = try await open(
+      profile, credentials: credentials(for: profile, password: password, sshPassword: sshPassword), tunnelClosed: { _ in })
+    await opened.close()
+    return opened.report
   }
 
   // MARK: Saved queries
@@ -309,7 +342,7 @@ final class AppModel {
 
   /// Opens a database file dropped on the app or picked in the Finder.
   @discardableResult
-  func addFile(_ url: URL) -> ConnectionProfile? {
+  public func addFile(_ url: URL) -> ConnectionProfile? {
     let ext = url.pathExtension.lowercased()
     guard let engine = EngineKind.available.first(where: { $0.fileExtensions.contains(ext) }) else { return nil }
     if let existing = profiles.first(where: { $0.filePath == url.path }) { return existing }
@@ -319,17 +352,42 @@ final class AppModel {
   }
 }
 
-/// Command-line options for development runs.
-enum LaunchOptions {
-  /// The launch's arguments, or the screenshot scene's that opened in this launch since.
-  nonisolated(unsafe) static var arguments = ProcessInfo.processInfo.arguments
+/// Opens a connection's session for an app that opens them itself (`DatabaseModel.opener`): Shell logs in to the SSH
+/// server on its own connection and hands DatabaseKit a dialer for its channels. It calls `tunnelClosed` when that
+/// SSH connection drops.
+public typealias DatabaseOpener = @MainActor (
+  _ profile: ConnectionProfile, _ credentials: Credentials, _ tunnelClosed: @escaping @MainActor (String?) -> Void
+) async throws -> OpenedSession
 
-  static func value(_ name: String) -> String? {
+/// A live session and what else to close with it (the app's own SSH connection).
+public struct OpenedSession {
+  public var session: any DatabaseSession
+  public var report: ConnectionReport
+  public var onClose: (@MainActor () -> Void)?
+
+  public init(session: any DatabaseSession, report: ConnectionReport, onClose: (@MainActor () -> Void)? = nil) {
+    self.session = session
+    self.report = report
+    self.onClose = onClose
+  }
+
+  func close() async {
+    await session.close()
+    onClose?()
+  }
+}
+
+/// Command-line options for development runs.
+public enum LaunchOptions {
+  /// The launch's arguments, or the screenshot scene's that opened in this launch since.
+  nonisolated(unsafe) public static var arguments = ProcessInfo.processInfo.arguments
+
+  public static func value(_ name: String) -> String? {
     guard let index = arguments.firstIndex(of: name), index + 1 < arguments.count else { return nil }
     return arguments[index + 1]
   }
 
-  static func flag(_ name: String) -> Bool { arguments.contains(name) }
+  public static func flag(_ name: String) -> Bool { arguments.contains(name) }
 }
 
 #if DEBUG

@@ -11,7 +11,7 @@ struct SSHHostSheet: View {
   /// Remembered key of the server, if any app accepted one.
   let fingerprint: String?
   let onSave: (VaultHost, String) -> Void
-  @Environment(AppModel.self) private var app
+  @Environment(DatabaseModel.self) private var app
   @Environment(\.dismiss) private var dismiss
 
   @State private var host: VaultHost

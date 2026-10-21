@@ -1,5 +1,6 @@
 #if DEBUG && os(macOS)
   import AppKit
+  import DatabaseUI
   import SwiftUI
 
   /// `--present [--present-delay 3] [--activate]`: after the delay, brings the window (and any sheet on it) up

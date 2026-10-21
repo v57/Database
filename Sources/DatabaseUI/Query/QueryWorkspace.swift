@@ -160,7 +160,7 @@ final class QueryWorkspace {
     tab.output = .plan
   }
 
-  func save(_ tab: QueryTab, title: String, in app: AppModel) {
+  func save(_ tab: QueryTab, title: String, in app: DatabaseModel) {
     tab.title = title
     let saved = SavedQuery(
       id: tab.savedID ?? UUID(), profileID: connection.id, title: title, text: tab.text, database: tab.context.database,

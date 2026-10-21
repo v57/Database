@@ -23,10 +23,13 @@ let package = Package(
     .library(name: "SQLiteKit", targets: ["SQLiteKit"]),
     // libssh2 + mbedTLS (../SSH's), for Shell, which links this copy instead of building its own.
     .library(name: "Libssh2", targets: ["Libssh2Exports"]),
+    // The app's interface (connection tree, browsers, query tabs, pipelines, inspector, sheets), for this app and
+    // Shell's database connections.
+    .library(name: "DatabaseUI", targets: ["DatabaseUI"]),
   ],
   // SSHKit: logins, keys, SFTP, commands and libssh2 (Scripts/build-libssh2.sh still makes the prebuilt libssh2 and
   // Scripts/release-binaries.sh publishes it on this repository's releases, which ../SSH downloads).
-  dependencies: [v57("SSH")],
+  dependencies: [v57("SSH"), v57("Component"), v57("Vault"), v57("Code")],
   targets: [
     .target(name: "Libssh2Exports", dependencies: [.product(name: "Libssh2", package: "SSH")]),
 
@@ -59,6 +62,18 @@ let package = Package(
       ],
       swiftSettings: concurrency),
 
+    // The interface on DatabaseKit: ComponentKit's design, the vault's shared connections and Code's highlighting.
+    .target(
+      name: "DatabaseUI",
+      dependencies: [
+        "DatabaseKit", "SSHTunnel", .product(name: "ComponentKit", package: "Component"),
+        .product(name: "VaultKit", package: "Vault"), .product(name: "CodeHighlighting", package: "Code"),
+      ],
+      swiftSettings: [
+        .swiftLanguageMode(.v5), .defaultIsolation(MainActor.self), .enableUpcomingFeature("ApproachableConcurrency"),
+        .enableUpcomingFeature("MemberImportVisibility"),
+      ]),
+
     .testTarget(name: "WireKitTests", dependencies: ["WireKit"], swiftSettings: concurrency),
     .testTarget(name: "BSONTests", dependencies: ["BSON"], swiftSettings: concurrency),
     .testTarget(
@@ -87,6 +102,7 @@ let swiftUI: [String: [Target.Dependency]] = [
   "MySQLWire": [.product(name: "_CryptoExtras", package: "swift-crypto")],
   "SQLiteKit": [.product(name: "SQLite3", package: "SwiftUI")],
   "DuckDBKit": [.product(name: "CryptoKit", package: "SwiftUI")],
+  "DatabaseUI": [.product(name: "SwiftUI", package: "SwiftUI"), .product(name: "CryptoKit", package: "SwiftUI")],
 ]
 for target in package.targets {
   target.dependencies += swiftUI[target.name] ?? []
@@ -98,24 +114,23 @@ for target in package.targets {
   // URLSession lives in FoundationNetworking, Apple's Foundation extras (`URL.applicationSupportDirectory`, …)
   // in SwiftUIPortability: imported everywhere, as Foundation is on Apple platforms.
   if target.type == .regular || target.type == .test, target.name != "Libssh2Exports", target.name != "Cduckdb" {
+    // The interface also uses Combine's names, as SwiftUI brings them on Apple platforms.
+    let modules = (target.name == "DatabaseUI" ? ["Combine"] : []) + ["FoundationNetworking", "SwiftUIPortability"]
     target.swiftSettings = (target.swiftSettings ?? []) + [
-      .unsafeFlags(
-        ["FoundationNetworking", "SwiftUIPortability"].flatMap { ["-Xfrontend", "-import-module", "-Xfrontend", $0] })
+      .unsafeFlags(modules.flatMap { ["-Xfrontend", "-import-module", "-Xfrontend", $0] })
     ]
   }
 }
 #if os(Windows)
 // The app: a DLL the SwiftUI WinUI host loads (SwiftUI's Windows/scripts/build-app.ps1 -PackagePath <this package>
-// -Product DatabaseWinUI), built from the Xcode project's sources with its settings.
-package.dependencies += [v57("Component"), v57("UpdateKit"), v57("Code"), v57("Dev"), v57("Vault")]
+// -Product DatabaseWinUI), built from the Xcode project's sources (the app's scene on DatabaseUI) with its settings.
+package.dependencies += [v57("UpdateKit"), v57("Dev")]
 package.targets.append(
   .target(
     name: "DatabaseApp",
     dependencies: [
-      "DatabaseKit", "SSHTunnel", .product(name: "SwiftUI", package: "SwiftUI"),
-      .product(name: "CryptoKit", package: "SwiftUI"),
+      "DatabaseUI", "DatabaseKit", .product(name: "SwiftUI", package: "SwiftUI"),
       .product(name: "ComponentKit", package: "Component"), .product(name: "UpdateKit", package: "UpdateKit"),
-      .product(name: "VaultKit", package: "Vault"), .product(name: "CodeHighlighting", package: "Code"),
       .product(name: "DevScreenshots", package: "Dev"),
     ],
     path: "Database",

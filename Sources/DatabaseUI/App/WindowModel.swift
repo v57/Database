@@ -1,45 +1,61 @@
 import DatabaseKit
 import Foundation
 import Observation
+import VaultKit
 
 /// What a sidebar row points at.
-nonisolated enum SidebarItem: Hashable, Sendable {
+public nonisolated enum SidebarItem: Hashable, Sendable {
   case connection(UUID)
   case node(UUID, TreeNode)
   case savedQuery(UUID, UUID)
   case queryTab(UUID, UUID)
+
+  /// The connection the row belongs to.
+  public var connectionID: UUID {
+    switch self {
+    case .connection(let id), .node(let id, _), .savedQuery(let id, _), .queryTab(let id, _): id
+    }
+  }
 }
 
 /// One window's navigation: which connection and object are open, and the sheets.
 @Observable @MainActor
-final class WindowModel {
-  enum Route: Equatable {
+public final class WindowModel {
+  public enum Route: Equatable {
     case welcome
     case connection(UUID)
     case browse(UUID, ObjectRef)
     case query(UUID)
   }
 
-  let app: AppModel
-  var selection: SidebarItem? {
-    didSet { route(for: selection) }
+  public let app: DatabaseModel
+  public var selection: SidebarItem? {
+    didSet {
+      route(for: selection)
+      if selection != oldValue { onSelect?(selection) }
+    }
   }
-  private(set) var route: Route = .welcome
-  var showsInspector = true
-  var showsNewConnection = false
-  var editingProfileID: UUID?
+  /// Called when the selection changes, by a row or from inside (a new query tab, a foreign key's table), for apps
+  /// whose own sidebar shows the tree (Shell).
+  @ObservationIgnored public var onSelect: ((SidebarItem?) -> Void)?
+  public private(set) var route: Route = .welcome
+  public var showsInspector = true
+  public var showsNewConnection = false
+  /// The SSH host a new connection starts out going through (Shell's per-host New Database).
+  public var newConnectionHost: VaultHost?
+  public var editingProfileID: UUID?
   var searchText = ""
 
-  init(app: AppModel) { self.app = app }
+  public init(app: DatabaseModel) { self.app = app }
 
-  var currentConnectionID: UUID? {
+  public var currentConnectionID: UUID? {
     switch route {
     case .welcome: nil
     case .connection(let id), .browse(let id, _), .query(let id): id
     }
   }
 
-  var currentConnection: LiveConnection? { currentConnectionID.map { app.connection(for: $0) } }
+  public var currentConnection: LiveConnection? { currentConnectionID.map { app.connection(for: $0) } }
 
   var browser: BrowserModel? {
     if case .browse(let id, let ref) = route { return app.connection(for: id).browser(for: ref) }
@@ -81,7 +97,7 @@ final class WindowModel {
     selection = .node(connectionID, node)
   }
 
-  func newQuery() {
+  public func newQuery() {
     guard let id = currentConnectionID else { return }
     let connection = app.connection(for: id)
     let node: TreeNode? = if case .node(_, let n) = selection { n } else { nil }
@@ -89,7 +105,7 @@ final class WindowModel {
     selection = .queryTab(id, tab.id)
   }
 
-  func refresh() async {
+  public func refresh() async {
     switch route {
     case .browse:
       await browser?.reload()
@@ -100,7 +116,7 @@ final class WindowModel {
     }
   }
 
-  func run() async {
+  public func run() async {
     if let queries {
       await queries.runSelected()
     } else if let browser {
@@ -114,7 +130,13 @@ final class WindowModel {
     }
   }
 
-  func connect(_ id: UUID) {
+  /// Opens the New Connection sheet, going through `host` when given.
+  public func newConnection(through host: VaultHost? = nil) {
+    newConnectionHost = host
+    showsNewConnection = true
+  }
+
+  public func connect(_ id: UUID) {
     selection = .connection(id)
   }
 }

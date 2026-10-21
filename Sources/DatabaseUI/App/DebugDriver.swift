@@ -17,9 +17,9 @@
   ///   --select-row N                       select the Nth row (0-based)
   ///   --hide-sidebar                       start with the sidebar hidden
   @MainActor
-  enum DebugDriver {
+  public enum DebugDriver {
     /// Opens the screen the arguments describe and returns once it has finished loading.
-    static func run(_ window: WindowModel) async {
+    public static func run(_ window: WindowModel) async {
       await open(window)
       await Activity.settle()
     }
