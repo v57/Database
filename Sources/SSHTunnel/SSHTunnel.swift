@@ -2,62 +2,8 @@ import CLibssh2
 import Foundation
 import WireKit
 
-/// Where and how to log in over SSH.
-public struct SSHServer: Sendable, Hashable {
-  public var host: String
-  public var port: Int
-  public var user: String
-  public var password: String?
-  public var key: SSHKey?
-  /// The `SHA256:…` fingerprint seen before. `nil` trusts the first key the server shows.
-  public var knownFingerprint: String?
-
-  public init(
-    host: String, port: Int = 22, user: String, password: String? = nil, key: SSHKey? = nil,
-    knownFingerprint: String? = nil
-  ) {
-    self.host = host
-    self.port = port
-    self.user = user
-    self.password = password
-    self.key = key
-    self.knownFingerprint = knownFingerprint
-  }
-
-  public static func == (a: SSHServer, b: SSHServer) -> Bool {
-    a.host == b.host && a.port == b.port && a.user == b.user && a.password == b.password
-      && a.key?.privateBytes == b.key?.privateBytes
-      && (try? a.key?.publicKeyBlob()) == (try? b.key?.publicKeyBlob()) && a.knownFingerprint == b.knownFingerprint
-  }
-
-  public func hash(into hasher: inout Hasher) {
-    hasher.combine(host)
-    hasher.combine(port)
-    hasher.combine(user)
-  }
-}
-
-public enum SSHTunnelError: Error, LocalizedError, Sendable, Equatable {
-  case connectFailed(String)
-  case handshakeFailed(String)
-  case hostKeyChanged(expected: String, actual: String)
-  case authenticationFailed(methods: String)
-  case forwardFailed(String)
-  case closed
-
-  public var errorDescription: String? {
-    switch self {
-    case .connectFailed(let detail): "Couldn't reach the SSH server: \(detail)"
-    case .handshakeFailed(let detail): "The SSH handshake failed: \(detail)"
-    case .hostKeyChanged(let expected, let actual):
-      "The SSH server's identity changed (was \(expected), now \(actual)). If you expected this, forget the saved host key and connect again."
-    case .authenticationFailed(let methods):
-      "The SSH server didn't accept the key or password." + (methods.isEmpty ? "" : " It allows: \(methods).")
-    case .forwardFailed(let detail): "The SSH server refused the tunnel: \(detail)"
-    case .closed: "The SSH tunnel closed."
-    }
-  }
-}
+// Logins, keys, SFTP, commands, jump hosts and sockets: apps that import SSHTunnel get them as before.
+@_exported import SSHKit
 
 /// One SSH login whose `direct-tcpip` channels carry database connections (`dialer`): `ssh -L`, without the local
 /// port. Nothing listens on this device, so other apps and users can't reach the database through the tunnel.

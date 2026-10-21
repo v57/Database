@@ -5,7 +5,7 @@ import SSHTunnel
 import Testing
 import WireKit
 
-/// Key handling needs nothing. The tunnel tests need the `sshd` bastion from docker-compose.yml
+/// The tunnel tests need (key handling, SFTP and commands are tested in ../SSH) the `sshd` bastion from docker-compose.yml
 /// (127.0.0.1:2222) and the key in `.testing/ssh`; or another sshd that takes that key and reaches Redis and
 /// PostgreSQL on its own 127.0.0.1: `SSH_TEST_PORT=<port> SSH_TEST_USER=<user> SSH_TEST_SERVICES=local`.
 /// `forwardsThroughThisMac` also needs that key in this Mac's `~/.ssh/authorized_keys` and Remote Login on.
@@ -32,51 +32,6 @@ import WireKit
     let pub = (try? String(contentsOf: keyURL.appendingPathExtension("pub"), encoding: .utf8)) ?? "-"
     guard let blob = pub.split(separator: " ").dropFirst().first, blob.count > 40 else { return false }
     return authorized.contains(blob)
-  }
-
-  // MARK: Keys
-
-  @Test func importsTheOpenSSHTestKey() throws {
-    let key = try Self.testKey()
-    #expect(key.kind == .ed25519)
-    let pub = try String(contentsOf: Self.keyURL.appendingPathExtension("pub"), encoding: .utf8)
-    #expect(key.authorizedKeyLine == pub.trimmingCharacters(in: .whitespacesAndNewlines))
-  }
-
-  @Test func generatedKeysSurviveExport() throws {
-    let key = SSHKey.generateEd25519(comment: "round trip")
-    let again = try SSHKey(importing: key.openSSHPrivateKey)
-    #expect(again.authorizedKeyLine == key.authorizedKeyLine)
-    #expect(key.fingerprint.hasPrefix("SHA256:"))
-  }
-
-  @Test(arguments: ["ecdsa", "rsa"]) func importsKeysMadeBySSHKeygen(type: String) throws {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: dir) }
-    let path = dir.appendingPathComponent("key").path
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
-    process.arguments = ["-q", "-t", type, "-N", "", "-C", "made by keygen", "-f", path] + (type == "rsa" ? ["-b", "2048"] : [])
-    try process.run()
-    process.waitUntilExit()
-    let key = try SSHKey(importing: String(contentsOfFile: path, encoding: .utf8))
-    let pub = try String(contentsOfFile: path + ".pub", encoding: .utf8)
-    #expect(key.authorizedKeyLine == pub.trimmingCharacters(in: .whitespacesAndNewlines))
-    #expect(try !key.sign(Array("hello".utf8)).isEmpty)
-  }
-
-  @Test func refusesPassphraseProtectedKeys() throws {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: dir) }
-    let path = dir.appendingPathComponent("key").path
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
-    process.arguments = ["-q", "-t", "ed25519", "-N", "secret", "-f", path]
-    try process.run()
-    process.waitUntilExit()
-    #expect(throws: SSHKey.ImportError.self) { try SSHKey(importing: String(contentsOfFile: path, encoding: .utf8)) }
   }
 
   // MARK: Tunnels through the bastion
@@ -172,6 +127,24 @@ import WireKit
     }
   }
 
+  // MARK: Jump hosts
+
+  @Test(.enabled(if: sshServerIsUp, "needs an sshd on SSH_TEST_PORT"))
+  func tunnelsThroughAJumpHost() async throws {
+    // The server through itself: a login to it, a channel from it to its own sshd, a second login over that.
+    let portOnServer = Self.local ? Self.port : 22
+    let jump = try Self.bastion
+    let server = SSHServer(host: "127.0.0.1", port: portOnServer, user: jump.user, key: jump.key)
+    let tunnel = try await SSHTunnel.open(server: server, through: jump, timeout: 10)
+    defer { tunnel.close() }
+    #expect(tunnel.jumpHostKeyFingerprint?.hasPrefix("SHA256:") == true)
+    // A service the server always has: its own sshd, which greets first.
+    let channel = try await tunnel.open(host: "127.0.0.1", port: portOnServer)
+    let greeting = try await channel.receive()
+    #expect(String(decoding: greeting, as: UTF8.self).hasPrefix("SSH-2.0-"))
+    channel.close()
+  }
+
   // MARK: This Mac's own sshd
 
   @Test(.enabled(if: macKeyAuthorized, "add .testing/ssh/id_ed25519.pub to ~/.ssh/authorized_keys"))
@@ -184,3 +157,10 @@ import WireKit
     await redis.close()
   }
 }
+
+let sshServerIsUp: Bool = {
+  guard FileManager.default.fileExists(atPath: SSHTunnelTests.keyURL.path) else { return false }
+  guard let socket = try? Sockets.connect(host: "127.0.0.1", port: SSHTunnelTests.port, timeout: 1) else { return false }
+  Sockets.close(socket)
+  return true
+}()

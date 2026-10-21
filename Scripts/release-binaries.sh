@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Packs one of the prebuilt libraries in Binary/ for GitHub Releases and points the code at it.
-# The binaries aren't in git: a checkout without Binary/ downloads the libssh2 release asset, and the app downloads
+# The binaries aren't in git: ../SSH downloads the libssh2 release asset (or links Binary/ there), and the app downloads
 # DuckDB at runtime when someone asks for it.
 #
 #   Scripts/release-binaries.sh libssh2|duckdb
@@ -25,11 +25,13 @@ case ${1:-} in
     rm -f $ZIP
     (cd Binary && zip -qry -X ../$ZIP $NAME.xcframework)
     CHECKSUM=$(swift package compute-checksum $ZIP)
-    # The two lines after `let <name> = binary(` in Package.swift.
-    sed -i '' -E "/^  \"$NAME\", release:/s|release: \"[^\"]*\", checksum: \"[0-9a-f]*\"|release: \"$TAG\", checksum: \"$CHECKSUM\"|" Package.swift
-    grep -q $CHECKSUM Package.swift || { echo "Package.swift wasn't updated"; exit 1; }
+    # The binary target in ../SSH's Package.swift (SSHKit links it; Database gets it from there).
+    PKG=${SSH_REPO:-../SSH}/Package.swift
+    sed -i '' -E -e "s|releases/download/[^/]*/$NAME.xcframework.zip|releases/download/$TAG/$NAME.xcframework.zip|" \
+      -e "s|checksum: \"[0-9a-f]*\"|checksum: \"$CHECKSUM\"|" $PKG
+    grep -q $CHECKSUM $PKG || { echo "$PKG wasn't updated"; exit 1; }
     echo "==> $ZIP ($(du -h $ZIP | cut -f1)), checksum $CHECKSUM"
-    echo "Package.swift now points at release $TAG. Commit it, then publish:" ;;
+    echo "$PKG now points at release $TAG. Commit it there, then publish:" ;;
   duckdb)
     # Signed with the app's Developer ID: the hardened runtime only loads libraries from the same team.
     TITLE=DuckDB

@@ -5,20 +5,11 @@ import PackageDescription
 
 let concurrency: [SwiftSetting] = [.enableUpcomingFeature("ApproachableConcurrency")]
 
-// Prebuilt C libraries. Scripts/build-libssh2.sh makes them in Binary/, which isn't in git: a checkout without
-// them downloads the GitHub Releases that Scripts/release-binaries.sh publishes on this repository.
-func binary(_ name: String, release: String, checksum: String) -> Target {
-  let path = "Binary/\(name).xcframework"
-  return FileManager.default.fileExists(atPath: Context.packageDirectory + "/" + path)
-    ? .binaryTarget(name: name, path: path)
-    : .binaryTarget(
-      name: name, url: "https://github.com/v57/Database/releases/download/\(release)/\(name).xcframework.zip",
-      checksum: checksum)
+/// Another v57 repository: GitHub's main branch, or the checkout next to this one with `V57_LOCAL=1`.
+func v57(_ name: String) -> Package.Dependency {
+  Context.environment["V57_LOCAL"] == nil
+    ? .package(url: "https://github.com/v57/\(name).git", branch: "main") : .package(path: "../\(name)")
 }
-
-// libssh2 + mbedTLS (module CLibssh2).
-let libssh2 = binary(
-  "Libssh2", release: "libssh2-1.11.1", checksum: "b855ccebd64a0434cb1d59b1c1376676682a3fc48fde829b837881307abcea98")
 
 let package = Package(
   name: "Database",
@@ -30,16 +21,20 @@ let package = Package(
     .library(name: "WireKit", targets: ["WireKit"]),
     // SQLite files, for Dev's imported translation database.
     .library(name: "SQLiteKit", targets: ["SQLiteKit"]),
-    // libssh2 + mbedTLS, for Shell, which links this copy instead of building its own.
-    .library(name: "Libssh2", targets: ["Libssh2"]),
+    // libssh2 + mbedTLS (../SSH's), for Shell, which links this copy instead of building its own.
+    .library(name: "Libssh2", targets: ["Libssh2Exports"]),
   ],
+  // SSHKit: logins, keys, SFTP, commands and libssh2 (Scripts/build-libssh2.sh still makes the prebuilt libssh2 and
+  // Scripts/release-binaries.sh publishes it on this repository's releases, which ../SSH downloads).
+  dependencies: [v57("SSH")],
   targets: [
-    libssh2,
+    .target(name: "Libssh2Exports", dependencies: [.product(name: "Libssh2", package: "SSH")]),
 
     // Byte streams, buffers and the hashes the wire protocols share.
     .target(name: "WireKit", swiftSettings: concurrency),
-    // Local port forwarding over SSH (direct-tcpip), with key and password login.
-    .target(name: "SSHTunnel", dependencies: ["Libssh2", "WireKit"], swiftSettings: concurrency),
+    // Local port forwarding over SSH (direct-tcpip) on SSHKit's logins; re-exports SSHKit.
+    .target(
+      name: "SSHTunnel", dependencies: [.product(name: "SSHKit", package: "SSH"), "WireKit"], swiftSettings: concurrency),
 
     // One pure-Swift client per wire protocol.
     .target(name: "BSON", swiftSettings: concurrency),
@@ -81,54 +76,28 @@ let package = Package(
 )
 
 #if os(Windows) || os(Linux)
-/// Another v57 repository: GitHub's main branch, or the checkout next to this one with `V57_LOCAL=1`.
-func v57(_ name: String) -> Package.Dependency {
-  Context.environment["V57_LOCAL"] == nil
-    ? .package(url: "https://github.com/v57/\(name).git", branch: "main") : .package(path: "../\(name)")
-}
 // Off Apple platforms CryptoKit, Network, SQLite3 and os are v57/SwiftUI's stand-ins, RSA is swift-crypto's
-// _CryptoExtras (Security.framework's on Apple platforms), and libssh2 builds from source (Sources/CLibssh2) with
-// the platform's crypto (WinCNG on Windows) in place of the prebuilt xcframework.
+// _CryptoExtras (Security.framework's on Apple platforms), and ../SSH builds libssh2 from source in place of the
+// prebuilt xcframework.
 package.dependencies += [
   v57("SwiftUI"), .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0"),
 ]
-package.targets.removeAll { $0.name == "Libssh2" }
-package.targets.append(
-  .target(
-    name: "CLibssh2", path: "Sources/CLibssh2",
-    exclude: [
-      "COPYING", "README.md",
-      // crypto.c includes the backend's file, agent.c the Windows agents'.
-      "src/openssl.c", "src/libgcrypt.c", "src/mbedtls.c", "src/os400qc3.c", "src/wincng.c", "src/agent_win.c",
-    ],
-    sources: ["src"],
-    // ECDSA (ecdh-sha2-nistp* key exchange, ECDSA host keys) needs Windows 10's BCrypt: OpenSSH 10 servers offer
-    // no finite-field Diffie-Hellman, so without it they can't be reached.
-    cSettings: [
-      .define("LIBSSH2_WINCNG"), .define("LIBSSH2_ECDSA_WINCNG"), .define("LIBSSH2_LIBRARY"), .unsafeFlags(["-w"]),
-    ]))
-package.products.removeAll { $0.name == "Libssh2" }
-package.products.append(.library(name: "Libssh2", targets: ["CLibssh2"]))
 let swiftUI: [String: [Target.Dependency]] = [
   "WireKit": [.product(name: "CryptoKit", package: "SwiftUI"), .product(name: "Network", package: "SwiftUI")],
-  "SSHTunnel": [
-    "CLibssh2", .product(name: "CryptoKit", package: "SwiftUI"), .product(name: "_CryptoExtras", package: "swift-crypto"),
-  ],
   "MySQLWire": [.product(name: "_CryptoExtras", package: "swift-crypto")],
   "SQLiteKit": [.product(name: "SQLite3", package: "SwiftUI")],
   "DuckDBKit": [.product(name: "CryptoKit", package: "SwiftUI")],
 ]
 for target in package.targets {
-  if target.name == "SSHTunnel" { target.dependencies.removeAll { "\($0)".contains("Libssh2") } }
   target.dependencies += swiftUI[target.name] ?? []
-  if target.type == .regular, target.name != "CLibssh2", target.name != "Cduckdb" {
+  if target.type == .regular, target.name != "Libssh2Exports", target.name != "Cduckdb" {
     target.dependencies += [
       .product(name: "SwiftUIPortability", package: "SwiftUI"), .product(name: "os", package: "SwiftUI"),
     ]
   }
   // URLSession lives in FoundationNetworking, Apple's Foundation extras (`URL.applicationSupportDirectory`, …)
   // in SwiftUIPortability: imported everywhere, as Foundation is on Apple platforms.
-  if target.type == .regular || target.type == .test, target.name != "CLibssh2", target.name != "Cduckdb" {
+  if target.type == .regular || target.type == .test, target.name != "Libssh2Exports", target.name != "Cduckdb" {
     target.swiftSettings = (target.swiftSettings ?? []) + [
       .unsafeFlags(
         ["FoundationNetworking", "SwiftUIPortability"].flatMap { ["-Xfrontend", "-import-module", "-Xfrontend", $0] })
