@@ -3,7 +3,7 @@
   import DatabaseUI
   import SwiftUI
 
-  /// `--present [--present-delay 3] [--activate]`: after the delay, brings the window (and any sheet on it) up
+  /// `--present [--present-delay 3] [--present-size 1440x600] [--activate]`: after the delay, brings the window (and any sheet on it) up
   /// without taking focus (or, with `--activate`, makes it the active window) and prints `window <number>`, so
   /// a script can capture it with `screencapture -l`.
   ///
@@ -23,14 +23,18 @@
       Task { @MainActor in
         try? await Task.sleep(for: .seconds(1))
         guard !NSApp.windows.contains(where: { $0.isVisible && !($0 is NSPanel) }) else { return }
+        // `--present-size 1440x600`: a shorter window, to see what overflows (sticky sidebar sections).
+        let size =
+          LaunchOptions.value("--present-size").map { $0.split(separator: "x").compactMap { Double($0) } }
+          .flatMap { $0.count == 2 ? NSSize(width: $0[0], height: $0[1]) : nil } ?? NSSize(width: 1440, height: 900)
         let controller = NSHostingController(rootView: content())
         controller.sceneBridgingOptions = .all
         let window = NSWindow(
-          contentRect: NSRect(x: 180, y: 160, width: 1440, height: 900),
+          contentRect: NSRect(origin: NSPoint(x: 180, y: 160), size: size),
           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered,
           defer: false)
         window.contentViewController = controller
-        window.setContentSize(NSSize(width: 1440, height: 900))
+        window.setContentSize(size)
         window.toolbarStyle = .unified
         window.collectionBehavior.insert(.moveToActiveSpace)
         window.orderFrontRegardless()
