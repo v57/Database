@@ -219,13 +219,17 @@ struct CardsView: View {
   private func shortID(_ text: String) -> String { text.count > 10 ? "…" + text.suffix(4) : text }
 }
 
-/// Arrays and sub-documents as quiet chips on one line.
+/// Arrays and sub-documents as quiet chips on one line: as many as fit whole.
 struct FlowChips: View {
   let items: [String]
   var body: some View {
-    HStack(spacing: 6) {
-      ForEach(items, id: \.self) { item in
-        Chip(Text(item).monospaced(), style: .quiet)
+    ViewThatFits(in: .horizontal) {
+      ForEach((1...max(items.count, 1)).reversed(), id: \.self) { count in
+        HStack(spacing: 6) {
+          ForEach(items.prefix(count), id: \.self) { item in
+            Chip(Text(item).monospaced(), style: .quiet).fixedSize()
+          }
+        }
       }
     }
   }
