@@ -41,8 +41,10 @@ public struct SidebarView: View {
     let others = profiles.filter { $0.id != current?.id }
     // The Mac's toggle hides the sidebar through the window's split view; iPad and iPhone need the binding.
     KitSidebar(selection: $window.selection, searchText: $window.searchText, columnVisibility: idiom.isTouch ? $columnVisibility : nil) {
+      // A long tree keeps the open connection's title in view; Connections waits at the bottom while it's below.
       if let current {
         CurrentConnectionSection(connection: current, window: window) { deleting = current.profile }
+          .kitSticky()
       }
       KitSection(
         "Connections", meta: connectionsMeta(current: current), systemImage: "cylinder.split.1x2"
@@ -62,6 +64,7 @@ public struct SidebarView: View {
       } accessory: {
         Button("New Connection", systemImage: "plus") { window.showsNewConnection = true }
       }
+      .kitSticky(bottom: .title)
     }
     .navigationTitle("Database")
     .kitConfirmation(
