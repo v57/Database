@@ -406,7 +406,7 @@ struct MembersEditor: View {
       if editable {
         HStack {
           TextField("New member", text: $newMember).kitField().onSubmit(add)
-          Button("Add Member", action: add).buttonStyle(.kit).disabled(newMember.isEmpty)
+          Button("Add Member", action: add).buttonStyle(.kit).disabled(newMember.isEmpty).fixedSize()
         }
         .padding(10)
       }
@@ -501,7 +501,7 @@ struct SortedSetEditor: View {
       if editable {
         HStack {
           TextField("Member", text: $newMember).kitField()
-          TextField("Score", text: $newScore).kitField().frame(width: 80)
+          TextField("Score", text: $newScore).kitField().frame(width: 70)
           Button("Add Member") {
             guard let score = Double(newScore) else { return }
             let member = newMember
@@ -511,6 +511,7 @@ struct SortedSetEditor: View {
           }
           .buttonStyle(.kit)
           .disabled(newMember.isEmpty || Double(newScore) == nil)
+          .fixedSize()
         }
         .padding(10)
       }

@@ -142,7 +142,7 @@ struct KeysBrowserView: View {
 
   @ViewBuilder private var split: some View {
     if window.showsInspector && sizeClass != .compact {
-      ResizableSplit("keyInspectorWidth", pane: .trailing, width: 360, range: 300...560, mainMinWidth: 420) {
+      ResizableSplit("keyInspectorWidth", pane: .trailing, width: KitMetrics.inspectorWidth, range: 280...560, mainMinWidth: 420) {
         main
       } pane: {
         inspector
