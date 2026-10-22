@@ -61,7 +61,8 @@ struct RecordTable: View {
   }
 
   private func idealWidth(_ field: FieldInfo) -> CGFloat {
-    if field.isPrimaryKey { return 90 }
+    // A key is narrow unless it's a date or a UUID (Cassandra's clustering columns).
+    if field.isPrimaryKey && !field.category.isTemporal && field.category != .uuid { return 90 }
     switch field.category {
     case .integer, .boolean: return 90
     case .decimal, .float: return 100
@@ -91,9 +92,10 @@ extension FieldInfo {
   /// A text field named like a status ("status", "state"): its words show as chips.
   var isStatus: Bool { category == .text && (name.contains("status") || name.contains("state")) }
 
-  /// Values that read better monospaced: ids, dates, JSON.
+  /// Values that read better monospaced: ids, dates, JSON, lists and documents.
   var isMono: Bool {
     isPrimaryKey || category == .uuid || category.isTemporal || category == .json || category == .binary
+      || category == .list || category == .document
   }
 }
 

@@ -60,7 +60,6 @@ struct FilterBar: View {
         FieldsMenu(browser: browser)
       }
     }
-    .controlSize(.small)
     .padding(.horizontal, KitMetrics.gutter)
     .padding(.vertical, 6)
     .onAppear { searchText = browser.request.search }
