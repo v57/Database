@@ -499,24 +499,42 @@ struct SortedSetEditor: View {
         .kitFont(.caption)
         .padding(8)
       if editable {
-        HStack {
-          TextField("Member", text: $newMember).kitField()
-          TextField("Score", text: $newScore).kitField().frame(width: 70)
-          Button("Add Member") {
-            guard let score = Double(newScore) else { return }
-            let member = newMember
-            newMember = ""
-            newScore = ""
-            Task { await model.perform([.zsetAdd(key: key, member: member, score: score)]) }
+        // One line where Member keeps room to type (the Mac); Add Member under the fields on a touch screen.
+        ViewThatFits(in: .horizontal) {
+          HStack {
+            memberField.frame(minWidth: 90)
+            scoreField
+            addButton
           }
-          .buttonStyle(.kit)
-          .disabled(newMember.isEmpty || Double(newScore) == nil)
-          .fixedSize()
+          VStack(alignment: .trailing) {
+            HStack {
+              memberField
+              scoreField
+            }
+            addButton
+          }
         }
         .padding(10)
       }
     }
     .kitSurface(.card)
+  }
+
+  private var memberField: some View { TextField("Member", text: $newMember).kitField() }
+
+  private var scoreField: some View { TextField("Score", text: $newScore).kitField().frame(width: 70) }
+
+  private var addButton: some View {
+    Button("Add Member") {
+      guard let score = Double(newScore) else { return }
+      let member = newMember
+      newMember = ""
+      newScore = ""
+      Task { await model.perform([.zsetAdd(key: model.key ?? "", member: member, score: score)]) }
+    }
+    .buttonStyle(.kit)
+    .disabled(newMember.isEmpty || Double(newScore) == nil)
+    .fixedSize()
   }
 }
 
