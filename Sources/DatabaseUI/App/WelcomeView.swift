@@ -69,7 +69,10 @@ struct WelcomeView: View {
       for url in urls { if let profile = app.addFile(url) { window.connect(profile.id); opened = true } }
       return opened
     } isTargeted: { isDropTargeted = $0 }
-    .navigationTitle("Database")
+    .kitToolbar("Database") {
+      Text("Database").kitFont(.headline)
+    } tools: {
+    }
   }
 
   private var columns: [GridItem] {
