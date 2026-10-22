@@ -168,9 +168,18 @@ struct BrowserView: View {
   /// The edits waiting for review, under the grid.
   private var changes: some View {
     ChangesCard(
-      count: browser.pending.count, meta: ["\(browser.ref.name) on \(browser.connection.profile.displayName)", "nothing is saved until you review"],
-      discardAll: { withKitAnimation { browser.discardChanges() } }, review: { browser.showsReview = true }
+      count: browser.pending.count, discardAll: { withKitAnimation { browser.discardChanges() } },
+      review: { browser.showsReview = true }
     ) {
+      // "orders on Shop [Production] · nothing is saved until you review"
+      HStack(spacing: 6) {
+        Text("\(browser.ref.name) on \(browser.connection.profile.displayName)")
+        if browser.connection.profile.isProduction { Chip.production.controlSize(.small) }
+        Text("·").foregroundStyle(.kitTertiary)
+        Text("nothing is saved until you review")
+      }
+      .lineLimit(1)
+    } rows: {
       ForEach(browser.pending) { edit in
         PendingChangeRow(edit: edit, browser: browser)
       }

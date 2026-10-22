@@ -39,6 +39,31 @@ enum SyntaxColoring {
   }
 }
 
+/// Read-only code, colored like the editors: the statements a review will run.
+struct HighlightedCode: View {
+  let text: String
+  let language: String
+  @Environment(\.colorScheme) private var colorScheme
+
+  var body: some View {
+    Text(attributed)
+  }
+
+  private var attributed: AttributedString {
+    var result = AttributedString(text)
+    for token in SyntaxColoring.tokens(text, language: language) {
+      guard let range = Range(token.range, in: text),
+        let lower = AttributedString.Index(range.lowerBound, within: result),
+        let upper = AttributedString.Index(range.upperBound, within: result)
+      else { continue }
+      let hex = SyntaxColoring.hex(token.kind, isDark: colorScheme == .dark)
+      result[lower..<upper].foregroundColor = Color(
+        red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
+    }
+    return result
+  }
+}
+
 #if os(macOS)
   import AppKit
 

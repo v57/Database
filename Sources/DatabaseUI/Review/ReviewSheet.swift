@@ -95,8 +95,11 @@ struct ReviewSheet: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 6)
         if showsStatements {
-          Text(lines.map { $0 + (browser.engine.family == .sql ? ";" : "") }.joined(separator: "\n"))
-            .kitFont(.monoSmall)
+          HighlightedCode(
+            text: lines.map { $0 + (browser.engine.family == .sql ? ";" : "") }.joined(separator: "\n"),
+            language: browser.engine.highlighting
+          )
+          .kitFont(.monoSmall)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
