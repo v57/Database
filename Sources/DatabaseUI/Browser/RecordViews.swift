@@ -20,7 +20,7 @@ struct RecordTable: View {
 
   var body: some View {
     KitGrid(
-      browser.records, columns: browser.visibleFields.map(column), selection: $browser.selection, sort: sort,
+      browser.records, columns: columns, selection: $browser.selection, sort: sort,
       rowState: rowState)
     .rowContextMenu { ids in
       RecordMenu(browser: browser, ids: ids, onDelete: onDelete)
@@ -32,8 +32,13 @@ struct RecordTable: View {
     return browser.isPendingUpdate(record) ? .edited : nil
   }
 
-  private func column(_ field: FieldInfo) -> KitGridColumn<Record> {
-    let width = idealWidth(field)
+  private var columns: [KitGridColumn<Record>] {
+    let fields = browser.visibleFields
+    return fields.map { column($0, isLast: $0.name == fields.last?.name) }
+  }
+
+  private func column(_ field: FieldInfo, isLast: Bool) -> KitGridColumn<Record> {
+    let width = idealWidth(field, isLast: isLast)
     let image = field.isPrimaryKey || field.keyRole != nil ? "key" : nil
     let editable = browser.isEditable && !field.isPrimaryKey && !field.isGenerated && field.keyRole == nil
     if field.isStatus {
@@ -60,18 +65,23 @@ struct RecordTable: View {
     return value.displayText
   }
 
-  private func idealWidth(_ field: FieldInfo) -> CGFloat {
-    // A key is narrow unless it's a date or a UUID (Cassandra's clustering columns).
-    if field.isPrimaryKey && !field.category.isTemporal && field.category != .uuid { return 90 }
-    switch field.category {
-    case .integer, .boolean: return 90
-    case .decimal, .float: return 100
-    case .date: return 110
-    case .dateTime, .time: return 200
-    case .uuid: return 280
-    case .document, .list, .json: return 220
-    default: return field.isStatus ? 110 : 160
-    }
+  /// As wide as the values usually are and the header ("customer_id"), as the canvas sizes them. The grid's last
+  /// column takes what's left of the width, so a text column there starts narrow and grows into it.
+  private func idealWidth(_ field: FieldInfo, isLast: Bool) -> CGFloat {
+    let hasGlyph = field.isPrimaryKey || field.keyRole != nil
+    let header = CGFloat(field.name.count) * 6.5 + 20 + (hasGlyph ? 14 : 0)
+    let values: CGFloat =
+      switch field.category {
+      case .integer where field.isPrimaryKey: 72
+      case .integer, .boolean: 58
+      case .decimal, .float: 86
+      case .date: 110
+      case .dateTime, .time: 200
+      case .uuid: 280
+      case .document, .list, .json: 220
+      default: field.isStatus ? 100 : isLast ? 64 : 160
+      }
+    return max(values, header)
   }
 }
 
