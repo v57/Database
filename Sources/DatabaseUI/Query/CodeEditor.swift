@@ -268,6 +268,7 @@ struct HighlightedCode: View {
       view.smartDashesType = .no
       view.spellCheckingType = .no
       view.backgroundColor = .clear
+      view.textContainerInset = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
       view.font = .monospacedSystemFont(ofSize: UIFont.systemFontSize, weight: .regular)
       view.text = text
       view.isEditable = isEditable
