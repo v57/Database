@@ -195,9 +195,10 @@ struct CardsView: View {
             .strokeBorder(Hue.accent.fill, lineWidth: 2)
         }
       }
+      .kitHoverEffect(in: RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous))
       .opacity(browser.isPendingDelete(record) ? 0.5 : 1)
     }
-    .buttonStyle(.plain)
+    .buttonStyle(.kitHoverEffect)
     .strikethrough(browser.isPendingDelete(record), color: .red)
   }
 
