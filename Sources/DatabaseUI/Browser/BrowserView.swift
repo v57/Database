@@ -13,10 +13,10 @@ struct BrowserView: View {
 
   var body: some View {
     titled
-      .sheet(isPresented: $browser.showsReview) {
+      .kitSheet(isPresented: $browser.showsReview) {
         ReviewSheet(browser: browser).componentKit(accent: .databaseAccent)
       }
-      .sheet(isPresented: $adding) {
+      .kitSheet(isPresented: $adding) {
         NewItemSheet(browser: browser).componentKit(accent: .databaseAccent)
       }
       .kitConfirmation(

@@ -12,7 +12,7 @@ struct SSHHostSheet: View {
   let fingerprint: String?
   let onSave: (VaultHost, String) -> Void
   @Environment(DatabaseModel.self) private var app
-  @Environment(\.dismiss) private var dismiss
+  @Environment(\.kitDismiss) private var dismiss
 
   @State private var host: VaultHost
   @State private var auth: SSHAuthMethod

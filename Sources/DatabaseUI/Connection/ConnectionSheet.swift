@@ -10,7 +10,7 @@ struct ConnectionSheet: View {
   let original: ConnectionProfile?
   let onSave: (ConnectionProfile) -> Void
   @Environment(DatabaseModel.self) private var app
-  @Environment(\.dismiss) private var dismiss
+  @Environment(\.kitDismiss) private var dismiss
 
   @State private var profile: ConnectionProfile
   @State private var link = ""
@@ -118,7 +118,7 @@ struct ConnectionSheet: View {
         if profile.name.isEmpty { profile.name = url.deletingPathExtension().lastPathComponent }
       }
     }
-    .sheet(item: $editingHost) { draft in
+    .kitSheet(item: $editingHost) { draft in
       SSHHostSheet(
         host: draft.host, isNew: draft.isNew,
         fingerprint: try? app.vault.store?.knownFingerprint(host: draft.host.hostname, port: draft.host.port)

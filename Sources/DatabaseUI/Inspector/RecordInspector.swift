@@ -375,7 +375,7 @@ struct RecordDetailScreen: View {
       browser.stageDelete([record])
       browser.showsReview = true
     }
-    .sheet(isPresented: Binding(get: { browser.showsReview }, set: { browser.showsReview = $0 })) {
+    .kitSheet(isPresented: Binding(get: { browser.showsReview }, set: { browser.showsReview = $0 })) {
       ReviewSheet(browser: browser).componentKit(accent: .databaseAccent)
     }
   }
@@ -384,7 +384,7 @@ struct RecordDetailScreen: View {
 /// A new row or document, staged for review like any change.
 struct NewItemSheet: View {
   let browser: BrowserModel
-  @Environment(\.dismiss) private var dismiss
+  @Environment(\.kitDismiss) private var dismiss
   @State private var drafts: [String: FieldDraft] = [:]
   @State private var errors: [String: String] = [:]
   @State private var documentText = "{\n  \n}"

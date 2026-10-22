@@ -29,7 +29,7 @@ struct PipelineView: View {
     .task {
       if pipeline.steps.isEmpty { pipeline.add(.match) } else { await pipeline.refreshPreview() }
     }
-    .sheet(isPresented: $importing) { importSheet.componentKit(accent: .databaseAccent) }
+    .kitSheet(isPresented: $importing) { importSheet.componentKit(accent: .databaseAccent) }
   }
 
   private var header: some View {

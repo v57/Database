@@ -5,7 +5,7 @@ import SwiftUI
 /// Every pending change, old → new, with the statements that will run. Nothing is written before Save.
 struct ReviewSheet: View {
   @Bindable var browser: BrowserModel
-  @Environment(\.dismiss) private var dismiss
+  @Environment(\.kitDismiss) private var dismiss
   @State private var showsStatements = true
   @State private var saving = false
 

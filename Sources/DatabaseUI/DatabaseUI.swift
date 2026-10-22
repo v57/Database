@@ -47,13 +47,13 @@ private struct ConnectionSheets: ViewModifier {
 
   func body(content: Content) -> some View {
     content
-      .sheet(isPresented: $window.showsNewConnection, onDismiss: { window.newConnectionHost = nil }) {
+      .kitSheet(isPresented: $window.showsNewConnection, onDismiss: { window.newConnectionHost = nil }) {
         ConnectionSheet(profile: nil, through: window.newConnectionHost) { saved in
           window.connect(saved.id)
         }
         .componentKit(accent: .databaseAccent)
       }
-      .sheet(item: editing) { item in
+      .kitSheet(item: editing) { item in
         ConnectionSheet(profile: app.profile(item.id)) { saved in
           window.connect(saved.id)
         }

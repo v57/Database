@@ -123,10 +123,10 @@ struct KeysBrowserView: View {
       ) {
         tools
       }
-      .sheet(isPresented: $creating) {
+      .kitSheet(isPresented: $creating) {
         if let model { NewKeySheet(model: model).componentKit(accent: .databaseAccent) }
       }
-      .sheet(isPresented: isConfirming) {
+      .kitSheet(isPresented: isConfirming) {
         if let model { RedisConfirmSheet(model: model).componentKit(accent: .databaseAccent) }
       }
       .onChange(of: browser.toast) { _, message in showToast(message) }
@@ -430,7 +430,7 @@ struct RedisCommandLine: View {
 /// A new key with its first value.
 struct NewKeySheet: View {
   let model: RedisKeyModel
-  @Environment(\.dismiss) private var dismiss
+  @Environment(\.kitDismiss) private var dismiss
   @State private var name = ""
   @State private var type = "string"
   @State private var first = ""

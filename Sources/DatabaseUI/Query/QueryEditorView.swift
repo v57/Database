@@ -30,7 +30,7 @@ struct QueryEditorView: View {
     ) {
       tools
     }
-    .sheet(isPresented: .init(get: { savingTitle != nil }, set: { if !$0 { savingTitle = nil } })) {
+    .kitSheet(isPresented: .init(get: { savingTitle != nil }, set: { if !$0 { savingTitle = nil } })) {
       KitSheet(title: "Save Query", meta: "Saved queries show under Queries in the sidebar.", systemImage: "square.and.arrow.down", width: 420) {
         TextField("Name", text: Binding(get: { savingTitle ?? "" }, set: { savingTitle = $0 }))
           .kitField()

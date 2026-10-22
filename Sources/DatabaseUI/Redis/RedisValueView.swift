@@ -34,7 +34,7 @@ struct RedisValueView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous))
     }
-    .sheet(isPresented: .init(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+    .kitSheet(isPresented: .init(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
       KitSheet(title: "Rename Key", meta: key, systemImage: "pencil", width: 420) {
         TextField("New name", text: Binding(get: { renaming ?? "" }, set: { renaming = $0 }))
           .kitField(mono: true)
