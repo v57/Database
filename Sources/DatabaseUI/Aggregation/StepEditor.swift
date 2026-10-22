@@ -328,7 +328,7 @@ struct FormulaBlock: View {
         TextField("Name", text: binding(\.name)).kitField(mono: true).frame(width: 110)
         Text("=").foregroundStyle(.kitSecondary)
         KitPicker("Formula", selection: binding(\.kind), options: FieldFormula.Kind.allCases.map { ($0.label, $0) })
-        Text(formula.kind.op).kitFont(.monoSmall).foregroundStyle(.kitSecondary)
+        Text(formula.kind.op).kitFont(.monoSmall).foregroundStyle(.kitSecondary).fixedSize()
         Spacer()
         Button("Remove", systemImage: "minus.circle", action: onRemove).buttonStyle(.kitIcon)
       }
