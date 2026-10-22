@@ -66,9 +66,10 @@ struct PipelineView: View {
         .buttonStyle(.kitPrimary)
         .kitHelp("Run the whole pipeline", shortcut: "⌘↩", systemImage: "play.fill")
     }
-    .controlSize(.small)
-    .padding(.horizontal, 16)
-    .padding(.vertical, 10)
+    .padding(.leading, 16)
+    .padding(.trailing, 12)
+    .frame(minHeight: 60)
+    .overlay(alignment: .bottom) { Rectangle().fill(.kitSeparator).frame(height: 0.5) }
   }
 
   private var stepList: some View {
@@ -77,13 +78,13 @@ struct PipelineView: View {
         ForEach(Array(pipeline.steps.enumerated()), id: \.element.id) { index, step in
           StepCard(pipeline: pipeline, browser: browser, step: step, index: index, inlineEditor: !pipeline.showsFullBuilder)
           if index < pipeline.steps.count - 1 {
-            Rectangle().fill(.kitSeparator).frame(width: 2, height: KitMetrics.gutter).padding(.leading, 44)
+            Rectangle().fill(.kitSeparator).frame(width: 2, height: 10).padding(.leading, 36)
           }
         }
         AddStepMenu(pipeline: pipeline)
           .padding(.top, 12)
         if pipeline.showsFullBuilder && !pipeline.isSQL {
-          PipelineSettings(pipeline: pipeline).padding(.top, 16)
+          PipelineSettings(pipeline: pipeline).padding(.top, 18)
         }
         if let error = pipeline.resultError {
           Banner(error, systemImage: "exclamationmark.triangle", hue: .red).padding(.top, 12)
@@ -94,7 +95,8 @@ struct PipelineView: View {
             .padding(.top, 14)
         }
       }
-      .padding(KitMetrics.gutter)
+      .padding(.horizontal, 18)
+      .padding(.vertical, 16)
     }
   }
 
@@ -183,8 +185,10 @@ struct StepCard: View {
           .padding(.leading, 52)
       }
     }
-    .padding(.horizontal, 10)
+    .padding(.leading, 10)
+    .padding(.trailing, 8)
     .padding(.vertical, 8)
+    .frame(minHeight: 46)
     .background {
       if step.isEnabled {
         SurfaceShapeCard()
@@ -252,7 +256,7 @@ struct StepLibrary: View {
           }
         }
       }
-      .padding(.horizontal, 10)
+      .padding(.horizontal, 12)
       .padding(.bottom, 12)
     }
     .safeAreaInset(edge: .top, spacing: 10) {
@@ -263,12 +267,13 @@ struct StepLibrary: View {
       .padding([.horizontal, .top], 12)
       .background(.kitPanel)
     }
-    .safeAreaInset(edge: .bottom) {
+    .safeAreaInset(edge: .bottom, spacing: 0) {
       Text("Click a step to add it after the selected one.")
         .kitFont(.caption)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+        .padding(.horizontal, 12)
         .background(.kitPanel)
+        .overlay(alignment: .top) { Rectangle().fill(.kitSeparator).frame(height: 0.5) }
     }
   }
 }
@@ -281,34 +286,35 @@ private struct StepGroupBlock: View {
 
   var body: some View {
     let look = StepGroupLook(group)
-    KitSection(group, meta: "\(kinds.count) \(kinds.count == 1 ? "step" : "steps")", systemImage: look.symbol, hue: look.hue) {
+    FormCard {
+      GroupRow {
+        Label {
+          Text(group).kitFont(.headline)
+        } icon: {
+          Tile(systemImage: look.symbol, hue: look.hue, size: 22)
+        }
+      } trailing: {
+        Text("\(kinds.count)").kitFont(.caption).monospacedDigit().foregroundStyle(.kitSecondary)
+      }
+      .padding(.leading, -4)
+      .frame(minHeight: 34)
+      .accessibilityLabel("\(group), \(kinds.count) \(kinds.count == 1 ? "step" : "steps")")
       ForEach(kinds) { kind in
-        StepLibraryRow(kind: kind, hue: look.hue) { onAdd(kind) }
+        StepLibraryRow(kind: kind) { onAdd(kind) }
       }
     }
+    .controlSize(.small)
   }
 }
 
 private struct StepLibraryRow: View {
   let kind: StepKind
-  let hue: Hue
   let action: () -> Void
-  @State private var hovering = false
 
   var body: some View {
-    Button(action: action) {
-      HStack(spacing: 8) {
-        Text(kind.name).lineLimit(1)
-        Spacer(minLength: 4)
-        Text(kind.op).kitFont(.monoSmall).foregroundStyle(hue.text).lineLimit(1)
-      }
-      .padding(.horizontal, 6)
-      .frame(minHeight: 26)
-      .background(hovering ? AnyShapeStyle(.kitHover) : AnyShapeStyle(Color.clear), in: RoundedRectangle(cornerRadius: KitMetrics.radiusSmall, style: .continuous))
-      .contentShape(Rectangle())
+    GroupRow(kind.name, action: action) {
+      Text(kind.op).kitFont(.monoSmall).foregroundStyle(.kitSecondary).lineLimit(1)
     }
-    .buttonStyle(.plain)
-    .onHover { hovering = $0 }
     .accessibilityHint(kind.does)
     .draggable(kind.rawValue)
   }
@@ -339,23 +345,23 @@ struct PipelineSettings: View {
 
   var body: some View {
     FormCard("Pipeline settings") {
-      FormRow("Big sorts use disk", systemImage: "internaldrive", hue: .gray) {
+      GroupRow("Big sorts use disk") {
         Toggle("Big sorts use disk", isOn: $pipeline.allowDiskUse).toggleStyle(.kitSwitch).kitLabelsHidden()
       }
-      FormRow("Time limit", systemImage: "timer", hue: .orange) {
+      GroupRow("Time limit") {
         KitStepper("Time limit", value: $pipeline.maxTimeSeconds, in: 0...3600, step: 5) { $0 == 0 ? "none" : "\($0) s" }
       }
-      FormRow("Text comparison language", systemImage: "textformat", hue: .gray) {
+      GroupRow("Text comparison language") {
         TextField("Text comparison language", text: $pipeline.collationLocale, prompt: Text("e.g. en"))
           .kitField()
           .frame(width: 150)
       }
       if !pipeline.collationLocale.isEmpty {
-        FormRow("Ignore case", systemImage: "textformat.size", hue: .gray) {
+        GroupRow("Ignore case") {
           Toggle("Ignore case", isOn: $pipeline.caseInsensitive).toggleStyle(.kitSwitch).kitLabelsHidden()
         }
       }
-      FormRow("Tag in server logs", systemImage: "tag", hue: .gray) {
+      GroupRow("Tag in server logs") {
         TextField("Tag in server logs", text: $pipeline.comment, prompt: Text("e.g. review-trends"))
           .kitField()
           .frame(width: 150)
