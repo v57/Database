@@ -1,4 +1,4 @@
-# Test servers for every network engine Database Pro speaks.
+# Test servers for every network engine Database speaks.
 # Usage:
 #   Scripts/test-servers.sh         # make the SSH test key, start and wait until healthy
 #   docker compose down             # stop (data persists in named volumes)
