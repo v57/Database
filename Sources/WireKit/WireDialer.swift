@@ -33,7 +33,13 @@ public struct WireDialer: Sendable {
     WireDialer { host, port, tls, timeout in
       let stream = try await open(host, port, timeout)
       guard tls.enabled else { return WireConnection(stream: stream) }
-      return try await WireConnection.connect(over: stream, serverName: host, tls: tls, timeout: timeout)
+      #if canImport(Darwin) || os(Windows)
+        return try await WireConnection.connect(over: stream, serverName: host, tls: tls, timeout: timeout)
+      #else
+        // StreamTLS has no TLS engine here yet (Network.framework on Apple platforms, SChannel on Windows).
+        stream.close()
+        throw WireError.unsupported("TLS over an SSH channel isn't available on this system yet")
+      #endif
     }
   }
 }

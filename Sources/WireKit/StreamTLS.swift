@@ -1,4 +1,4 @@
-#if !os(Windows)
+#if canImport(Darwin)
 import Darwin
 import Foundation
 import Network
@@ -197,7 +197,7 @@ private final class SharedSocket: @unchecked Sendable {
     if last { Darwin.close(fd) }
   }
 }
-#else
+#elseif os(Windows)
 import Foundation
 import Network
 
