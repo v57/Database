@@ -1,3 +1,5 @@
+// The installer is macOS-only (DuckDBLibrary.isSupported), and these tests zip with ditto.
+#if os(macOS)
 import CryptoKit
 import DuckDBKit
 import Foundation
@@ -69,3 +71,4 @@ struct DuckDBInstallerTests {
     #expect(!FileManager.default.fileExists(atPath: target.path))
   }
 }
+#endif

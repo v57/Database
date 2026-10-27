@@ -197,13 +197,13 @@ private final class SharedSocket: @unchecked Sendable {
     if last { Darwin.close(fd) }
   }
 }
-#elseif os(Windows)
+#elseif os(Windows) || os(Linux)
 import Foundation
 import Network
 
 extension WireConnection {
-  /// TLS over a stream it didn't open, like an SSH channel: on Windows SChannel's `TLSSession` (the Network
-  /// stand-in's) runs over the stream itself.
+  /// TLS over a stream it didn't open, like an SSH channel: the Network stand-in's `TLSSession` (SChannel on
+  /// Windows, OpenSSL on Linux) runs over the stream itself.
   public static func connect(
     over stream: any WireStream, serverName: String, tls: TLSSettings, timeout: TimeInterval = 15
   ) async throws -> WireConnection {
@@ -211,7 +211,7 @@ extension WireConnection {
   }
 }
 
-/// A stream that encrypts what it sends and decrypts what it receives over another stream. SSPI's calls block,
+/// A stream that encrypts what it sends and decrypts what it receives over another stream. The session's calls block,
 /// so the handshake and each read run on a thread of their own and wait for the inner stream there.
 private final class TLSWireStream: WireStream, @unchecked Sendable {
   private let inner: any WireStream
@@ -231,6 +231,9 @@ private final class TLSWireStream: WireStream, @unchecked Sendable {
             write: { data in try Self.blocking { try await inner.send(Array(data)) } },
             read: { try Self.receive(from: inner) })
           continuation.resume(returning: TLSWireStream(inner: inner, session: session))
+        } catch let error as NWError {
+          inner.close()
+          continuation.resume(throwing: WireError.connectionFailed(NetworkStream.describe(error)))
         } catch {
           inner.close()
           continuation.resume(throwing: error)
