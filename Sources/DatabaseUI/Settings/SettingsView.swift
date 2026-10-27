@@ -2,8 +2,9 @@ import ComponentKit
 import DatabaseKit
 import SwiftUI
 import UniformTypeIdentifiers
+import VaultUI
 
-/// Settings: how much the browser loads, the DuckDB download, and SSH keys.
+/// Settings: how much the browser loads, the DuckDB download, SSH keys, and the v57 accounts.
 public struct SettingsView: View {
   @AppStorage("settings.pane") private var pane = "General"
 
@@ -13,8 +14,20 @@ public struct SettingsView: View {
     KitSettings(selection: $pane) {
       SettingsPane("General", systemImage: "gearshape") { GeneralSettings() }
       SettingsPane("SSH Keys", systemImage: "key", hue: .brown) { SSHKeysView() }
+      if showsAccounts {
+        SettingsPane("Accounts", systemImage: "person.2", hue: .indigo, section: "v57") { VaultAccountsSettings() }
+      }
     }
     .frame(width: 640, height: 460)
+  }
+
+  /// A `--data-dir` run keeps to its scratch vault, so it shows no accounts (they live in the real one).
+  private var showsAccounts: Bool {
+    #if DEBUG
+      LaunchOptions.value("--data-dir") == nil
+    #else
+      true
+    #endif
   }
 }
 

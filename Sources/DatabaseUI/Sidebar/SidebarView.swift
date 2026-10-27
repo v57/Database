@@ -1,9 +1,10 @@
 import ComponentKit
 import DatabaseKit
 import SwiftUI
+import VaultUI
 
-/// The kit's sidebar: the open connection as its own card (its databases, tables and queries), then every saved
-/// connection in the Connections card.
+/// The kit's sidebar: the window's account (hidden while Personal is the only one), the open connection as its own
+/// card (its databases, tables and queries), then every saved connection in the Connections card.
 public struct SidebarView: View {
   @Bindable var window: WindowModel
   @Binding var columnVisibility: NavigationSplitViewVisibility
@@ -41,6 +42,7 @@ public struct SidebarView: View {
     let others = profiles.filter { $0.id != current?.id }
     // The Mac's toggle hides the sidebar through the window's split view; iPad and iPhone need the binding.
     KitSidebar(selection: $window.selection, searchText: $window.searchText, columnVisibility: idiom.isTouch ? $columnVisibility : nil) {
+      VaultAccountPicker(meta: app.profiles.count == 1 ? "1 connection" : "\(app.profiles.count) connections")
       // A long tree keeps the open connection's title in view; Connections waits at the bottom while it's below.
       if let current {
         CurrentConnectionSection(connection: current, window: window) { deleting = current.profile }

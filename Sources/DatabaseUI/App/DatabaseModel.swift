@@ -29,8 +29,11 @@ public final class DatabaseModel {
   public private(set) var live: [UUID: LiveConnection] = [:]
   let secrets: SecretStore
   let keys: SSHKeyStore
-  /// The shared store: connections, SSH hosts, known host keys.
+  /// The shared store of the window's account: connections and SSH hosts.
   public let vault: Vault
+  /// Where accepted SSH host keys are kept: Personal's vault, so a server trusted in one account is trusted in every
+  /// account on the device (a host key belongs to the server, not to who works on it).
+  public let hostKeys: Vault
   /// How a connection opens, when the app opens them itself (Shell logs in to SSH on its own connections); nil uses
   /// DatabaseKit's `Connector`.
   @ObservationIgnored public var opener: DatabaseOpener?
@@ -44,12 +47,19 @@ public final class DatabaseModel {
   private let folder: URL?
   /// Bumped when SSH keys change, so views listing them refresh.
   var keysVersion = 0
+  /// The models of the other accounts' vaults (`model(for:)`), on Personal's model.
+  @ObservationIgnored private var accountModels: [String: DatabaseModel] = [:]
 
-  public init(folder: URL?, secrets: SecretStore, vault: Vault) {
+  public convenience init(folder: URL?, secrets: SecretStore, vault: Vault) {
+    self.init(folder: folder, secrets: secrets, vault: vault, hostKeys: vault, keys: nil)
+  }
+
+  private init(folder: URL?, secrets: SecretStore, vault: Vault, hostKeys: Vault, keys: SSHKeyStore?) {
     self.folder = folder
     self.secrets = secrets
     self.vault = vault
-    keys = SSHKeyStore(secrets: secrets, listURL: folder?.appendingPathComponent("ssh-keys.json"))
+    self.hostKeys = hostKeys
+    self.keys = keys ?? SSHKeyStore(secrets: secrets, listURL: folder?.appendingPathComponent("ssh-keys.json"))
     if let folder { DuckDBLibrary.directory = folder.appendingPathComponent("DuckDB", isDirectory: true) }
     duckDB = DuckDBInstaller()
     load()
@@ -83,6 +93,18 @@ public final class DatabaseModel {
     return DatabaseModel(folder: folder, secrets: VaultSecretStore(), vault: vault)
   }
 
+  /// The model of a window's account (`VaultAccountScope`'s vault): this model for its own vault, else one per
+  /// account, kept so every window of an account shares its live connections. An account's model shares this one's
+  /// folder, secrets, imported SSH keys and host keys (device-wide), and keeps its saved queries in a file of its own.
+  /// An app with hooks (`opener`, `onDisconnect`) sets them on each model.
+  public func model(for vault: Vault) -> DatabaseModel {
+    if vault === self.vault || vault.accountID == self.vault.accountID { return self }
+    if let model = accountModels[vault.accountID], model.vault === vault { return model }
+    let model = DatabaseModel(folder: folder, secrets: secrets, vault: vault, hostKeys: hostKeys, keys: keys)
+    accountModels[vault.accountID] = model
+    return model
+  }
+
   #if DEBUG
     /// A vault of its own for `--data-dir` runs, with its key in the scratch secrets file.
     private static func scratchVault(in folder: URL, secrets: SecretStore) -> Vault {
@@ -102,7 +124,9 @@ public final class DatabaseModel {
   // MARK: Persistence
 
   private var profilesURL: URL? { folder?.appendingPathComponent("connections.json") }
-  private var queriesURL: URL? { folder?.appendingPathComponent("saved-queries.json") }
+  private var queriesURL: URL? {
+    folder?.appendingPathComponent(vault.isPersonal ? "saved-queries.json" : "saved-queries.\(vault.accountID).json")
+  }
 
   private func load() {
     reloadProfiles()
@@ -124,7 +148,7 @@ public final class DatabaseModel {
 
   /// The profiles of the shared connections, in their sidebar order.
   private func reloadProfiles() {
-    let store = vault.store
+    let store = hostKeys.store
     var ids: [UUID: String] = [:]
     profiles = vault.databases.compactMap { record in
       let profile = SharedConnections.profile(from: record, hosts: vault.hosts) { host, port in
@@ -146,6 +170,7 @@ public final class DatabaseModel {
   /// Connections saved by builds before the vault (connections.json and the app's own Keychain items)
   /// are copied into it once. The file stays, for those builds.
   private func importLegacyConnections() {
+    guard vault.isPersonal else { return }
     #if DEBUG
       // A `--data-dir` run (Scripts/seed-demo.py) adds its folder's connections.json with the passwords from its
       // secrets file, every launch, and leaves the real Keychain and the once-only flag alone.
@@ -183,7 +208,7 @@ public final class DatabaseModel {
       vault.save(host)
       hostID = host.id
       if let fingerprint = profile.ssh.hostKeyFingerprint {
-        vault.perform { try $0.trust(fingerprint: fingerprint, host: host.hostname, port: host.port) }
+        hostKeys.perform { try $0.trust(fingerprint: fingerprint, host: host.hostname, port: host.port) }
       }
     }
     let id = vaultID(for: profile.id)
@@ -256,7 +281,7 @@ public final class DatabaseModel {
     guard let fingerprint, let profile = profile(id), profile.ssh.enabled,
       profile.ssh.hostKeyFingerprint != fingerprint
     else { return }
-    vault.perform { try $0.trust(fingerprint: fingerprint, host: profile.ssh.host, port: profile.ssh.port) }
+    hostKeys.perform { try $0.trust(fingerprint: fingerprint, host: profile.ssh.host, port: profile.ssh.port) }
     reloadProfiles()
   }
 

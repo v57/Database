@@ -2,6 +2,8 @@ import ComponentKit
 import DatabaseKit
 import DatabaseUI
 import SwiftUI
+import VaultKit
+import VaultUI
 
 #if os(macOS)
   import UpdateKit
@@ -30,8 +32,9 @@ struct DatabaseApp: App {
   }
 
   var body: some Scene {
-    WindowGroup {
-      ContentView()
+    // A window's value is the account Open in a New Window asked for; the window keeps it in its scene storage.
+    WindowGroup(for: String.self) { $account in
+      MainWindow(openedAccount: $account)
         .environment(app)
         .kitToasts()
         .componentKit(accent: .databaseAccent)
@@ -49,6 +52,63 @@ struct DatabaseApp: App {
           .environment(app)
           .componentKit(accent: .databaseAccent)
       }
+    #endif
+  }
+}
+
+/// A window on one account (`VaultAccountScope`, ../Ideas/Accounts.md): Personal's model, or the account's
+/// (`DatabaseModel.model(for:)`, shared by the account's windows). The picker heads the sidebar.
+private struct MainWindow: View {
+  /// The account a new window was opened on, until the window takes it.
+  @Binding var openedAccount: String?
+  @Environment(DatabaseModel.self) private var app
+  @SceneStorage("vault.account") private var accountID = VaultAccount.personal.id
+  #if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
+  #endif
+
+  var body: some View {
+    #if DEBUG
+      // A `--data-dir` run keeps to its scratch vault: no accounts, so the real vault isn't opened.
+      if LaunchOptions.value("--data-dir") != nil { ContentView() } else { scoped }
+    #else
+      scoped
+    #endif
+  }
+
+  private var scoped: some View {
+    VaultAccountScope(
+      selection: Binding(get: { openedAccount ?? accountID }, set: { accountID = $0; openedAccount = nil }),
+      manage: manage, openInNewWindow: openInNewWindow
+    ) { vault in
+      ContentView().environment(app.model(for: vault))
+    }
+    .onAppear {
+      if let openedAccount {
+        accountID = openedAccount
+        self.openedAccount = nil
+      }
+    }
+  }
+
+  /// Settings ▸ Accounts (the Mac's Settings window; iPhone and iPad have none).
+  private var manage: (@MainActor @Sendable () -> Void)? {
+    #if os(macOS)
+      return { [openSettings] in
+        UserDefaults.standard.set("Accounts", forKey: "settings.pane")
+        openSettings()
+      }
+    #else
+      return nil
+    #endif
+  }
+
+  private var openInNewWindow: (@MainActor @Sendable (String) -> Void)? {
+    #if os(macOS)
+      return { [openWindow] id in openWindow(value: id) }
+    #else
+      return nil
     #endif
   }
 }

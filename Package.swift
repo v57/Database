@@ -62,12 +62,14 @@ let package = Package(
       ],
       swiftSettings: concurrency),
 
-    // The interface on DatabaseKit: ComponentKit's design, the vault's shared connections and Code's highlighting.
+    // The interface on DatabaseKit: ComponentKit's design, the vault's shared connections and accounts, and Code's
+    // highlighting.
     .target(
       name: "DatabaseUI",
       dependencies: [
         "DatabaseKit", "SSHTunnel", .product(name: "ComponentKit", package: "Component"),
-        .product(name: "VaultKit", package: "Vault"), .product(name: "CodeHighlighting", package: "Code"),
+        .product(name: "VaultKit", package: "Vault"), .product(name: "VaultUI", package: "Vault"),
+        .product(name: "CodeHighlighting", package: "Code"),
       ],
       swiftSettings: [
         .swiftLanguageMode(.v5), .defaultIsolation(MainActor.self), .enableUpcomingFeature("ApproachableConcurrency"),
@@ -131,6 +133,7 @@ package.targets.append(
     dependencies: [
       "DatabaseUI", "DatabaseKit", .product(name: "SwiftUI", package: "SwiftUI"),
       .product(name: "ComponentKit", package: "Component"), .product(name: "UpdateKit", package: "UpdateKit"),
+      .product(name: "VaultKit", package: "Vault"), .product(name: "VaultUI", package: "Vault"),
       .product(name: "DevScreenshots", package: "Dev"),
     ],
     path: "Database",

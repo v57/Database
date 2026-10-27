@@ -121,7 +121,7 @@ struct ConnectionSheet: View {
     .kitSheet(item: $editingHost) { draft in
       SSHHostSheet(
         host: draft.host, isNew: draft.isNew,
-        fingerprint: try? app.vault.store?.knownFingerprint(host: draft.host.hostname, port: draft.host.port)
+        fingerprint: try? app.hostKeys.store?.knownFingerprint(host: draft.host.hostname, port: draft.host.port)
       ) { host, password in
         save(host, password: password)
       }
@@ -307,7 +307,7 @@ struct ConnectionSheet: View {
     profile.ssh.user = host.user
     profile.ssh.auth = host.auth == .password ? .password : .key
     profile.ssh.keyID = host.auth == .importedKey ? host.keyID.flatMap(UUID.init(uuidString:)) : nil
-    profile.ssh.hostKeyFingerprint = try? app.vault.store?.knownFingerprint(host: host.hostname, port: host.port)
+    profile.ssh.hostKeyFingerprint = try? app.hostKeys.store?.knownFingerprint(host: host.hostname, port: host.port)
     sshPassword = host.auth == .password ? host.password ?? "" : ""
     test = .idle
   }
