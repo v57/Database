@@ -260,13 +260,15 @@ struct ConnectionSheet: View {
       "This Mac"
     #elseif os(Windows)
       "This PC"
+    #elseif os(Linux)
+      "This Computer"
     #else
       UIDevice.current.userInterfaceIdiom == .pad ? "This iPad" : "This iPhone"
     #endif
   }
 
   private static var thisDeviceSymbol: String {
-    #if os(macOS) || os(Windows)
+    #if os(macOS) || os(Windows) || os(Linux)
       "laptopcomputer"
     #else
       UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone"

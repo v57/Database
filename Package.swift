@@ -147,5 +147,31 @@ package.targets.append(
         ["Combine", "FoundationNetworking", "SwiftUIPortability"].flatMap { ["-Xfrontend", "-import-module", "-Xfrontend", $0] }),
     ]))
 package.products.append(.library(name: "DatabaseWinUI", type: .dynamic, targets: ["DatabaseApp"]))
+#elseif os(Linux)
+// The app on SwiftUI's GTK backend: an executable built from the Xcode project's sources with its settings
+// (V57_LOCAL=1 swift build --product Database; SwiftUI's Linux/scripts/build-app --package <this package> Database
+// stages it). No DevScreenshots: Dev's package depends on this one on Linux.
+package.dependencies += [v57("UpdateKit")]
+package.targets.append(
+  .executableTarget(
+    name: "DatabaseApp",
+    dependencies: [
+      "DatabaseUI", "DatabaseKit", .product(name: "SwiftUI", package: "SwiftUI"),
+      .product(name: "ComponentKit", package: "Component"), .product(name: "UpdateKit", package: "UpdateKit"),
+      .product(name: "VaultKit", package: "Vault"), .product(name: "VaultUI", package: "Vault"),
+    ],
+    path: "Database",
+    exclude: ["AppIcon.icon", "Assets.xcassets", "Database.entitlements", "Database-iOS.entitlements", "Info.plist", "PrivacyInfo.xcprivacy"],
+    swiftSettings: [
+      .swiftLanguageMode(.v5), .defaultIsolation(MainActor.self), .enableUpcomingFeature("ApproachableConcurrency"),
+      .enableUpcomingFeature("MemberImportVisibility"),
+      // On Apple platforms `import Foundation` brings Combine (ObservableObject, @Published), URLSession and the
+      // file APIs SwiftUIPortability adds along, and `import SwiftUI` brings Observation: every file gets them too.
+      .unsafeFlags(
+        ["Combine", "FoundationNetworking", "Observation", "SwiftUIPortability"].flatMap {
+          ["-Xfrontend", "-import-module", "-Xfrontend", $0]
+        }),
+    ]))
+package.products.append(.executable(name: "Database", targets: ["DatabaseApp"]))
 #endif
 #endif

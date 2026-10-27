@@ -3,7 +3,8 @@ import DatabaseKit
 import DatabaseUI
 import SwiftUI
 
-#if DEBUG
+// Screenshot captures (Dev's DevScreenshots); not on Linux, where Dev's package depends on this one.
+#if DEBUG && canImport(DevScreenshots)
   import DevScreenshots
 #endif
 
@@ -27,16 +28,20 @@ struct ContentView: View {
         #if DEBUG
           // Screenshots (.dev/screenshots.json): every scene of a locale in this launch. A scene starts from a new
           // window model and closed connections, as a fresh launch would, then opens from its own arguments.
-          Screenshots.prepare(waitsForReady: true) { scene in
-            LaunchOptions.arguments = scene.arguments
-            let model = WindowModel(app: app)
-            window = model
-            await app.disconnectAll()
-            await DebugDriver.run(model)
-          }
+          #if canImport(DevScreenshots)
+            Screenshots.prepare(waitsForReady: true) { scene in
+              LaunchOptions.arguments = scene.arguments
+              let model = WindowModel(app: app)
+              window = model
+              await app.disconnectAll()
+              await DebugDriver.run(model)
+            }
+          #endif
           Task {
             await DebugDriver.run(model)
-            Screenshots.ready()
+            #if canImport(DevScreenshots)
+              Screenshots.ready()
+            #endif
           }
           #if os(macOS)
             if !Screenshots.isCapturing { Task { await DebugPresenter.runIfRequested() } }

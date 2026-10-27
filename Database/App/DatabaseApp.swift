@@ -5,7 +5,7 @@ import SwiftUI
 import VaultKit
 import VaultUI
 
-#if os(macOS)
+#if os(macOS) || os(Linux)
   import UpdateKit
 #endif
 
@@ -13,10 +13,10 @@ import VaultUI
 struct DatabaseApp: App {
   @State private var app: DatabaseModel
 
-  #if os(macOS)
-    /// Updates for the Mac app from GitHub Releases (Database.zip): checked daily once the user
-    /// turns on automatic checks (never before), installed in place with a relaunch. The iOS
-    /// app updates through the App Store.
+  #if os(macOS) || os(Linux)
+    /// Updates for the Mac app from GitHub Releases (Database.zip; Database-Linux-<arch>.tar.gz on Linux):
+    /// checked daily once the user turns on automatic checks (never before), installed in place with a
+    /// relaunch. The iOS app updates through the App Store.
     private let updater = AppUpdater(github: "v57/Database", assetName: "Database.zip")
   #endif
 
@@ -26,7 +26,7 @@ struct DatabaseApp: App {
     #if DEBUG && os(macOS)
       DebugPresenter.prepare { ContentView().environment(app).kitToasts().componentKit(accent: .databaseAccent) }
     #endif
-    #if os(macOS)
+    #if os(macOS) || os(Linux)
       updater.start()
     #endif
   }
@@ -42,11 +42,11 @@ struct DatabaseApp: App {
     .defaultSize(width: 1440, height: 900)
     .commands {
       DatabaseCommands()
-      #if os(macOS)
+      #if os(macOS) || os(Linux)
         UpdaterCommands(updater: updater)
       #endif
     }
-    #if os(macOS)
+    #if os(macOS) || os(Linux)
       Settings {
         SettingsView()
           .environment(app)
@@ -63,7 +63,7 @@ private struct MainWindow: View {
   @Binding var openedAccount: String?
   @Environment(DatabaseModel.self) private var app
   @SceneStorage("vault.account") private var accountID = VaultAccount.personal.id
-  #if os(macOS)
+  #if os(macOS) || os(Linux)
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
   #endif
@@ -92,9 +92,9 @@ private struct MainWindow: View {
     }
   }
 
-  /// Settings ▸ Accounts (the Mac's Settings window; iPhone and iPad have none).
+  /// Settings ▸ Accounts (the Settings window on the Mac and Linux; iPhone and iPad have none).
   private var manage: (@MainActor @Sendable () -> Void)? {
-    #if os(macOS)
+    #if os(macOS) || os(Linux)
       return { [openSettings] in
         UserDefaults.standard.set("Accounts", forKey: "settings.pane")
         openSettings()
@@ -105,7 +105,7 @@ private struct MainWindow: View {
   }
 
   private var openInNewWindow: (@MainActor @Sendable (String) -> Void)? {
-    #if os(macOS)
+    #if os(macOS) || os(Linux)
       return { [openWindow] id in openWindow(value: id) }
     #else
       return nil
