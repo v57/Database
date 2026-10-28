@@ -17,7 +17,18 @@ extension Color {
 extension EnvironmentValues {
   /// What the tree's rows give the sidebar as their selection value. Database's sidebar selects `SidebarItem`s;
   /// an app showing the tree in its own sidebar wraps them in its selection type.
-  @Entry public var databaseSidebarTag: @MainActor @Sendable (SidebarItem) -> AnyHashable = { AnyHashable($0) }
+  @Entry public var databaseSidebarTag = DatabaseSidebarTag { AnyHashable($0) }
+}
+
+/// The sidebar selection value for a tree row (`EnvironmentValues.databaseSidebarTag`). A struct rather than a bare
+/// closure: compilers disagree on the type of a key path to a `@MainActor @Sendable` closure property, and Windows'
+/// crashes on `@Environment` of one.
+public struct DatabaseSidebarTag: Sendable {
+  private let make: @MainActor @Sendable (SidebarItem) -> AnyHashable
+
+  public init(_ make: @escaping @MainActor @Sendable (SidebarItem) -> AnyHashable) { self.make = make }
+
+  @MainActor public func callAsFunction(_ item: SidebarItem) -> AnyHashable { make(item) }
 }
 
 extension FocusedValues {
