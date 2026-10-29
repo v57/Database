@@ -7,14 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		2669A0EF3031C45000C52779 /* DatabaseKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0EE3031C45000C52779 /* DatabaseKit */; };
-		2669A0F13031C45000C52779 /* DatabaseUI in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0F03031C45000C52779 /* DatabaseUI */; };
-		5C56F8A6336B183BEBF30E38 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = 699545B0CBF14D31A04E078E /* VaultKit */; };
-		5C56F8A6336B183BEBF30E39 /* VaultUI in Frameworks */ = {isa = PBXBuildFile; productRef = 699545B0CBF14D31A04E078F /* VaultUI */; };
-		C0DE4161000000000000000003 /* CodeHighlighting in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE4161000000000000000002 /* CodeHighlighting */; };
-		DE5C0DE0000000000000000003 /* DevScreenshots in Frameworks */ = {isa = PBXBuildFile; productRef = DE5C0DE0000000000000000002 /* DevScreenshots */; };
-		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = D5C0DE000000000000000002 /* UpdateKit */; };
-		C0C0DE000000000000000003 /* ComponentKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0C0DE000000000000000002 /* ComponentKit */; };
+		2669A0F33031C45000C52779 /* DatabaseApp in Frameworks */ = {isa = PBXBuildFile; productRef = 2669A0F23031C45000C52779 /* DatabaseApp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,7 +15,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		000000000000000000000030 /* Exceptions for "Database" folder in "Database" target */ = {
+		000000000000000000000030 /* Exceptions for "Resources" folder in "Database" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -34,10 +27,16 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000010 /* Database */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			name = Database;
+			path = App/Sources/Database;
+			sourceTree = "<group>";
+		};
+		000000000000000000000011 /* Resources */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				000000000000000000000030 /* Exceptions for "Database" folder in "Database" target */,
+				000000000000000000000030 /* Exceptions for "Resources" folder in "Database" target */,
 			);
-			path = Database;
+			path = App/Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -46,14 +45,7 @@
 		000000000000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
-				C0DE4161000000000000000003 /* CodeHighlighting in Frameworks */,
-				2669A0EF3031C45000C52779 /* DatabaseKit in Frameworks */,
-				2669A0F13031C45000C52779 /* DatabaseUI in Frameworks */,
-				DE5C0DE0000000000000000003 /* DevScreenshots in Frameworks */,
-				D5C0DE000000000000000003 /* UpdateKit in Frameworks */,
-				C0C0DE000000000000000003 /* ComponentKit in Frameworks */,
-				5C56F8A6336B183BEBF30E38 /* VaultKit in Frameworks */,
-				5C56F8A6336B183BEBF30E39 /* VaultUI in Frameworks */,
+				2669A0F33031C45000C52779 /* DatabaseApp in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -63,6 +55,7 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000010 /* Database */,
+				000000000000000000000011 /* Resources */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -90,17 +83,11 @@
 			);
 			fileSystemSynchronizedGroups = (
 				000000000000000000000010 /* Database */,
+				000000000000000000000011 /* Resources */,
 			);
 			name = Database;
 			packageProductDependencies = (
-				2669A0EE3031C45000C52779 /* DatabaseKit */,
-				2669A0F03031C45000C52779 /* DatabaseUI */,
-				D5C0DE000000000000000002 /* UpdateKit */,
-				C0C0DE000000000000000002 /* ComponentKit */,
-				C0DE4161000000000000000002 /* CodeHighlighting */,
-				699545B0CBF14D31A04E078E /* VaultKit */,
-				699545B0CBF14D31A04E078F /* VaultUI */,
-				DE5C0DE0000000000000000002 /* DevScreenshots */,
+				2669A0F23031C45000C52779 /* DatabaseApp */,
 			);
 			productName = Database;
 			productReference = 000000000000000000000120 /* Database.app */;
@@ -131,12 +118,8 @@
 			mainGroup = 000000000000000000000001;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				2669A0EC3031C45000C52779 /* XCLocalSwiftPackageReference "App" */,
 				2669A0ED3031C45000C52779 /* XCLocalSwiftPackageReference "." */,
-				D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */,
-				C0C0DE000000000000000001 /* XCRemoteSwiftPackageReference "Component" */,
-				C0DE4161000000000000000001 /* XCRemoteSwiftPackageReference "Code" */,
-				E3E972BC0ADB1ADD2484B58C /* XCRemoteSwiftPackageReference "Vault" */,
-				DE5C0DE0000000000000000001 /* XCRemoteSwiftPackageReference "Dev" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -302,9 +285,9 @@
 			buildSettings = {
 				"ARCHS[sdk=macosx*]" = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Database/Database-iOS.entitlements";
-				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "Database/Database-iOS.entitlements";
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Database/Database.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "App/Resources/Database-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "App/Resources/Database-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = App/Resources/Database.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = AUCR797TMH;
@@ -313,7 +296,7 @@
 				ENABLE_PREVIEWS = YES;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Database/Info.plist;
+				INFOPLIST_FILE = App/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Database;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
@@ -334,7 +317,6 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.v57.db;
-				PRODUCT_MODULE_NAME = DatabaseApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
@@ -356,9 +338,9 @@
 			buildSettings = {
 				"ARCHS[sdk=macosx*]" = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "Database/Database-iOS.entitlements";
-				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "Database/Database-iOS.entitlements";
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Database/Database.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "App/Resources/Database-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "App/Resources/Database-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = App/Resources/Database.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = AUCR797TMH;
@@ -367,7 +349,7 @@
 				ENABLE_PREVIEWS = YES;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Database/Info.plist;
+				INFOPLIST_FILE = App/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Database;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
@@ -388,7 +370,6 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.v57.db;
-				PRODUCT_MODULE_NAME = DatabaseApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
@@ -427,92 +408,20 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		2669A0EC3031C45000C52779 /* XCLocalSwiftPackageReference "App" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = App;
+		};
 		2669A0ED3031C45000C52779 /* XCLocalSwiftPackageReference "." */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = .;
 		};
 /* End XCLocalSwiftPackageReference section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		C0DE4161000000000000000001 /* XCRemoteSwiftPackageReference "Code" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/Code.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		DE5C0DE0000000000000000001 /* XCRemoteSwiftPackageReference "Dev" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/Dev.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/UpdateKit.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		E3E972BC0ADB1ADD2484B58C /* XCRemoteSwiftPackageReference "Vault" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/Vault.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		C0C0DE000000000000000001 /* XCRemoteSwiftPackageReference "Component" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/Component.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
 /* Begin XCSwiftPackageProductDependency section */
-		2669A0EE3031C45000C52779 /* DatabaseKit */ = {
+		2669A0F23031C45000C52779 /* DatabaseApp */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = DatabaseKit;
-		};
-		2669A0F03031C45000C52779 /* DatabaseUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = DatabaseUI;
-		};
-		699545B0CBF14D31A04E078E /* VaultKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E3E972BC0ADB1ADD2484B58C /* XCRemoteSwiftPackageReference "Vault" */;
-			productName = VaultKit;
-		};
-		699545B0CBF14D31A04E078F /* VaultUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E3E972BC0ADB1ADD2484B58C /* XCRemoteSwiftPackageReference "Vault" */;
-			productName = VaultUI;
-		};
-		C0DE4161000000000000000002 /* CodeHighlighting */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = C0DE4161000000000000000001 /* XCRemoteSwiftPackageReference "Code" */;
-			productName = CodeHighlighting;
-		};
-		DE5C0DE0000000000000000002 /* DevScreenshots */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = DE5C0DE0000000000000000001 /* XCRemoteSwiftPackageReference "Dev" */;
-			productName = DevScreenshots;
-		};
-		D5C0DE000000000000000002 /* UpdateKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = UpdateKit;
-		};
-		C0C0DE000000000000000002 /* ComponentKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = C0C0DE000000000000000001 /* XCRemoteSwiftPackageReference "Component" */;
-			productName = ComponentKit;
+			productName = DatabaseApp;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

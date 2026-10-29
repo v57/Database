@@ -11,6 +11,7 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 /.swiftpm
+/App/.swiftpm
 
 # Binaries: built by Scripts/build-libssh2.sh and Scripts/build-duckdb.sh, published by Scripts/release-binaries.sh
 # (libssh2 is linked; DuckDB is a download the app makes on request)
@@ -38,4 +39,6 @@ graphify-out/
 # Package pins: the other v57 repositories follow GitHub's main until release (or the checkouts next to this
 # one, through <App>-Local.xcworkspace or V57_LOCAL=1), so nothing pins them
 /Database.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+/Package.resolved
+/App/Package.resolved
 /Database-Local.xcworkspace/xcshareddata/

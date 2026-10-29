@@ -9,8 +9,7 @@ import VaultUI
   import UpdateKit
 #endif
 
-@main
-struct DatabaseApp: App {
+public struct DatabaseApp: App {
   @State private var app: DatabaseModel
 
   #if os(macOS) || os(Linux)
@@ -20,7 +19,7 @@ struct DatabaseApp: App {
     private let updater = AppUpdater(github: "v57/Database", assetName: "Database.zip")
   #endif
 
-  init() {
+  public init() {
     let app = DatabaseModel.live()
     _app = State(initialValue: app)
     #if DEBUG && os(macOS)
@@ -31,7 +30,7 @@ struct DatabaseApp: App {
     #endif
   }
 
-  var body: some Scene {
+  public var body: some Scene {
     // A window's value is the account Open in a New Window asked for; the window keeps it in its scene storage.
     WindowGroup(for: String.self) { $account in
       MainWindow(openedAccount: $account)
