@@ -82,10 +82,9 @@ private struct WindowContent: View {
       if let profile = app.addFile(url) { window.connect(profile.id) }
     }
     #if os(macOS)
-      .dropDestination(for: URL.self) { urls, _ in
-        var opened = false
-        for url in urls { if let profile = app.addFile(url) { window.connect(profile.id); opened = true } }
-        return opened
+      // The kit's: a file dropped over a connection row (a reorderable row) comes here too.
+      .kitFileDrop { urls in
+        for url in urls { if let profile = app.addFile(url) { window.connect(profile.id) } }
       }
     #endif
   }
