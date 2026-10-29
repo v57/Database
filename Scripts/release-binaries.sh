@@ -5,20 +5,19 @@
 #
 #   Scripts/release-binaries.sh libssh2|duckdb
 #
-# The release is tagged with the library's version (libssh2-1.11.1, duckdb-1.5.6). Publishing stays manual:
-# the script prints the `gh release create` command.
+# The release is tagged with the library's version (libssh2-1.11.1, duckdb-1.5.6). libssh2 is released on v57/Shell,
+# DuckDB on v57/Database. Publishing stays manual: the script prints the `gh release create` command.
 set -euo pipefail
 cd "${0:A:h}/.."
 
-REPO=v57/Database
 OUT=build/release
 mkdir -p $OUT
 case ${1:-} in
   libssh2)
-    NAME=Libssh2 TITLE=libssh2
+    NAME=Libssh2 TITLE=libssh2 REPO=v57/Shell
     VERSION=$(awk -F'"' '/define LIBSSH2_VERSION /{sub(/_DEV$/, "", $2); print $2; exit}' \
       Binary/Libssh2.xcframework/macos-arm64/Headers/libssh2.h)
-    NOTES="libssh2 + mbedTLS for Database (mbedTLS symbols prefixed _dbpro_), made by Scripts/build-libssh2.sh."
+    NOTES="libssh2 + mbedTLS (mbedTLS symbols prefixed _dbpro_) for macOS, iOS and the iOS simulator (arm64), made by Database's Scripts/build-libssh2.sh. SSHKit (v57/SSH) links it as its Libssh2 binary target."
     [[ -d Binary/$NAME.xcframework ]] || { echo "No Binary/$NAME.xcframework: run Scripts/build-libssh2.sh"; exit 1; }
     TAG=$1-$VERSION
     ZIP=$OUT/$NAME.xcframework.zip
@@ -34,7 +33,7 @@ case ${1:-} in
     echo "$PKG now points at release $TAG. Commit it there, then publish:" ;;
   duckdb)
     # Signed with the app's Developer ID: the hardened runtime only loads libraries from the same team.
-    TITLE=DuckDB
+    TITLE=DuckDB REPO=v57/Database
     [[ -f Binary/DuckDB/libduckdb.dylib ]] || { echo "No Binary/DuckDB/libduckdb.dylib: run Scripts/build-duckdb.sh"; exit 1; }
     VERSION=$(cat Binary/DuckDB/VERSION)
     NOTES="The DuckDB $VERSION library for Apple silicon Macs, with parquet, json and icu built in and extension auto-install off, made by Scripts/build-duckdb.sh. Database downloads it when you open a DuckDB file."
