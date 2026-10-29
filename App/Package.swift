@@ -11,11 +11,15 @@ func v57(_ name: String) -> Package.Dependency {
     ? .package(url: "https://github.com/v57/\(name).git", branch: "main") : .package(path: "../../\(name)")
 }
 
+/// This repository's libraries, the package at "..": SwiftPM names a path dependency after its folder, which is Database in
+/// the main checkout and the worktree's own name in a worktree.
+let kits = String(Context.packageDirectory.split(whereSeparator: { $0 == "/" || $0 == "\\" }).dropLast().last ?? "Database")
+
 let package = Package(
   name: "DatabaseApp", platforms: [.macOS(.v14), .iOS(.v17)],
   products: [.library(name: "DatabaseApp", targets: ["DatabaseApp"])],
   dependencies: [
-    .package(name: "Database", path: ".."),
+    .package(path: ".."),
     // The shared design, the vault's accounts, Code's highlighting and in-app updates (Dev's screenshot scenes are
     // added below, on Apple platforms only).
     v57("Component"), v57("Vault"), v57("Code"), v57("UpdateKit"),
@@ -27,7 +31,7 @@ let package = Package(
     .target(
       name: "DatabaseApp",
       dependencies: [
-        .product(name: "DatabaseUI", package: "Database"), .product(name: "DatabaseKit", package: "Database"),
+        .product(name: "DatabaseUI", package: kits), .product(name: "DatabaseKit", package: kits),
         .product(name: "ComponentKit", package: "Component"), .product(name: "VaultKit", package: "Vault"),
         .product(name: "VaultUI", package: "Vault"), .product(name: "CodeHighlighting", package: "Code"),
         // Updates from GitHub Releases outside the App Store (the iOS app updates through the App Store).
