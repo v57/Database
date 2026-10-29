@@ -23,16 +23,14 @@ ZIP=$OUT/Database.zip
 
 rm -rf $OUT && mkdir -p $OUT
 echo "==> Archiving Database $VERSION"
-# actool-icon-slim stores the flattened pictures of an Icon Composer icon as HEVC instead of lossless (Assets.car
-# 1.7 MB -> 140 KB); Xcode reads a tool's version under its file name (com.apple.actool.version), so the copy is
-# named actool.
-install -d $OUT/icon-slim
-install -m 755 Scripts/actool-icon-slim $OUT/icon-slim/actool
-xcodebuild -project Database.xcodeproj -scheme Database -configuration Release \
+# xcodebuild-release is xcodebuild with the release link every v57 app ships with (LTO, ld-archive-prelink,
+# actool-icon-slim: unused package code goes, the icon's fallbacks as HEVC), from the Code checkout beside this
+# repo's main checkout (RELEASE_TOOLS: another copy of Code's Sources/CodeActions/Release).
+release=${RELEASE_TOOLS:-${$(git rev-parse --path-format=absolute --git-common-dir):h:h}/Code/Sources/CodeActions/Release}/xcodebuild-release
+[[ -x $release ]] || { echo "xcodebuild-release not found at $release (RELEASE_TOOLS: Code's Sources/CodeActions/Release)" >&2; exit 1 }
+$release -project Database.xcodeproj -scheme Database -configuration Release \
   -destination 'generic/platform=macOS' -archivePath $ARCHIVE archive \
   MARKETING_VERSION=$VERSION \
-  SWIFT_LTO=YES ALTERNATE_LINKER_PATH=$PWD/Scripts/ld-archive-prelink ASSETCATALOG_EXEC=$PWD/$OUT/icon-slim/actool \
-  'OTHER_SWIFT_FLAGS=$(inherited) -Xfrontend -internalize-at-link -Xfrontend -conditional-runtime-records' \
   CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Developer ID Application" DEVELOPMENT_TEAM=$TEAM \
   OTHER_CODE_SIGN_FLAGS=--timestamp -quiet
 ditto $ARCHIVE/Products/Applications/Database.app $APP
