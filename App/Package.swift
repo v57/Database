@@ -20,9 +20,8 @@ let package = Package(
   products: [.library(name: "DatabaseApp", targets: ["DatabaseApp"])],
   dependencies: [
     .package(path: ".."),
-    // The shared design, the vault's accounts, Code's highlighting and in-app updates (Dev's screenshot scenes are
-    // added below, on Apple platforms only).
-    v57("Component"), v57("Vault"), v57("Code"), v57("UpdateKit"),
+    // The shared design, the vault's accounts, Code's highlighting, in-app updates and Dev's screenshot scenes.
+    v57("Component"), v57("Vault"), v57("Code"), v57("UpdateKit"), v57("Dev"),
   ],
   targets: [
     // The app, all of it but its entry point (Sources/Database/DatabaseMain.swift): Database.xcodeproj builds that
@@ -34,6 +33,7 @@ let package = Package(
         .product(name: "DatabaseUI", package: kits), .product(name: "DatabaseKit", package: kits),
         .product(name: "ComponentKit", package: "Component"), .product(name: "VaultKit", package: "Vault"),
         .product(name: "VaultUI", package: "Vault"), .product(name: "CodeHighlighting", package: "Code"),
+        .product(name: "DevScreenshots", package: "Dev"),
         // Updates from GitHub Releases outside the App Store (the iOS app updates through the App Store).
         .product(name: "UpdateKit", package: "UpdateKit", condition: .when(platforms: [.macOS, .linux, .windows])),
       ],
@@ -45,8 +45,7 @@ let package = Package(
 
 #if os(Windows) || os(Linux)
 // Off Apple platforms SwiftUI is v57/SwiftUI. Only here: on Apple platforms the app uses Apple's SwiftUI, and
-// v57/SwiftUI (with its swift-syntax) stays out of the package graph Xcode resolves. No DevScreenshots here: Dev's
-// package depends on this repository's libraries on Linux.
+// v57/SwiftUI (with its swift-syntax) stays out of the package graph Xcode resolves.
 package.dependencies += [v57("SwiftUI")]
 #if os(Windows)
 // On Apple platforms `import Foundation` brings Combine (ObservableObject, @Published), URLSession and the file APIs
@@ -83,11 +82,4 @@ package.targets.append(
     swiftSettings: appSettings))
 package.products.append(.executable(name: "Database", targets: ["Database"]))
 #endif
-#else
-// Screenshot scenes (Dev's DevScreenshots, behind `canImport` in the app), on Apple platforms only: Dev's package
-// depends on this repository's libraries on Linux.
-package.dependencies += [v57("Dev")]
-for target in package.targets where target.name == "DatabaseApp" {
-  target.dependencies += [.product(name: "DevScreenshots", package: "Dev")]
-}
 #endif
