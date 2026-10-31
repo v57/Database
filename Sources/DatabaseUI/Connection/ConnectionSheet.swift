@@ -139,19 +139,20 @@ struct ConnectionSheet: View {
   // MARK: Link
 
   private var linkField: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      SheetHeading("Connection link")
-      TextField("Connection link", text: $link, prompt: Text("postgres://user@host:5432/database"))
-        .kitField(status: recognized != nil ? .valid : .none, mono: true)
-        .onChange(of: link) { _, text in readLink(text) }
-        #if os(iOS)
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
-        #endif
-      if let recognized {
-        Label(recognized, systemImage: "checkmark").kitFont(.caption).foregroundStyle(Hue.green.text).padding(.horizontal, 4)
-      }
+    FormCard("Connection link") {
+      FormRow(
+        "Link", help: recognized,
+        systemImage: recognized != nil ? "checkmark" : "link", hue: recognized != nil ? .green : .accent,
+        status: recognized != nil ? .done : .idle,
+        field: TextField("Connection link", text: $link, prompt: Text("postgres://user@host:5432/database"))
+          .kitFont(.mono)
+          #if os(iOS)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+          #endif
+      )
     }
+    .onChange(of: link) { _, text in readLink(text) }
   }
 
   private func readLink(_ text: String) {
@@ -340,7 +341,6 @@ struct ConnectionSheet: View {
 
   private var serverSection: some View {
     VStack(alignment: .leading, spacing: 6) {
-      SheetHeading(profile.engine.isFileBased ? "File" : "Server")
       if profile.engine.isFileBased {
         fileForm
       } else if editsServer || hasServerProblem {
@@ -357,11 +357,14 @@ struct ConnectionSheet: View {
 
   /// The server in one line, with Edit to change it.
   private var serverSummary: some View {
-    RichHeader(
-      Text("\(profile.host):\(profile.port.formatted(.number.grouping(.never)))"),
-      icon: { profile.engine.tile(size: 24) }, meta: { Text(serverDetails) },
-      accessory: { Button("Edit") { editsServer = true }.buttonStyle(.kit).controlSize(.small) })
-    .kitCard()
+    FormCard("Server") {
+      FormRow(
+        "\(profile.host):\(profile.port.formatted(.number.grouping(.never)))", help: serverDetails, systemImage: "network",
+        hue: profile.engine.hue
+      ) {
+        Button("Edit") { editsServer = true }.buttonStyle(.kit)
+      }
+    }
   }
 
   /// "Database shop · User app".
@@ -374,7 +377,7 @@ struct ConnectionSheet: View {
   }
 
   private var serverForm: some View {
-    FormCard {
+    FormCard("Server") {
       FormRow("Host", systemImage: "network", field: hostField)
       FormRow("Port", help: "\(profile.engine.displayName) listens on \(profile.engine.defaultPort.formatted(.number.grouping(.never))) by default", systemImage: "number", hue: .gray) {
         TextField("Port", value: $profile.port, format: .number.grouping(.never))
@@ -409,7 +412,7 @@ struct ConnectionSheet: View {
 
   private var fileForm: some View {
     VStack(alignment: .leading, spacing: KitMetrics.gutter) {
-      FormCard(footer: profile.engine == .duckdb ? "A .duckdb file, or a Parquet, CSV or JSON file to query directly." : nil) {
+      FormCard("File", footer: profile.engine == .duckdb ? "A .duckdb file, or a Parquet, CSV or JSON file to query directly." : nil) {
         FormRow(
           profile.filePath.isEmpty ? "No file chosen" : (profile.filePath as NSString).lastPathComponent,
           help: profile.filePath.isEmpty ? nil : (profile.filePath as NSString).abbreviatingWithTildeInPath,
@@ -427,24 +430,19 @@ struct ConnectionSheet: View {
   // MARK: Password and encryption
 
   private var passwordSection: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      SheetHeading("Password")
-      SecureField("Password", text: $password, prompt: Text(profile.user.isEmpty ? "Password" : "Password for \(profile.user)"))
-        .kitField {
-          if profile.savePassword {
-            Label("Keychain", systemImage: "lock").kitFont(.caption)
-          }
-        }
-      Toggle("Save password in the Keychain", isOn: $profile.savePassword)
-        .toggleStyle(.kitCheckbox)
-        .padding(.horizontal, 4)
+    FormCard("Password") {
+      FormRow(
+        "Password", systemImage: "key", hue: .gray,
+        field: SecureField("Password", text: $password, prompt: Text(profile.user.isEmpty ? "Password" : "Password for \(profile.user)")))
+      FormRow("Save password in the Keychain", systemImage: "lock", hue: .gray) {
+        Toggle("Save password in the Keychain", isOn: $profile.savePassword).toggleStyle(.kitSwitch).kitLabelsHidden()
+      }
     }
   }
 
   private var encryptionSection: some View {
     VStack(alignment: .leading, spacing: 6) {
-      SheetHeading("Encryption")
-      FormCard {
+      FormCard("Encryption") {
         if profile.engine.supportsDirectTLS {
           FormRow(
             "Encrypted connection (TLS)",
@@ -474,25 +472,9 @@ struct ConnectionSheet: View {
     FormCard("Name and safety") {
       FormRow("Name", systemImage: "character.cursor.ibeam", hue: .gray, field: TextField("Name", text: $profile.name, prompt: Text(profile.displayName)))
       FormRow("Color", help: "A dot beside its name in the sidebar", systemImage: "paintpalette", hue: profile.color.hue ?? .gray) {
-        HStack(spacing: 2) {
-          ForEach(ColorTag.allCases) { tag in
-            Button {
-              withKitAnimation { profile.color = tag }
-            } label: {
-              Circle()
-                .fill(tag.hue.map { AnyShapeStyle($0.fill) } ?? AnyShapeStyle(Color.clear))
-                .overlay {
-                  if tag == .none { Circle().strokeBorder(.kitTertiary, style: StrokeStyle(lineWidth: 1, dash: [2])) }
-                }
-                .frame(width: 16, height: 16)
-                .padding(3)
-                .overlay(Circle().strokeBorder(profile.color == tag ? AnyShapeStyle(.kitLabel) : AnyShapeStyle(Color.clear), lineWidth: 2))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(tag == .none ? "No color" : tag.label)
-            .accessibilityAddTraits(profile.color == tag ? .isSelected : [])
-          }
-        }
+        KitHuePicker(
+          selection: Binding(get: { profile.color.hue }, set: { profile.color = ColorTag(hue: $0) }),
+          hues: ColorTag.allCases.compactMap(\.hue))
       }
       FormRow("Production", help: "Shows a red tag. Every change is reviewed before it's saved.", systemImage: "shield", hue: .red) {
         Toggle("Production", isOn: $profile.isProduction).toggleStyle(.kitSwitch).kitLabelsHidden()
@@ -562,13 +544,13 @@ struct ConnectionSheet: View {
   }
 }
 
-/// A heading over a group in a sheet.
+/// A heading over a group of choice cards, set as a `FormCard`'s title is.
 struct SheetHeading: View {
   let title: String
 
   init(_ title: String) { self.title = title }
 
   var body: some View {
-    Text(title).kitFont(.headline).padding(.horizontal, 4).accessibilityAddTraits(.isHeader)
+    Text(title).kitFont(.headline).padding(.horizontal, 12).accessibilityAddTraits(.isHeader)
   }
 }

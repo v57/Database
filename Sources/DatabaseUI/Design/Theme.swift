@@ -26,6 +26,11 @@ extension EngineKind {
 }
 
 extension ColorTag {
+  /// The tag whose hue is `hue` (`nil`: no tag).
+  init(hue: Hue?) {
+    self = Self.allCases.first { $0.hue == hue } ?? .none
+  }
+
   var hue: Hue? {
     switch self {
     case .none: nil
