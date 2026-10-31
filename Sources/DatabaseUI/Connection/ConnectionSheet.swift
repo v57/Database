@@ -179,7 +179,7 @@ struct ConnectionSheet: View {
 
   private var engineGrid: some View {
     VStack(alignment: .leading, spacing: 6) {
-      SheetHeading("Database")
+      FormHeading("Database")
       LazyVGrid(columns: tileColumns, spacing: KitMetrics.gutter) {
         ForEach(EngineKind.available) { engine in
           ChoiceCard(isOn: Binding(get: { profile.engine == engine }, set: { if $0 { choose(engine) } })) {
@@ -206,7 +206,7 @@ struct ConnectionSheet: View {
   /// This device, then every shared SSH configuration (Shell's saved hosts), then a tile to add one.
   private var locationGrid: some View {
     VStack(alignment: .leading, spacing: 6) {
-      SheetHeading("Location")
+      FormHeading("Location")
       LazyVGrid(columns: tileColumns, spacing: KitMetrics.gutter) {
         ChoiceCard(
           Self.thisDevice, subtitle: "Localhost", systemImage: Self.thisDeviceSymbol,
@@ -541,16 +541,5 @@ struct ConnectionSheet: View {
     guard let original else { return }
     password = app.databasePassword(for: original.id) ?? ""
     sshPassword = app.sshPassword(for: original.id) ?? ""
-  }
-}
-
-/// A heading over a group of choice cards, set as a `FormCard`'s title is.
-struct SheetHeading: View {
-  let title: String
-
-  init(_ title: String) { self.title = title }
-
-  var body: some View {
-    Text(title).kitFont(.headline).padding(.horizontal, 12).accessibilityAddTraits(.isHeader)
   }
 }
