@@ -66,8 +66,16 @@ private struct WindowContent: View {
         .toolbar(removing: .sidebarToggle)
         .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 380)
     } detail: {
-      DetailView(window: window)
-        .kitSidebarToggle(columnVisibility: $columnVisibility)
+      #if os(iOS)
+        // The detail's own stack: on iPhone an item pushes its screen (a split view's detail column has none).
+        NavigationStack {
+          DetailView(window: window)
+            .kitSidebarToggle(columnVisibility: $columnVisibility)
+        }
+      #else
+        DetailView(window: window)
+          .kitSidebarToggle(columnVisibility: $columnVisibility)
+      #endif
     }
     .focusedSceneValue(\.databaseWindow, window)
     .databaseSheets(window)

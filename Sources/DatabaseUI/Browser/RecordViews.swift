@@ -148,6 +148,7 @@ struct RecordMenu: View {
 /// Documents as cards: a title, a few fields, and chips for arrays and sub-documents.
 struct CardsView: View {
   @Bindable var browser: BrowserModel
+  @Environment(\.self) private var environment
 
   var body: some View {
     ScrollView {
@@ -199,12 +200,12 @@ struct CardsView: View {
       .padding(14)
       .frame(maxWidth: .infinity, alignment: .leading)
       .kitSurface(.card)
-      .selectedCardRing(selected)
+      .kitSelectedRing(selected)
       .kitHoverEffect(in: RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous))
       .opacity(browser.isPendingDelete(record) ? 0.5 : 1)
     }
     .buttonStyle(.kitHoverEffect)
-    .strikethrough(browser.isPendingDelete(record), color: .red)
+    .strikethrough(browser.isPendingDelete(record), color: Hue.red.color(in: environment))
   }
 
   private func titleField(_ record: Record) -> String? {
@@ -246,7 +247,7 @@ struct JSONListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
             .kitSurface(.card)
-            .selectedCardRing(selected)
+            .kitSelectedRing(selected)
             .contentShape(Rectangle())
             .onTapGesture { browser.selection = [record.id] }
         }
@@ -257,30 +258,29 @@ struct JSONListView: View {
   }
 }
 
-/// iPhone: one row per item, tapping opens it.
+/// iPhone: one row per item, tapping pushes it (`RecordDetailScreen`) on the stack around the detail (the app's
+/// `NavigationStack` in the split view's detail column).
 struct PhoneRecordList: View {
   @Bindable var browser: BrowserModel
   @Bindable var window: WindowModel
+  /// The item pushed; the stack pops it back to nil.
+  @State private var opened: Record.ID?
 
   var body: some View {
-    List {
-      Section {
-        ForEach(browser.records) { record in
-          NavigationLink {
-            RecordDetailScreen(browser: browser, record: record, window: window)
-          } label: {
-            PhoneRecordRow(browser: browser, record: record)
-          }
-        }
-        if browser.page?.hasMore == true {
-          Button("Load More") { Task { await browser.nextPage() } }.buttonStyle(.kitPlain)
-        }
+    KitList(selection: $opened) {
+      ForEach(browser.records) { record in
+        PhoneRecordRow(browser: browser, record: record)
+      }
+      if browser.page?.hasMore == true {
+        Button("Load More") { Task { await browser.nextPage() } }.buttonStyle(.kitPlain)
       }
     }
-    #if os(iOS)
-      .listStyle(.insetGrouped)
-    #endif
     .refreshable { await browser.reload() }
+    .navigationDestination(item: $opened) { id in
+      if let record = browser.records.first(where: { $0.id == id }) {
+        RecordDetailScreen(browser: browser, record: record, window: window)
+      }
+    }
   }
 }
 
@@ -288,6 +288,7 @@ struct PhoneRecordList: View {
 struct PhoneRecordRow: View {
   let browser: BrowserModel
   let record: Record
+  @Environment(\.self) private var environment
 
   var body: some View {
     let title = browser.displayName(for: record) ?? record.key?.summary ?? "Item"
@@ -297,16 +298,12 @@ struct PhoneRecordRow: View {
     let key = record.key.map(\.summary).flatMap { $0 == title ? nil : "#" + $0 }
     let status = browser.fields.first { $0.name.contains("status") || $0.name.contains("state") }
     let date = browser.fields.first { $0.category.isTemporal }
-    HStack(spacing: 10) {
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title).kitFont(.headline).lineLimit(1)
-        Text([key, date.flatMap { record[$0.name]?.displayText }].compactMap { $0 }.joined(separator: " · "))
-          .kitFont(.callout)
-          .foregroundStyle(.kitSecondary)
-          .lineLimit(1)
-      }
-      Spacer()
-      VStack(alignment: .trailing, spacing: 4) {
+    let subtitle = [key, date.flatMap { record[$0.name]?.displayText }].compactMap { $0 }.joined(separator: " · ")
+    SidebarRow(
+      value: record.id, title, subtitle: subtitle.isEmpty ? nil : subtitle, systemImage: browser.ref.symbol,
+      hue: browser.engine.hue
+    ) {
+      HStack(spacing: 6) {
         if let numeric, let value = record[numeric.name], !value.isNull {
           Text(value.displayText).monospacedDigit()
         }
@@ -315,7 +312,8 @@ struct PhoneRecordRow: View {
         }
       }
     }
-    .strikethrough(browser.isPendingDelete(record), color: .red)
+    .pushes()
+    .strikethrough(browser.isPendingDelete(record), color: Hue.red.color(in: environment))
   }
 }
 
