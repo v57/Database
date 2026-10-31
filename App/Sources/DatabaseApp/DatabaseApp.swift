@@ -16,7 +16,7 @@ public struct DatabaseApp: App {
     /// Updates for the Mac app from GitHub Releases (Database.zip; Database-Linux-<arch>.tar.gz on Linux):
     /// checked daily once the user turns on automatic checks (never before), installed in place with a
     /// relaunch. The iOS app updates through the App Store.
-    private let updater = AppUpdater(github: "v57/Database", assetName: "Database.zip")
+    private let updater = AppUpdater(github: "v57/Database", assetName: "Database.zip", accent: .databaseAccent)
   #endif
 
   public init() {
