@@ -91,13 +91,8 @@ enum SharedConnections {
     }
   }
 
-  static var deviceName: String {
-    #if os(macOS)
-      Host.current().localizedName ?? "Mac"
-    #else
-      "iPhone"
-    #endif
-  }
+  /// The name the user gave this device in the vault, else the system's.
+  static var deviceName: String { VaultDevice.name }
 }
 
 /// Passwords and imported keys in the shared keychain group (`VaultSecrets`): a database's password is
