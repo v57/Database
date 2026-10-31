@@ -12,9 +12,7 @@ struct DuckDBInstallRow: View {
   var body: some View {
     let installer = app.duckDB
     HStack(alignment: .center, spacing: 12) {
-      LiveIcon(hue: EngineKind.duckdb.hue, status: status, size: 28) {
-        Text(EngineKind.duckdb.monogram).font(.system(size: 12, weight: .bold))
-      }
+      LiveIcon(letters: EngineKind.duckdb.monogram, hue: EngineKind.duckdb.hue, status: status, size: 28)
       VStack(alignment: .leading, spacing: 2) {
         switch installer.state {
         case .unavailable:

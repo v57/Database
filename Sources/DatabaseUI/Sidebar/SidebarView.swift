@@ -149,9 +149,9 @@ public struct ConnectionContents: View {
       TreeChildren(connection: connection, parent: nil, window: window, level: level)
       QueryRows(connection: connection, window: window, level: level)
     case .connecting, .idle:
-      TreeNote("Connecting…", level: level)
+      NoteLine("Connecting…", systemImage: nil).inTree(level)
     case .failed(let message):
-      TreeNote(message, hue: .red, level: level)
+      NoteLine(message, systemImage: nil, hue: .red).inTree(level)
     }
   }
 }
@@ -249,9 +249,7 @@ extension LiveConnection {
       case .failed(let message): .failed(message)
       case .idle, .connected: .idle
       }
-    return LiveIcon(hue: profile.engine.hue, status: status, size: size) {
-      Text(profile.engine.monogram).font(.system(size: size * 0.42, weight: .bold))
-    }
+    return LiveIcon(letters: profile.engine.monogram, hue: profile.engine.hue, status: status, size: size)
   }
 }
 
@@ -274,15 +272,15 @@ struct TreeChildren: View {
     let key = connection.key(parent)
     if let nodes = connection.children[key] {
       if nodes.isEmpty {
-        TreeNote(emptyText, level: level)
+        NoteLine(emptyText, systemImage: nil).inTree(level)
       }
       ForEach(nodes) { node in
         TreeNodeRow(connection: connection, node: node, window: window, level: level)
       }
     } else if let error = connection.treeErrors[key] {
-      TreeNote(error, hue: .red, level: level)
+      NoteLine(error, systemImage: nil, hue: .red).inTree(level)
     } else {
-      TreeNote("Loading…", level: level)
+      NoteLine("Loading…", systemImage: nil).inTree(level)
         .task { await connection.loadChildren(of: parent) }
     }
   }
@@ -373,24 +371,11 @@ struct QueryRows: View {
   }
 }
 
-/// A quiet line in the tree: loading, empty, or what went wrong.
-private struct TreeNote: View {
-  let text: String
-  var hue: Hue?
-  let level: Int
-
-  init(_ text: String, hue: Hue? = nil, level: Int) {
-    self.text = text
-    self.hue = hue
-    self.level = level
-  }
-
-  var body: some View {
-    Text(text)
-      .kitFont(.caption)
-      .foregroundStyle(hue.map { AnyShapeStyle($0.text) } ?? AnyShapeStyle(.kitSecondary))
-      .lineLimit(4)
-      .padding(.leading, 8 + 14 + CGFloat(level) * 14)
+extension NoteLine {
+  /// The note as a line of the tree (loading, empty, or what went wrong), under the rows of `level`.
+  fileprivate func inTree(_ level: Int) -> some View {
+    lineLimit(4)
+      .padding(.leading, 2 + 14 + CGFloat(level) * 14)
       .padding(.vertical, 4)
   }
 }

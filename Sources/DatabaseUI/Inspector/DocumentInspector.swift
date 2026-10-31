@@ -37,8 +37,8 @@ struct DocumentInspector: View {
         }
       } else {
         KitSection("Fields", meta: "\(document.count) fields", systemImage: browser.ref.symbol, hue: browser.engine.hue) {
-          ForEach(document.elements, id: \.key) { element in
-            BSONTreeRow(key: element.key, value: element.value, level: 0, pending: browser.pendingValue(for: record, field: element.key))
+          KitOutline(BSONNode.fields(of: document), children: \.children) { node in
+            BSONTreeRow(node: node, pending: node.isTopLevel ? browser.pendingValue(for: record, field: node.key) : nil)
           }
         }
         ActionBar {
@@ -51,7 +51,7 @@ struct DocumentInspector: View {
               .labelStyle(.iconOnly)
           }
         }
-        InspectorNote("_id can't be changed. Every other field is editable, and you see the change before it's saved.")
+        NoteLine("_id can't be changed. Every other field is editable, and you see the change before it's saved.")
       }
     }
     .task(id: record.id) { editing = false }
@@ -123,68 +123,57 @@ struct DocumentInspector: View {
   }
 }
 
-/// One BSON field with its type badge; documents and arrays expand.
-struct BSONTreeRow: View {
+/// One field of a document in the inspector's outline; documents and arrays have children. Its id is its path (the
+/// keys joined by a unit separator, which no key holds).
+struct BSONNode: Identifiable {
+  let id: String
   let key: String
   let value: BSON
-  let level: Int
+
+  static func fields(of document: BSONDocument) -> [BSONNode] {
+    document.elements.map { BSONNode(id: $0.key, key: $0.key, value: $0.value) }
+  }
+
+  var isTopLevel: Bool { id == key }
+
+  var children: [BSONNode]? {
+    switch value {
+    case .document(let doc):
+      doc.elements.map { BSONNode(id: id + "\u{1F}" + $0.key, key: $0.key, value: $0.value) }
+    case .array(let items):
+      items.enumerated().map { BSONNode(id: id + "\u{1F}\($0.offset)", key: String($0.offset), value: $0.element) }
+    default:
+      nil
+    }
+  }
+}
+
+/// One BSON field: its name, its type badge and its value (a pending change marked).
+struct BSONTreeRow: View {
+  let node: BSONNode
   var pending: CellValue?
-  @State private var expanded = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      HStack(spacing: 6) {
-        Group {
-          if value.isContainer {
-            Image(systemName: "chevron.right")
-              .font(.system(size: 9, weight: .bold))
-              .foregroundStyle(.kitTertiary)
-              .rotationEffect(.degrees(expanded ? 90 : 0))
-          } else {
-            Color.clear
-          }
-        }
-        .frame(width: 10)
-        Text(key).foregroundStyle(.kitSecondary).lineLimit(1)
-        Chip(type: value.typeName).controlSize(.small)
-        Spacer(minLength: 8)
-        Text(pending.map { $0 == .unset ? "(removed)" : $0.displayText } ?? summary)
-          .kitFont(.monoSmall)
-          .foregroundStyle(value.isContainer ? AnyShapeStyle(.kitSecondary) : AnyShapeStyle(.kitLabel))
-          .lineLimit(1)
-          .truncationMode(.middle)
-          .textSelection(.enabled)
-          .padding(.horizontal, pending != nil ? 4 : 0)
-          .background(pending != nil ? AnyShapeStyle(Hue.orange.soft()) : AnyShapeStyle(Color.clear), in: RoundedRectangle(cornerRadius: KitMetrics.radiusXS))
-      }
-      .padding(.leading, CGFloat(4 + level * 14))
-      .padding(.trailing, 6)
-      .frame(minHeight: 30)
-      .contentShape(Rectangle())
-      .onTapGesture { if value.isContainer { withKitAnimation { expanded.toggle() } } }
-      .accessibilityElement(children: .combine)
-      .accessibilityAddTraits(value.isContainer ? .isButton : [])
-      if expanded {
-        switch value {
-        case .document(let doc):
-          ForEach(doc.elements, id: \.key) { element in
-            BSONTreeRow(key: element.key, value: element.value, level: level + 1)
-          }
-        case .array(let items):
-          ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-            BSONTreeRow(key: String(index), value: item, level: level + 1)
-          }
-        default:
-          EmptyView()
-        }
-      }
+    SidebarRow(node.key) {
+      EmptyView()
+    } trailing: {
+      Text(pending.map { $0 == .unset ? "(removed)" : $0.displayText } ?? summary)
+        .kitFont(.monoSmall)
+        .foregroundStyle(node.value.isContainer ? AnyShapeStyle(.kitSecondary) : AnyShapeStyle(.kitLabel))
+        .lineLimit(1)
+        .truncationMode(.middle)
+        .textSelection(.enabled)
+        .padding(.horizontal, pending != nil ? 4 : 0)
+        .background(pending != nil ? AnyShapeStyle(Hue.orange.soft()) : AnyShapeStyle(Color.clear), in: RoundedRectangle(cornerRadius: KitMetrics.radiusXS))
     }
+    .title(Text(node.key).foregroundStyle(.kitSecondary))
+    .titleAccessory { Chip(type: node.value.typeName).controlSize(.small) }
   }
 
   private var summary: String {
-    switch value {
+    switch node.value {
     case .string(let s): "\"\(s.count > 80 ? String(s.prefix(80)) + "…" : s)\""
-    default: CellValue.bson(value).displayText
+    default: CellValue.bson(node.value).displayText
     }
   }
 }
@@ -227,7 +216,7 @@ private struct FieldEditor: View {
           .frame(minHeight: 60, maxHeight: 220)
           .scrollContentBackground(.hidden)
           .padding(6)
-          .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+          .kitSurface(.field)
       } else {
         TextField("Value", text: $row.text, prompt: Text(row.type == "Date" ? "2026-10-12T10:02:00Z" : ""))
           .kitField(status: error == nil ? .none : .error, mono: row.type != "String")

@@ -199,12 +199,7 @@ struct CardsView: View {
       .padding(14)
       .frame(maxWidth: .infinity, alignment: .leading)
       .kitSurface(.card)
-      .overlay {
-        if selected {
-          RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous)
-            .strokeBorder(Hue.accent.fill, lineWidth: 2)
-        }
-      }
+      .selectedCardRing(selected)
       .kitHoverEffect(in: RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous))
       .opacity(browser.isPendingDelete(record) ? 0.5 : 1)
     }
@@ -251,12 +246,7 @@ struct JSONListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
             .kitSurface(.card)
-            .overlay {
-              if selected {
-                RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous)
-                  .strokeBorder(Hue.accent.fill, lineWidth: 2)
-              }
-            }
+            .selectedCardRing(selected)
             .contentShape(Rectangle())
             .onTapGesture { browser.selection = [record.id] }
         }
@@ -294,6 +284,7 @@ struct PhoneRecordList: View {
   }
 }
 
+/// An item as a list row: its name, its key and date under it, an amount and a status at the end.
 struct PhoneRecordRow: View {
   let browser: BrowserModel
   let record: Record

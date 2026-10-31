@@ -107,7 +107,7 @@ struct PipelineView: View {
     ) {
       CodeEditor(text: $importText, language: EngineKind.mongodb.highlighting, completions: [])
         .frame(minHeight: 240)
-        .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+        .kitSurface(.field)
         .clipShape(RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
         .kitFieldError(importError)
     } footer: {
@@ -153,7 +153,7 @@ struct StepCard: View {
           }
           .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.kitHoverEffect)
         Spacer(minLength: 4)
         if let count = pipeline.counts[step.id], step.isEnabled {
           Text("\(count.formatted()) out").kitFont(.caption).monospacedDigit()
@@ -189,29 +189,19 @@ struct StepCard: View {
     .padding(.trailing, 8)
     .padding(.vertical, 8)
     .frame(minHeight: 46)
-    .background {
-      if step.isEnabled {
-        SurfaceShapeCard()
-      }
-    }
+    // An off step has no card: only the dashed outline.
+    .background { if step.isEnabled { Color.clear.kitSurface(.card) } }
     .overlay {
-      let shape = RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous)
-      if selected {
-        shape.strokeBorder(Hue.accent.fill, lineWidth: 2)
-      } else if !step.isEnabled {
-        shape.strokeBorder(.kitSeparator, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+      if !selected && !step.isEnabled {
+        RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous)
+          .strokeBorder(.kitSeparator, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
       }
     }
+    .selectedCardRing(selected)
     .opacity(step.isEnabled ? 1 : 0.8)
   }
 }
 
-/// A card's ground, for views that draw their own border over it.
-private struct SurfaceShapeCard: View {
-  var body: some View {
-    Color.clear.kitSurface(.card)
-  }
-}
 
 struct AddStepMenu: View {
   let pipeline: PipelineModel

@@ -60,11 +60,11 @@ struct RecordInspector: View {
                 if let count = relatedCounts[relation.id] {
                   Text(count == 0 ? "None" : "\(count) \(count == 1 ? "row" : "rows")")
                 }
-                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(.kitTertiary)
+                Image(systemName: "chevron.right").imageScale(.small).foregroundStyle(.kitTertiary)
               }
             }
           }
-          .buttonStyle(.plain)
+          .buttonStyle(.kitHoverEffect)
         }
       }
     }
@@ -108,9 +108,9 @@ struct RecordInspector: View {
 
   @ViewBuilder private var note: some View {
     if record.key == nil && browser.ref.kind == .table {
-      InspectorNote("This table has no primary key, so its rows can't be changed here.")
+      NoteLine("This table has no primary key, so its rows can't be changed here.")
     } else if browser.connection.profile.isReadOnly {
-      InspectorNote("Read-only connection.", systemImage: "lock")
+      NoteLine("Read-only connection.", systemImage: "lock")
     }
   }
 
@@ -131,7 +131,7 @@ struct RecordInspector: View {
         Button("Done") { finishEditing() }
           .keyboardShortcut(.defaultAction)
       }
-      InspectorNote("Key fields can't be changed. You'll review every change before it's saved.")
+      NoteLine("Key fields can't be changed. You'll review every change before it's saved.")
     }
   }
 
@@ -209,8 +209,8 @@ struct FieldRow: View {
                 Image(systemName: "arrow.up.right").imageScale(.small)
               }
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Hue.accent.text)
+            .buttonStyle(.kitPlain)
+            .controlSize(.small)
             .accessibilityHint("Opens \(reference.target.name)")
           } else if field.isStatus {
             Chip(status: value.displayText)
@@ -223,24 +223,6 @@ struct FieldRow: View {
         .background(pending != nil ? AnyShapeStyle(Hue.orange.soft()) : AnyShapeStyle(Color.clear), in: RoundedRectangle(cornerRadius: KitMetrics.radiusXS))
       }
     }
-  }
-}
-
-/// A quiet note under an inspector's cards.
-struct InspectorNote: View {
-  let text: String
-  var systemImage = "info.circle"
-
-  init(_ text: String, systemImage: String = "info.circle") {
-    self.text = text
-    self.systemImage = systemImage
-  }
-
-  var body: some View {
-    Label(text, systemImage: systemImage)
-      .kitFont(.caption)
-      .fixedSize(horizontal: false, vertical: true)
-      .padding(.horizontal, 6)
   }
 }
 
@@ -301,7 +283,7 @@ struct FieldEditorRow: View {
             .frame(minHeight: 70, maxHeight: 200)
             .scrollContentBackground(.hidden)
             .padding(6)
-            .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+            .kitSurface(.field)
             .disabled(draft.isNull)
         } else {
           TextField(field.name, text: $draft.text, prompt: Text(prompt))
@@ -401,7 +383,7 @@ struct NewItemSheet: View {
           if browser.engine.family == .document {
             CodeEditor(text: $documentText, language: EngineKind.mongodb.highlighting, completions: [])
               .frame(minHeight: 220)
-              .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+              .kitSurface(.field)
               .clipShape(RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
               .kitFieldError(documentError)
             Text("Write the document in MongoDB Shell syntax, e.g. { name: \"Lamp\", price: 59.0 }. An _id is added if you leave it out.")

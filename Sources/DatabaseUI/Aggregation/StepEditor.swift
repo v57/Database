@@ -20,7 +20,7 @@ struct StepEditor: View {
       } else {
         CodeEditor(text: Binding(get: { step.text }, set: { pipeline.setText(step.id, $0) }), language: EngineKind.mongodb.highlighting, completions: [])
           .frame(minHeight: 80, idealHeight: 120, maxHeight: 260)
-          .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+          .kitSurface(.field)
           .clipShape(RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
         if let error = parseError {
           Label(error, systemImage: "exclamationmark.circle").kitFont(.caption).foregroundStyle(Hue.red.text)
@@ -68,9 +68,15 @@ struct StepEditor: View {
     case .sort(let keys):
       SortEditor(keys: keys, fields: fieldNames) { update(.sort($0)) }
     case .limit(let n):
-      Stepper("Keep the first \(n)", value: Binding(get: { n }, set: { update(.limit(max(1, $0))) }), in: 1...1_000_000)
+      HStack(spacing: 8) {
+        Text("Keep the first")
+        KitStepper("Keep the first", value: Binding(get: { n }, set: { update(.limit(max(1, $0))) }), in: 1...1_000_000)
+      }
     case .skip(let n):
-      Stepper("Skip the first \(n)", value: Binding(get: { n }, set: { update(.skip(max(0, $0))) }), in: 0...1_000_000)
+      HStack(spacing: 8) {
+        Text("Skip the first")
+        KitStepper("Skip the first", value: Binding(get: { n }, set: { update(.skip(max(0, $0))) }), in: 0...1_000_000)
+      }
     case .pick(let fields, let exclude):
       PickEditor(picked: fields, exclude: exclude, fields: fieldNames, sql: pipeline.isSQL) { update(.pick(fields: $0, exclude: $1)) }
     case .addFields(let formulas):
@@ -81,6 +87,7 @@ struct StepEditor: View {
         FieldField(value: path, fields: fieldNames) { update(.unwind(path: $0, keepEmpty: keepEmpty)) }
       }
       Toggle("Keep documents without items", isOn: Binding(get: { keepEmpty }, set: { update(.unwind(path: path, keepEmpty: $0)) }))
+        .toggleStyle(.kitCheckbox)
     case .lookup(let from, let local, let foreign, let alias):
       LookupEditor(from: from, local: local, foreign: foreign, alias: alias, fields: fieldNames, browser: browser) {
         update(.lookup(from: $0, localField: $1, foreignField: $2, as: $3))
@@ -94,7 +101,7 @@ struct StepEditor: View {
   }
 }
 
-/// A field name: type it, or pick a known one.
+/// A field name: type it, or pick a known one from the menu at the field's end.
 struct FieldField: View {
   let value: String
   let fields: [String]
@@ -102,24 +109,18 @@ struct FieldField: View {
   @State private var picking = false
 
   var body: some View {
-    HStack(spacing: 2) {
-      TextField("Field", text: Binding(get: { value }, set: onChange))
-        .textFieldStyle(.plain)
-        .kitFont(.mono)
-        .frame(minWidth: 70, maxWidth: 160)
-      Button("Pick a field", systemImage: "chevron.down") { picking = true }
-        .labelStyle(.iconOnly)
-        .imageScale(.small)
-        .buttonStyle(.plain)
-        .fixedSize()
-        .kitMenu(isPresented: $picking) {
-          ForEach(fields, id: \.self) { name in Button(name) { onChange(name) } }
-        }
-    }
-    .padding(.horizontal, 8)
-    .frame(minHeight: KitMetrics.controlSmall)
-    .foregroundStyle(Hue.accent.text)
-    .background(Hue.accent.soft(0.12), in: RoundedRectangle(cornerRadius: KitMetrics.radiusSmall, style: .continuous))
+    TextField("Field", text: Binding(get: { value }, set: onChange))
+      .kitField(mono: true) {
+        Button("Pick a field", systemImage: "chevron.down") { picking = true }
+          .labelStyle(.iconOnly)
+          .buttonStyle(.kitIcon)
+          .controlSize(.small)
+          .fixedSize()
+          .kitMenu(isPresented: $picking) {
+            ForEach(fields, id: \.self) { name in Button(name) { onChange(name) } }
+          }
+      }
+      .frame(minWidth: 110, maxWidth: 200)
   }
 }
 
@@ -256,26 +257,25 @@ struct PickEditor: View {
           selection: Binding(get: { exclude }, set: { onChange(picked, $0) }),
           options: [("Only these fields", false), ("All but these", true)])
       }
-      FlowLayoutFields(fields: fields, picked: Set(picked)) { name, on in
+      FieldChips(fields: fields, picked: Set(picked)) { name, on in
         onChange(on ? picked + [name] : picked.filter { $0 != name }, exclude)
       }
     }
   }
 }
 
-/// Toggle chips for field names.
-struct FlowLayoutFields: View {
+/// Toggle chips for field names, on one track that wraps.
+struct FieldChips: View {
   let fields: [String]
   let picked: Set<String>
   let onToggle: (String, Bool) -> Void
 
   var body: some View {
-    LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
+    ChipTrack {
       ForEach(fields, id: \.self) { name in
         Toggle(isOn: Binding(get: { picked.contains(name) }, set: { onToggle(name, $0) })) {
           Text(name).kitFont(.monoSmall).lineLimit(1)
         }
-        .toggleStyle(.kitChip)
       }
     }
   }

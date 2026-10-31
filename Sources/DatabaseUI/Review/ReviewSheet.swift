@@ -21,17 +21,21 @@ struct ReviewSheet: View {
     ) {
       ScrollView {
         VStack(alignment: .leading, spacing: KitMetrics.gutter) {
-          ForEach(browser.pending) { edit in
-            EditCard(edit: edit, browser: browser)
-          }
           if browser.pending.isEmpty {
-            Text("Nothing to review.").foregroundStyle(.kitSecondary).padding(8)
+            NoteLine("Nothing to review.", systemImage: nil).padding(.vertical, 8)
+          } else {
+            VStack(alignment: .leading, spacing: 2) {
+              ForEach(browser.pending) { edit in
+                ReviewEditRows(edit: edit, browser: browser)
+              }
+            }
+            .kitCard()
           }
           statements
           if browser.engine.family != .document || browser.pending.count == 1 {
-            ReviewNote(text: "After saving you can undo with Undo in the confirmation, or Edit › Undo Last Save.", systemImage: "arrow.uturn.backward")
+            NoteLine("After saving you can undo with Undo in the confirmation, or Edit › Undo Last Save.", systemImage: "arrow.uturn.backward")
           } else {
-            ReviewNote(text: "MongoDB without a replica set saves documents one at a time; if one fails, the ones before it stay saved and can be undone.", systemImage: "info.circle")
+            NoteLine("MongoDB without a replica set saves documents one at a time; if one fails, the ones before it stay saved and can be undone.")
           }
           if let error = browser.errorMessage {
             Banner(error, systemImage: "exclamationmark.triangle", hue: .red)
@@ -79,32 +83,21 @@ struct ReviewSheet: View {
   @ViewBuilder private var statements: some View {
     let lines = browser.statements()
     if !lines.isEmpty {
-      VStack(alignment: .leading, spacing: 6) {
-        Button {
-          withKitAnimation { showsStatements.toggle() }
-        } label: {
-          HStack(spacing: 6) {
-            Image(systemName: "chevron.right")
-              .font(.system(size: 9, weight: .bold))
-              .rotationEffect(.degrees(showsStatements ? 90 : 0))
-            Text(browser.engine.family == .sql ? "SQL that will run" : "\(browser.engine.queryLanguage) that will run")
-              .kitFont(.headline)
-          }
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 6)
-        if showsStatements {
-          HighlightedCode(
-            text: lines.map { $0 + (browser.engine.family == .sql ? ";" : "") }.joined(separator: "\n"),
-            language: browser.engine.highlighting
-          )
-          .kitFont(.monoSmall)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous))
-        }
+      KitSection(
+        browser.engine.family == .sql ? "SQL that will run" : "\(browser.engine.queryLanguage) that will run",
+        meta: lines.count == 1 ? "1 statement" : "\(lines.count) statements",
+        systemImage: "chevron.left.forwardslash.chevron.right", hue: .gray, isExpanded: $showsStatements
+      ) {
+        HighlightedCode(
+          text: lines.map { $0 + (browser.engine.family == .sql ? ";" : "") }.joined(separator: "\n"),
+          language: browser.engine.highlighting
+        )
+        .kitFont(.monoSmall)
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .kitSurface(.field)
+        .padding(6)
       }
     }
   }
@@ -118,98 +111,33 @@ struct ReviewSheet: View {
   }
 }
 
-/// A quiet line in its own card under the changes.
-private struct ReviewNote: View {
-  let text: String
-  let systemImage: String
-
-  var body: some View {
-    Label(text, systemImage: systemImage)
-      .kitFont(.callout)
-      .foregroundStyle(.kitSecondary)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(10)
-      .kitSurface(.card)
-  }
-}
-
-/// One pending change: its kind, what it applies to and Revert, then each field old → new.
-struct EditCard: View {
+/// One pending change as the kit's change rows: a row a field (old → new) for an edit or a new item, one row for a
+/// deletion, with Undo on the first.
+private struct ReviewEditRows: View {
   let edit: RecordEdit
   let browser: BrowserModel
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      HStack(spacing: 10) {
-        Chip(edit.verb, hue: hue)
-        Text(edit.title).kitFont(.headline).lineLimit(1)
-        Spacer()
-        if case .delete(let record) = edit.kind, let summary = deleteSummary(record) {
-          Text(summary).kitFont(.caption).lineLimit(1)
-        }
-        Button("Revert") { withKitAnimation { browser.revert(edit.id) } }
-          .buttonStyle(.kitPlain)
-          .controlSize(.small)
-      }
-      .padding(.leading, 12)
-      .padding(.trailing, 4)
-      .frame(minHeight: 40)
-      switch edit.kind {
-      case .update(let changes):
-        ForEach(changes) { change in
-          FieldChangeRow(field: change.field, old: change.old, new: change.new)
-        }
-      case .insert(let values):
-        ForEach(values.keys.sorted(), id: \.self) { key in
-          FieldChangeRow(field: key, old: nil, new: values[key]!)
-        }
-      case .delete:
-        EmptyView()
-      }
-    }
-    .padding(.bottom, isDelete ? 0 : 4)
-    .kitSurface(.card)
-    .overlay {
-      if isDelete {
-        RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous).fill(Hue.red.soft(0.08)).allowsHitTesting(false)
-      }
-    }
-  }
-
-  private var isDelete: Bool { if case .delete = edit.kind { true } else { false } }
-
-  private var hue: Hue {
+    let title = edit.key?.summary ?? edit.title
+    let undo = { withKitAnimation { browser.revert(edit.id) } }
     switch edit.kind {
-    case .update: .blue
-    case .insert: .green
-    case .delete: .red
+    case .update(let changes):
+      ForEach(Array(changes.enumerated()), id: \.element.id) { index, change in
+        ChangeRow(
+          .edited, title: title, field: change.field, old: change.old.reviewText, new: change.new.reviewText,
+          undo: index == 0 ? undo : nil)
+      }
+    case .insert(let values):
+      ForEach(Array(values.keys.sorted().enumerated()), id: \.element) { index, key in
+        ChangeRow(.inserted, title: title, field: key, new: values[key]?.reviewText, undo: index == 0 ? undo : nil)
+      }
+    case .delete(let record):
+      ChangeRow(.deleted, title: title, field: "row", old: deleteSummary(record), undo: undo)
     }
   }
 
   private func deleteSummary(_ record: Record) -> String? {
     let parts = browser.fields.prefix(4).filter { !$0.isPrimaryKey }.compactMap { record[$0.name]?.displayText }
     return parts.isEmpty ? nil : parts.joined(separator: " · ")
-  }
-}
-
-/// One field of a change: its name, the old value struck through, the new one in a chip.
-struct FieldChangeRow: View {
-  let field: String
-  let old: CellValue?
-  let new: CellValue
-
-  var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 10) {
-      Text(field).foregroundStyle(.kitSecondary).frame(width: 140, alignment: .leading).lineLimit(1)
-      ChangeValues(old: old?.reviewText, new: nil)
-      if old != nil {
-        Image(systemName: "arrow.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.kitSecondary)
-      }
-      Chip(new.reviewText, hue: new == .unset ? .red : .green)
-      Spacer(minLength: 0)
-    }
-    .padding(.horizontal, 12)
-    .frame(minHeight: 30)
-    .overlay(alignment: .top) { Rectangle().fill(.kitSeparator).frame(height: 0.5).padding(.horizontal, 12) }
   }
 }
