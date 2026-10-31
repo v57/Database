@@ -349,12 +349,9 @@ struct RedisConfirmSheet: View {
       title: "Run these commands?", meta: "\(model.browser.connection.profile.displayName) is a production connection.",
       systemImage: "shield", hue: .red, width: 480
     ) {
-      Text(model.confirming.flatMap(\.commands).map { $0.map(RedisCommandText.quote).joined(separator: " ") }.joined(separator: "\n"))
-        .kitFont(.monoSmall)
-        .textSelection(.enabled)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous))
+      KitCodeBlock(
+        model.confirming.flatMap(\.commands).map { $0.map(RedisCommandText.quote).joined(separator: " ") }.joined(separator: "\n"),
+        font: .monoSmall)
     } footer: {
       Button("Cancel") { model.confirming = [] }
         .keyboardShortcut(.cancelAction)

@@ -245,6 +245,7 @@ struct BrowserView: View {
             Image(systemName: "checklist").foregroundStyle(Hue.accent.text)
           }
         }
+        .kitHelp("Review Changes", shortcut: "⌘S", systemImage: "checklist")
       }
     }
     ToolbarSlot(priority: 2) {
@@ -257,8 +258,12 @@ struct BrowserView: View {
             browser.showsQueryEditor.toggle()
           }
           .kitToolOn(browser.showsQueryEditor)
+          .kitHelp(
+            browser.showsQueryEditor ? "Hide Query Editor" : "Show Query Editor", shortcut: "⇧⌘E",
+            systemImage: "chevron.left.forwardslash.chevron.right")
         }
         Button("Refresh", systemImage: "arrow.clockwise") { Task { await browser.reload() } }
+          .kitHelp("Refresh", systemImage: "arrow.clockwise")
         if canAdd {
           Button("Add \(browser.noun.capitalized)", systemImage: "plus") { adding = true }
         }

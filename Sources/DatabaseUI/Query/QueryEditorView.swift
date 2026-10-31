@@ -8,7 +8,8 @@ struct QueryEditorView: View {
   @Bindable var workspace: QueryWorkspace
   @Bindable var window: WindowModel
   @Environment(DatabaseModel.self) private var app
-  @State private var savingTitle: String?
+  @State private var saving = false
+  @State private var savingTitle = ""
   @State private var exporting: ExportDocument?
 
   var body: some View {
@@ -30,28 +31,22 @@ struct QueryEditorView: View {
     ) {
       tools
     }
-    .kitSheet(isPresented: .init(get: { savingTitle != nil }, set: { if !$0 { savingTitle = nil } })) {
-      KitSheet(title: "Save Query", meta: "Saved queries show under Queries in the sidebar.", systemImage: "square.and.arrow.down", width: 420) {
-        TextField("Name", text: Binding(get: { savingTitle ?? "" }, set: { savingTitle = $0 }))
-          .kitField()
-      } footer: {
-        Button("Cancel") { savingTitle = nil }
-          .keyboardShortcut(.cancelAction)
-        Button("Save") {
-          if let tab = workspace.selected, let title = savingTitle, !title.isEmpty { workspace.save(tab, title: title, in: app) }
-          savingTitle = nil
-        }
-        .buttonStyle(.kitPrimary)
-        .keyboardShortcut(.defaultAction)
-        .disabled(savingTitle?.isEmpty != false)
-      }
-      .componentKit(accent: .databaseAccent)
+    .kitPrompt(
+      "Save Query", isPresented: $saving, text: $savingTitle, message: "Saved queries show under Queries in the sidebar.",
+      systemImage: "square.and.arrow.down", confirm: "Save"
+    ) { title in
+      if let tab = workspace.selected { workspace.save(tab, title: title, in: app) }
     }
     .fileExporter(
       isPresented: .init(get: { exporting != nil }, set: { if !$0 { exporting = nil } }), document: exporting,
       contentType: exporting?.type ?? .commaSeparatedText, defaultFilename: exporting?.name
     ) { _ in exporting = nil }
     .task { await workspace.connection.connect() }
+  }
+
+  private func save(_ tab: QueryTab) {
+    savingTitle = tab.savedID == nil ? "" : tab.title
+    saving = true
   }
 
   private var tabBar: some View {
@@ -83,10 +78,10 @@ struct QueryEditorView: View {
       }
       ToolbarSlot(priority: 1) {
         ToolGroup(iconOnly: true) {
-          Button("Save…", systemImage: "square.and.arrow.down") { savingTitle = tab.savedID == nil ? "" : tab.title }
+          Button("Save…", systemImage: "square.and.arrow.down") { save(tab) }
         }
       } menu: {
-        Button("Save…", systemImage: "square.and.arrow.down") { savingTitle = tab.savedID == nil ? "" : tab.title }
+        Button("Save…", systemImage: "square.and.arrow.down") { save(tab) }
       }
       Button("Run", systemImage: "play.fill") { Task { await workspace.runSelected() } }
         .buttonStyle(.kitPrimary)
@@ -105,9 +100,10 @@ struct QueryTabView: View {
 
   var body: some View {
     #if os(macOS)
-      VSplitView {
-        editor.frame(minHeight: 120, idealHeight: 240, maxHeight: 420)
-        results.frame(minHeight: 200).layoutPriority(1)
+      ResizableSplit("queryEditorHeight", pane: .top, height: 240, range: 120...420, mainMinHeight: 200, showsLine: true) {
+        results
+      } pane: {
+        editor
       }
     #else
       VStack(spacing: 0) {

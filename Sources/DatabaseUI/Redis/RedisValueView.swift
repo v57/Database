@@ -6,7 +6,8 @@ import SwiftUI
 struct RedisValueView: View {
   @Bindable var model: RedisKeyModel
   @State private var settingExpiry = false
-  @State private var renaming: String?
+  @State private var renaming = false
+  @State private var newName = ""
   @State private var deleting = false
 
   private var key: String { model.key ?? "" }
@@ -26,29 +27,13 @@ struct RedisValueView: View {
       }
       valueEditor
       actions
-      Text(commandHint)
-        .kitFont(.monoSmall)
-        .foregroundStyle(.kitSecondary)
-        .textSelection(.enabled)
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous))
+      KitCodeBlock(commandHint, font: .monoSmall)
     }
-    .kitSheet(isPresented: .init(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-      KitSheet(title: "Rename Key", meta: key, systemImage: "pencil", width: 420) {
-        TextField("New name", text: Binding(get: { renaming ?? "" }, set: { renaming = $0 }))
-          .kitField(mono: true)
-      } footer: {
-        Button("Cancel") { renaming = nil }
-          .keyboardShortcut(.cancelAction)
-        Button("Rename") {
-          if let name = renaming, !name.isEmpty, name != key { Task { await model.perform([.rename(key: key, to: name)]) } }
-          renaming = nil
-        }
-        .buttonStyle(.kitPrimary)
-        .keyboardShortcut(.defaultAction)
-      }
-      .componentKit(accent: .databaseAccent)
+    .kitPrompt(
+      "Rename Key", isPresented: $renaming, text: $newName, message: key,
+      field: KitPromptField("New name", placeholder: "New name", systemImage: "key"), confirm: "Rename"
+    ) { name in
+      if name != key { Task { await model.perform([.rename(key: key, to: name)]) } }
     }
     .kitConfirmation(
       "Delete \(key)?", isPresented: $deleting, message: "You can undo right after.", systemImage: "trash",
@@ -96,12 +81,11 @@ struct RedisValueView: View {
         Button(model.ttl == -1 ? "Set Expiry…" : "Change…") { settingExpiry = true }
           .buttonStyle(.kitPlain)
           .controlSize(.small)
-          .popover(isPresented: $settingExpiry) {
+          .kitPopover(isPresented: $settingExpiry) {
             ExpiryEditor(hasExpiry: model.ttl >= 0) { seconds in
               settingExpiry = false
               Task { await model.perform([.expire(key: key, seconds: seconds)]) }
             }
-            .componentKit(accent: .databaseAccent)
           }
       }
     }
@@ -146,7 +130,10 @@ struct RedisValueView: View {
   @ViewBuilder private var actions: some View {
     if editable, model.value != .none {
       ActionBar {
-        Button("Rename Key…") { renaming = key }
+        Button("Rename Key…") {
+          newName = key
+          renaming = true
+        }
         Button("Delete Key…", systemImage: "trash", role: .destructive) { deleting = true }
           .labelStyle(.iconOnly)
       }

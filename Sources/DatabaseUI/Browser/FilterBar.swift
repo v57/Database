@@ -41,12 +41,11 @@ struct FilterBar: View {
               .labelStyle(AdaptiveLabelStyle(iconOnly: sizeClass == .compact))
           }
           .buttonStyle(.kit)
-          .popover(isPresented: $addingFilter, arrowEdge: .bottom) {
+          .kitPopover(isPresented: $addingFilter) {
             AddFilterView(browser: browser) { filter in
               addingFilter = false
               Task { await browser.addFilter(filter) }
             }
-            .componentKit(accent: .databaseAccent)
           }
           .disabled(browser.fields.isEmpty)
         }
@@ -278,6 +277,7 @@ struct QueryStrip: View {
           Button("Run", systemImage: "play.fill") { Task { await browser.runQuery() } }
             .buttonStyle(.kitPrimary)
             .keyboardShortcut(.return, modifiers: .command)
+            .kitHelp("Run", shortcut: "⌘↩", systemImage: "play.fill")
         }
         .controlSize(.small)
       }
@@ -285,7 +285,7 @@ struct QueryStrip: View {
         text: Binding(get: { browser.queryText }, set: { browser.editQuery($0) }), language: browser.engine.highlighting,
         completions: [])
         .frame(height: max(64, min(220, CGFloat(browser.queryText.split(separator: "\n", omittingEmptySubsequences: false).count) * 20 + 24)))
-        .background(.kitField, in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
+        .kitSurface(.field)
         .clipShape(RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
     }
     .kitCard()

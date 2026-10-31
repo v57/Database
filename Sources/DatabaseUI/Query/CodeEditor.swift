@@ -1,4 +1,5 @@
 import CodeHighlighting
+import ComponentKit
 import DatabaseKit
 import SwiftUI
 
@@ -321,7 +322,7 @@ struct HighlightedCode: View {
 
     var body: some View {
       TextEditor(text: $text)
-        .font(.system(.body, design: .monospaced))
+        .kitFont(.mono)
         .disabled(!isEditable)
         .onKeyPress(.return, phases: .down) { press in
           guard press.modifiers.contains(.command), let onRun else { return .ignored }
