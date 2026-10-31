@@ -34,17 +34,3 @@ struct NoteLine: View {
     .padding(.horizontal, 6)
   }
 }
-
-extension View {
-  /// The ring a selected card wears (a pipeline's step, a document's card, an item as JSON): 2pt of the accent inside
-  /// the card's corners.
-  func selectedCardRing(_ isSelected: Bool) -> some View {
-    overlay {
-      if isSelected {
-        RoundedRectangle(cornerRadius: KitMetrics.radiusCard, style: .continuous)
-          .strokeBorder(Hue.accent.fill, lineWidth: 2)
-          .allowsHitTesting(false)
-      }
-    }
-  }
-}

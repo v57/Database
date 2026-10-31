@@ -197,7 +197,7 @@ struct StepCard: View {
           .strokeBorder(.kitSeparator, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
       }
     }
-    .selectedCardRing(selected)
+    .kitSelectedRing(selected)
     .opacity(step.isEnabled ? 1 : 0.8)
   }
 }
