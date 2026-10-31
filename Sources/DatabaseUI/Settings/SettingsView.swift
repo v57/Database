@@ -11,7 +11,7 @@ public struct SettingsView: View {
   public init() {}
 
   public var body: some View {
-    KitSettings(selection: $pane) {
+    KitSettings(selection: $pane, window: Self.window) {
       SettingsPane("General", systemImage: "gearshape") { GeneralSettings() }
       SettingsPane("SSH Keys", systemImage: "key", hue: .brown) { SSHKeysView() }
       if showsAccounts {
@@ -19,6 +19,17 @@ public struct SettingsView: View {
       }
     }
     .frame(width: 640, height: 460)
+  }
+
+  /// The standard Settings window on the Mac: the kit's sidebar and the pane's title run up under the window's buttons
+  /// (the scene's `.windowStyle(.hiddenTitleBar)`), and the window adds its 32pt title bar to the size. Linux keeps
+  /// its title bar.
+  private static var window: KitSettingsWindow {
+    #if os(macOS)
+      .hiddenTitleBar
+    #else
+      .framed
+    #endif
   }
 
   /// A `--data-dir` run keeps to its scratch vault, so it shows no accounts (they live in the real one).

@@ -51,6 +51,10 @@ public struct DatabaseApp: App {
           .environment(app)
           .componentKit(accent: .databaseAccent)
       }
+      #if os(macOS)
+        // The kit's settings run up under the window's buttons; Linux keeps its title bar.
+        .windowStyle(.hiddenTitleBar)
+      #endif
     #endif
   }
 }
@@ -70,7 +74,13 @@ private struct MainWindow: View {
   var body: some View {
     #if DEBUG
       // A `--data-dir` run keeps to its scratch vault: no accounts, so the real vault isn't opened.
-      if LaunchOptions.value("--data-dir") != nil { ContentView() } else { scoped }
+      Group {
+        if LaunchOptions.value("--data-dir") != nil { ContentView() } else { scoped }
+      }
+      #if os(macOS) || os(Linux)
+        // `--settings`: the Settings window too, for screenshots.
+        .onAppear { if LaunchOptions.flag("--settings") { openSettings() } }
+      #endif
     #else
       scoped
     #endif
