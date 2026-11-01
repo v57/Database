@@ -2,6 +2,8 @@ import ComponentKit
 import DatabaseKit
 import DatabaseUI
 import SwiftUI
+import VaultKit
+import VaultUI
 
 // Screenshot captures (Dev's DevScreenshots).
 #if DEBUG
@@ -59,6 +61,8 @@ private struct WindowContent: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.all
   #endif
   @State private var compactColumn = NavigationSplitViewColumn.sidebar
+  /// What a dropped folder holds that the vault doesn't have: its databases, and its projects for the other apps.
+  @State private var importOffer: VaultImportOffer?
 
   var body: some View {
     NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
@@ -88,8 +92,18 @@ private struct WindowContent: View {
     #if os(macOS)
       // The kit's: a file dropped over a connection row (a reorderable row) comes here too.
       .kitFileDrop { urls in
-        for url in urls { if let profile = app.addFile(url) { window.connect(profile.id) } }
+        var folders: [URL] = []
+        for url in urls {
+          if let profile = app.addFile(url) {
+            window.connect(profile.id)
+          } else if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+            folders.append(url)
+          }
+        }
+        guard !folders.isEmpty else { return }
+        Task { importOffer = await VaultImportOffer.scan(folders, store: app.vault.store) }
       }
+      .kitSheet(item: $importOffer) { offer in VaultImportSheet(offer, vault: app.vault, app: "Database") }
     #endif
   }
 }
