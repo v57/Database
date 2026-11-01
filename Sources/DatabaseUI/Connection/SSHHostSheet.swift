@@ -18,6 +18,8 @@ struct SSHHostSheet: View {
   @State private var auth: SSHAuthMethod
   @State private var keyID: UUID?
   @State private var password: String
+  /// The fallback addresses, a row each (`VaultHost.fallbacks`).
+  @State private var fallbacks: [FallbackAddress]
   @State private var importingKey = false
   @State private var keyError: String?
 
@@ -30,6 +32,7 @@ struct SSHHostSheet: View {
     _auth = State(initialValue: host.auth == .password ? .password : .key)
     _keyID = State(initialValue: host.auth == .importedKey ? host.keyID.flatMap(UUID.init(uuidString:)) : nil)
     _password = State(initialValue: isNew ? "" : host.password ?? "")
+    _fallbacks = State(initialValue: FallbackAddresses.rows(host.fallbacks))
   }
 
   var body: some View {
@@ -54,6 +57,11 @@ struct SSHHostSheet: View {
             FormRow("Sign in with", systemImage: "key", hue: .brown) {
               KitSegmented(selection: $auth, options: [("Key", SSHAuthMethod.key), ("Password", SSHAuthMethod.password)])
             }
+          }
+          FormCard {
+            FallbackAddressRows(
+              rows: $fallbacks, host: host.hostname,
+              automatic: AutomaticAddress.list(for: edited, in: app.vault), hue: .teal)
           }
           if auth == .key {
             keyPicker
@@ -140,9 +148,16 @@ struct SSHHostSheet: View {
     return (try? SharedConnections.deviceKey())?.authorizedKeyLine
   }
 
+  /// The host with its address and fallbacks as typed.
+  private var edited: VaultHost {
+    var edited = host
+    edited.hostname = edited.hostname.trimmingCharacters(in: .whitespaces)
+    edited.fallbacks = FallbackAddresses.addresses(fallbacks, host: edited.hostname)
+    return edited
+  }
+
   private func save() {
-    var saved = host
-    saved.hostname = saved.hostname.trimmingCharacters(in: .whitespaces)
+    var saved = edited
     switch auth {
     case .password:
       saved.auth = .password

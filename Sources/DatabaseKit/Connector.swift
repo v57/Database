@@ -44,7 +44,8 @@ public enum Connector {
     var dialer = dialer
     if profile.ssh.enabled && !profile.engine.isFileBased {
       let server = SSHServer(
-        host: profile.ssh.host, port: profile.ssh.port, user: profile.ssh.user,
+        host: profile.ssh.host, fallbackHosts: profile.ssh.fallbackHosts, port: profile.ssh.port,
+        user: profile.ssh.user,
         password: profile.ssh.auth == .password ? credentials.sshPassword : nil,
         key: profile.ssh.auth == .key ? credentials.sshKey : nil,
         knownFingerprint: profile.ssh.hostKeyFingerprint)

@@ -77,10 +77,11 @@ struct ConnectionSheet: View {
         }
       }
       // The scroll view reaches the sheet's edges and keeps its margins as safe area, so a selected tile's ring and
-      // a card's edge scroll under them instead of being cut at the margin.
+      // a card's edge scroll under them instead of being cut at the margin; at the bottom the footer is a bar over it.
       .safeAreaPadding(.horizontal, KitMetrics.gutter)
-      .safeAreaPadding(.vertical, 6)
+      .safeAreaPadding(.top, 6)
       .padding(.horizontal, -KitMetrics.gutter)
+      .kitSheetFooterBar()
       #if DEBUG
         .defaultScrollAnchor(LaunchOptions.flag("--scroll-bottom") ? .bottom : .top)
       #endif
@@ -310,6 +311,7 @@ struct ConnectionSheet: View {
   private func use(_ host: VaultHost) {
     profile.ssh.enabled = true
     profile.ssh.host = host.hostname
+    profile.ssh.fallbackHosts = app.vault.personalVault.fallbackAddresses(of: host)
     profile.ssh.port = host.port
     profile.ssh.user = host.user
     profile.ssh.auth = host.auth == .password ? .password : .key

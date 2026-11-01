@@ -16,6 +16,9 @@ public enum SSHAuthMethod: String, Codable, Sendable, CaseIterable {
 public struct SSHSettings: Codable, Hashable, Sendable {
   public var enabled: Bool
   public var host: String
+  /// Other addresses of the same machine, tried in order when `host` doesn't answer: the host's fallbacks and, for
+  /// one of the user's devices, its other ways there (`Vault.fallbackAddresses(of:)`). Read from the shared host.
+  public var fallbackHosts: [String]
   public var port: Int
   public var user: String
   public var auth: SSHAuthMethod
@@ -25,16 +28,34 @@ public struct SSHSettings: Codable, Hashable, Sendable {
   public var hostKeyFingerprint: String?
 
   public init(
-    enabled: Bool = false, host: String = "", port: Int = 22, user: String = "", auth: SSHAuthMethod = .key,
-    keyID: UUID? = nil, hostKeyFingerprint: String? = nil
+    enabled: Bool = false, host: String = "", fallbackHosts: [String] = [], port: Int = 22, user: String = "",
+    auth: SSHAuthMethod = .key, keyID: UUID? = nil, hostKeyFingerprint: String? = nil
   ) {
     self.enabled = enabled
     self.host = host
+    self.fallbackHosts = fallbackHosts
     self.port = port
     self.user = user
     self.auth = auth
     self.keyID = keyID
     self.hostKeyFingerprint = hostKeyFingerprint
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case enabled, host, fallbackHosts, port, user, auth, keyID, hostKeyFingerprint
+  }
+
+  public init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    enabled = try values.decode(Bool.self, forKey: .enabled)
+    host = try values.decode(String.self, forKey: .host)
+    // Profiles saved before fallback addresses have none.
+    fallbackHosts = try values.decodeIfPresent([String].self, forKey: .fallbackHosts) ?? []
+    port = try values.decode(Int.self, forKey: .port)
+    user = try values.decode(String.self, forKey: .user)
+    auth = try values.decode(SSHAuthMethod.self, forKey: .auth)
+    keyID = try values.decodeIfPresent(UUID.self, forKey: .keyID)
+    hostKeyFingerprint = try values.decodeIfPresent(String.self, forKey: .hostKeyFingerprint)
   }
 }
 

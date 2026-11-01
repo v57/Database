@@ -149,9 +149,12 @@ public final class DatabaseModel {
   /// The profiles of the shared connections, in their sidebar order.
   private func reloadProfiles() {
     let store = hostKeys.store
+    let personal = vault.personalVault
     var ids: [UUID: String] = [:]
     profiles = vault.databases.compactMap { record in
-      let profile = SharedConnections.profile(from: record, hosts: vault.hosts) { host, port in
+      let profile = SharedConnections.profile(
+        from: record, hosts: vault.hosts, fallbacks: personal.fallbackAddresses(of:)
+      ) { host, port in
         try? store?.knownFingerprint(host: host, port: port)
       }
       if let profile { ids[profile.id] = record.id }

@@ -12,8 +12,10 @@ import VaultKit
 /// stay in the record untouched.
 enum SharedConnections {
   /// The profile for a shared record, or nil for an engine this build doesn't have.
+  /// `fallbacks` are a host's other addresses to try (`Vault.fallbackAddresses(of:)`).
   static func profile(
-    from record: VaultDatabase, hosts: [VaultHost], knownFingerprint: (String, Int) -> String?
+    from record: VaultDatabase, hosts: [VaultHost], fallbacks: (VaultHost) -> [String] = { $0.fallbacks },
+    knownFingerprint: (String, Int) -> String?
   ) -> ConnectionProfile? {
     guard let engine = EngineKind(rawValue: record.engine) else { return nil }
     var profile = ConnectionProfile(
@@ -25,7 +27,7 @@ enum SharedConnections {
       lastUsed: record.lastUsed)
     if let id = record.sshHostID, let host = hosts.first(where: { $0.id == id }) {
       profile.ssh = SSHSettings(
-        enabled: true, host: host.hostname, port: host.port, user: host.user,
+        enabled: true, host: host.hostname, fallbackHosts: fallbacks(host), port: host.port, user: host.user,
         auth: host.auth == .password ? .password : .key,
         keyID: host.auth == .importedKey ? host.keyID.flatMap(UUID.init(uuidString:)) : nil,
         hostKeyFingerprint: knownFingerprint(host.hostname, host.port))
