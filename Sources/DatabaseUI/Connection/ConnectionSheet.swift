@@ -75,8 +75,12 @@ struct ConnectionSheet: View {
           }
           safetySection
         }
-        .padding(.vertical, 4)
       }
+      // The scroll view reaches the sheet's edges and keeps its margins as safe area, so a selected tile's ring and
+      // a card's edge scroll under them instead of being cut at the margin.
+      .safeAreaPadding(.horizontal, KitMetrics.gutter)
+      .safeAreaPadding(.vertical, 6)
+      .padding(.horizontal, -KitMetrics.gutter)
       #if DEBUG
         .defaultScrollAnchor(LaunchOptions.flag("--scroll-bottom") ? .bottom : .top)
       #endif
