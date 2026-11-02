@@ -79,5 +79,8 @@
 			</dict>
 		</dict>
 	</array>
+	<!-- Animations and scrolling at up to 120 fps on an iPhone with ProMotion; without it they stop at 60. -->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 </dict>
 </plist>
