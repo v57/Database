@@ -16,6 +16,7 @@ public struct SettingsView: View {
       SettingsPane("SSH Keys", systemImage: "key", hue: .brown) { SSHKeysView() }
       if showsAccounts {
         SettingsPane("Accounts", systemImage: "person.2", hue: .indigo, section: "v57") { VaultAccountsSettings() }
+        SettingsPane("Devices", systemImage: "laptopcomputer", hue: .blue, section: "v57") { VaultDevicesSettings() }
       }
       #if os(macOS)
         // Your iPhone and iPad sign in to this Mac over SSH: which of them can, and the other keys.
