@@ -68,7 +68,7 @@ private struct WindowContent: View {
     NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
       SidebarView(window: window, columnVisibility: $columnVisibility)
         .toolbar(removing: .sidebarToggle)
-        .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 380)
+        .kitSidebarColumn()
     } detail: {
       #if os(iOS)
         // The detail's own stack: on iPhone an item pushes its screen (a split view's detail column has none).
