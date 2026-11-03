@@ -17,23 +17,21 @@ public struct SidebarView: View {
     _columnVisibility = columnVisibility
   }
 
-  private var query: String { window.searchText.trimmingCharacters(in: .whitespaces) }
+  private var query: String { window.sidebarQuery }
 
   private var profiles: [ConnectionProfile] {
     guard !query.isEmpty else { return app.profiles }
     return app.profiles.filter { profile in
-      if profile.displayName.localizedCaseInsensitiveContains(query) || profile.subtitle.localizedCaseInsensitiveContains(query) {
-        return true
-      }
-      // Or any loaded table/collection matches.
-      guard let live = app.live[profile.id] else { return false }
-      return live.children.values.joined().contains { $0.title.localizedCaseInsensitiveContains(query) }
+      if profile.matches(query) { return true }
+      // Or anything it has loaded matches.
+      return app.live[profile.id]?.holdsMatch(for: query, in: app) ?? false
     }
   }
 
-  /// The connection the window shows, lifted out of the list into its own card.
+  /// The connection the window shows, lifted out of the list into its own card. A search narrows its tree, and it
+  /// stays to say what wasn't found.
   private var current: LiveConnection? {
-    guard let id = window.currentConnectionID, profiles.contains(where: { $0.id == id }) else { return nil }
+    guard let id = window.currentConnectionID, app.profiles.contains(where: { $0.id == id }) else { return nil }
     return app.connection(for: id)
   }
 
@@ -136,6 +134,7 @@ public struct ConnectionContents: View {
   let connection: LiveConnection
   @Bindable var window: WindowModel
   let level: Int
+  @Environment(DatabaseModel.self) private var app
 
   public init(connection: LiveConnection, window: WindowModel, level: Int) {
     self.connection = connection
@@ -148,11 +147,23 @@ public struct ConnectionContents: View {
     case .connected:
       // The open tree as one lazy list, however deep it's open: a server can hold thousands of collections, and every
       // built row costs layout and hit testing on each frame of a scroll.
+      let query = window.sidebarQuery
+      // A search on the connection's own name alone leaves its tree as it is.
+      let isNarrowed = !query.isEmpty && (connection.holdsMatch(for: query, in: app) || !connection.profile.matches(query))
+      let search = isNarrowed ? connection.treeSearch(query) : nil
       LazyVStack(alignment: .leading, spacing: 2) {
-        ForEach(connection.treeLines(level: level)) { line in
+        ForEach(connection.outline.lines(level: level, search: search)) { line in
           TreeLineRow(connection: connection, line: line)
         }
-        QueryRows(connection: connection, window: window, level: level)
+        QueryRows(connection: connection, window: window, level: level, query: isNarrowed ? query : "")
+        if let search {
+          if !connection.holdsMatch(for: query, in: app) {
+            NoteLine("Nothing loaded matches “\(query)”.", systemImage: nil).inTree(level)
+          }
+          if let note = search.unopenedNote {
+            NoteLine(note, systemImage: nil).inTree(level)
+          }
+        }
       }
     case .connecting, .idle:
       NoteLine("Connecting…", systemImage: nil).inTree(level)
@@ -168,10 +179,17 @@ struct ConnectionRow: View {
   @Bindable var window: WindowModel
   var onDelete: () -> Void
   @Environment(\.databaseSidebarTag) private var tag
+  @Environment(DatabaseModel.self) private var app
+
+  /// A search found something it has loaded: the row opens to show it.
+  private var holdsSearchMatch: Bool {
+    let query = window.sidebarQuery
+    return !query.isEmpty && connection.holdsMatch(for: query, in: app)
+  }
 
   private var isExpanded: Binding<Bool> {
     Binding(
-      get: { connection.expanded.contains(LiveConnection.rootID) },
+      get: { connection.expanded.contains(LiveConnection.rootID) || holdsSearchMatch },
       set: { open in
         if open {
           connection.expanded.insert(LiveConnection.rootID)
@@ -267,65 +285,63 @@ extension ConnectionProfile {
   }
 }
 
-/// A line of the open tree: a node, or what stands in for a branch's children (loading, empty, what went wrong).
-struct TreeLine: Identifiable {
-  enum Content {
-    case node(TreeNode)
-    case note(String, isError: Bool)
-    case loading(TreeNode?)
-  }
+extension WindowModel {
+  /// What the sidebar's search field holds, trimmed.
+  var sidebarQuery: String { searchText.trimmingCharacters(in: .whitespaces) }
+}
 
-  var id: String
-  var content: Content
-  var level: Int
+extension ConnectionProfile {
+  fileprivate func matches(_ query: String) -> Bool {
+    displayName.localizedCaseInsensitiveContains(query) || subtitle.localizedCaseInsensitiveContains(query)
+  }
 }
 
 extension LiveConnection {
-  /// The tree's open rows from the top, in order. A branch not loaded yet is a `loading` line, which loads it when it
-  /// comes on screen.
-  func treeLines(level: Int) -> [TreeLine] {
-    var lines: [TreeLine] = []
-    func add(_ parent: TreeNode?, level: Int) {
-      let key = key(parent)
-      if let nodes = children[key] {
-        if nodes.isEmpty {
-          lines.append(TreeLine(id: "note:" + key, content: .note(emptyText(parent), isError: false), level: level))
-        }
-        for node in nodes {
-          lines.append(TreeLine(id: node.id, content: .node(node), level: level))
-          if node.hasChildren, expanded.contains(node.id) { add(node, level: level + 1) }
-        }
-      } else if let error = treeErrors[key] {
-        lines.append(TreeLine(id: "note:" + key, content: .note(error, isError: true), level: level))
-      } else {
-        lines.append(TreeLine(id: "note:" + key, content: .loading(parent), level: level))
-      }
-    }
-    add(nil, level: level)
-    return lines
+  /// Whether a search finds anything this connection has loaded: its tree, its saved queries or its open tabs.
+  fileprivate func holdsMatch(for query: String, in app: DatabaseModel) -> Bool {
+    if treeSearch(query)?.hasMatches == true { return true }
+    return QueryRows.saved(of: self, in: app, query: query).isEmpty == false || QueryRows.tabs(of: self, query: query).isEmpty == false
   }
+}
 
-  private func emptyText(_ parent: TreeNode?) -> String {
-    switch parent?.kind {
-    case .database, .keyspace, .schema: "No \(profile.engine.collectionNoun.plural)"
-    default: "Nothing here yet"
-    }
+extension TreeSearch {
+  /// Says what the search couldn't see: a branch's children load when it's opened.
+  fileprivate var unopenedNote: String? {
+    guard let first = unopened.first else { return nil }
+    let noun =
+      switch first.kind {
+      case .database: ("database", "databases")
+      case .schema: ("schema", "schemas")
+      case .keyspace: ("keyspace", "keyspaces")
+      default: ("folder", "folders")
+      }
+    return unopened.count == 1
+      ? "1 \(noun.0) isn't open, so it isn't searched." : "\(unopened.count) \(noun.1) aren't open, so they aren't searched."
   }
 }
 
 struct TreeLineRow: View {
   let connection: LiveConnection
-  let line: TreeLine
+  let line: TreeOutline.Line
 
   var body: some View {
     switch line.content {
-    case .node(let node):
-      TreeNodeRow(connection: connection, node: node, level: line.level)
-    case .note(let text, let isError):
-      NoteLine(text, systemImage: nil, hue: isError ? .red : nil).inTree(line.level)
+    case .node(let node, let isRevealed):
+      TreeNodeRow(connection: connection, node: node, isRevealed: isRevealed, level: line.level)
+    case .empty(let parent):
+      NoteLine(emptyText(parent), systemImage: nil).inTree(line.level)
+    case .failed(let message):
+      NoteLine(message, systemImage: nil, hue: .red).inTree(line.level)
     case .loading(let parent):
       NoteLine("Loading…", systemImage: nil).inTree(line.level)
         .task { await connection.loadChildren(of: parent) }
+    }
+  }
+
+  private func emptyText(_ parent: TreeNode?) -> String {
+    switch parent?.kind {
+    case .database, .keyspace, .schema: "No \(connection.profile.engine.collectionNoun.plural)"
+    default: "Nothing here yet"
     }
   }
 }
@@ -333,12 +349,14 @@ struct TreeLineRow: View {
 struct TreeNodeRow: View {
   let connection: LiveConnection
   let node: TreeNode
+  /// Open because a search found something in it.
+  var isRevealed = false
   var level: Int
   @Environment(\.databaseSidebarTag) private var tag
 
   private var isExpanded: Binding<Bool> {
     Binding(
-      get: { connection.expanded.contains(node.id) },
+      get: { isRevealed || connection.expanded.contains(node.id) },
       set: { open in
         withKitAnimation {
           if open { connection.expanded.insert(node.id) } else { connection.expanded.remove(node.id) }
@@ -372,20 +390,30 @@ struct QueryRows: View {
   let connection: LiveConnection
   @Bindable var window: WindowModel
   var level: Int
+  /// Keeps the ones with this in their title; a search opens the folder.
+  var query = ""
   @Environment(DatabaseModel.self) private var app
   @Environment(\.databaseSidebarTag) private var tag
   @State private var isExpanded = true
 
+  static func saved(of connection: LiveConnection, in app: DatabaseModel, query: String) -> [SavedQuery] {
+    app.queries(for: connection.id).filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) }
+  }
+
+  static func tabs(of connection: LiveConnection, query: String) -> [QueryTab] {
+    connection.queries.tabs.filter { $0.savedID == nil && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)) }
+  }
+
   var body: some View {
-    let saved = app.queries(for: connection.id)
-    let tabs = connection.queries.tabs.filter { $0.savedID == nil }
+    let saved = Self.saved(of: connection, in: app, query: query)
+    let tabs = Self.tabs(of: connection, query: query)
     if !saved.isEmpty || !tabs.isEmpty {
-      SidebarRow("Queries", systemImage: "folder", isExpanded: $isExpanded) {
+      SidebarRow("Queries", systemImage: "folder", isExpanded: query.isEmpty ? $isExpanded : .constant(true)) {
         Text("\(saved.count + tabs.count)")
       }
       .action { withKitAnimation { isExpanded.toggle() } }
       .kitRowIndent(level)
-      if isExpanded {
+      if isExpanded || !query.isEmpty {
         ForEach(saved) { query in
           SidebarRow(value: tag(.savedQuery(connection.id, query.id)), query.title, systemImage: "terminal")
             .disclosureSlot()

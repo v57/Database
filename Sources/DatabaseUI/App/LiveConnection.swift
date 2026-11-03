@@ -19,7 +19,9 @@ public final class LiveConnection: Identifiable {
   @ObservationIgnored private var closeTunnel: (@MainActor () -> Void)?
   private(set) var report: ConnectionReport?
   /// Children by parent node id ("" for the top level).
-  private(set) var children: [String: [TreeNode]] = [:]
+  private(set) var children: [String: [TreeNode]] = [:] {
+    didSet { lastSearch = nil }
+  }
   private(set) var loading: Set<String> = []
   private(set) var treeErrors: [String: String] = [:]
   /// The open rows of the tree, by node id (`rootID` for the connection itself).
@@ -30,6 +32,7 @@ public final class LiveConnection: Identifiable {
   /// Open query tabs.
   @ObservationIgnored private(set) lazy var queries = QueryWorkspace(connection: self)
   @ObservationIgnored private var connectTask: Task<Void, Never>?
+  @ObservationIgnored private var lastSearch: TreeSearch?
 
   public var id: UUID { profile.id }
 
@@ -104,6 +107,20 @@ public final class LiveConnection: Identifiable {
   public static let rootID = "root"
 
   func key(_ node: TreeNode?) -> String { node?.id ?? Self.rootID }
+
+  /// The tree as the sidebar shows it.
+  var outline: TreeOutline { TreeOutline(children: children, errors: treeErrors, expanded: expanded, root: Self.rootID) }
+
+  /// What `query` finds in what's loaded (nil when it's empty). The sidebar asks several times per keystroke, so the
+  /// last answer is kept until the tree changes.
+  func treeSearch(_ query: String) -> TreeSearch? {
+    let children = children
+    guard !query.isEmpty else { return nil }
+    if let lastSearch, lastSearch.query == query { return lastSearch }
+    let search = TreeSearch(query: query, children: children, root: Self.rootID)
+    lastSearch = search
+    return search
+  }
 
   func loadChildren(of node: TreeNode?, force: Bool = false) async {
     guard let session else { return }
