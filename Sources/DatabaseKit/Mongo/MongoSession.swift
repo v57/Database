@@ -129,6 +129,8 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
       if ["false", "no", "0"].contains(trimmed.lowercased()) { return .bool(false) }
     case .dateTime, .date:
       if let ms = BSONParser.parseISODate(trimmed) { return .datetime(ms) }
+    case .uuid:
+      if let uuid = UUID(uuidString: trimmed) { return .binary(subtype: 4, data: withUnsafeBytes(of: uuid.uuid) { Array($0) }) }
     default:
       break
     }
@@ -156,10 +158,16 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
     for filter in request.activeFilters {
       let category = byName[filter.field]?.category ?? .text
       let value = Self.value(filter.value, category: category, field: filter.field)
+      if Self.matchesAsText(category), filter.op == .contains || filter.op == .notContains {
+        clauses.append(Self.containsAsText(filter))
+        continue
+      }
       let condition: BSON
       switch filter.op {
       case .equals: condition = value
       case .notEquals: condition = .document(["$ne": value])
+      // A regular expression can't see into a UUID's bytes: the whole UUID finds it, and a part finds nothing.
+      case .contains where category == .uuid: condition = value
       case .contains: condition = .regex(pattern: Self.escapeRegex(filter.value), options: "i")
       case .notContains: condition = .document(["$not": .regex(pattern: Self.escapeRegex(filter.value), options: "i")])
       case .startsWith: condition = .regex(pattern: "^" + Self.escapeRegex(filter.value), options: "i")
@@ -190,6 +198,26 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
       }
       return merged
     }
+  }
+
+  /// A regular expression matches strings (and the strings in an array) only; these are read as text first.
+  private static func matchesAsText(_ category: ValueCategory) -> Bool {
+    switch category {
+    case .integer, .decimal, .float, .boolean, .date, .time, .dateTime, .other: true
+    default: false
+    }
+  }
+
+  /// `contains` on a number, date, boolean or ObjectId, the way SQL's text cast reads them: a value with no text form
+  /// (an array, null) doesn't match. It scans the collection, as any unanchored regular expression does.
+  private static func containsAsText(_ filter: Filter) -> BSON {
+    let text: BSONDocument = [
+      "$convert": .document(["input": .string("$" + filter.field), "to": .string("string"), "onError": .string(""), "onNull": .string("")])
+    ]
+    let match: BSON = .document([
+      "$regexMatch": .document(["input": .document(text), "regex": .string(escapeRegex(filter.value)), "options": .string("i")])
+    ])
+    return .document(["$expr": filter.op == .contains ? match : .document(["$not": .array([match])])])
   }
 
   func sortDocument(_ request: BrowseRequest) -> BSONDocument {

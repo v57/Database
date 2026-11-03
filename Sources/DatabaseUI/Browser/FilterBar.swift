@@ -66,7 +66,7 @@ struct FilterBar: View {
 
   private var scopes: [SearchScope] {
     [SearchScope(field: nil, isDocument: browser.engine.family == .document)]
-      + browser.fields.filter { $0.category == .text || $0.category == .uuid }.map { SearchScope(field: $0.name) }
+      + browser.engine.searchScopes(in: browser.fields).map { SearchScope(field: $0.name) }
   }
 
   private var scope: Binding<SearchScope> {

@@ -28,6 +28,7 @@ final class BrowserModel {
   var request: BrowseRequest
   /// The one field the search looks in (`nil`: any). It searches as a "contains" filter on that field.
   var searchField: String?
+  @ObservationIgnored private var latestLoad = 0
   private(set) var page: BrowsePage?
   private(set) var isLoading = false
   var errorMessage: String?
@@ -100,8 +101,12 @@ final class BrowserModel {
     defer { Activity.end() }
     isLoading = true
     defer { isLoading = false }
+    latestLoad += 1
+    let thisLoad = latestLoad
     do {
       let page = try await session.browse(effectiveRequest)
+      // A newer search or filter went out meanwhile: its answer is the one to show, whichever arrives last.
+      guard thisLoad == latestLoad else { return }
       self.page = page
       errorMessage = nil
       if !queryIsCustom { queryText = page.query }
@@ -113,6 +118,7 @@ final class BrowserModel {
         Task { await countExactly() }
       }
     } catch {
+      guard thisLoad == latestLoad else { return }
       errorMessage = FriendlyError.message(error)
     }
   }

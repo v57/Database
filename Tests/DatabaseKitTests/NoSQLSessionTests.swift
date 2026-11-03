@@ -12,8 +12,44 @@ import WireKit
 
   static func mongo() async throws -> MongoSession {
     let (session, _) = try await Connector.connect(
-      ConnectionProfile(engine: .mongodb, port: 27017, user: ""), credentials: Credentials())
+      ConnectionProfile(
+        engine: .mongodb, port: ProcessInfo.processInfo.environment["MONGO_TEST_PORT"].flatMap(Int.init) ?? 27017, user: ""),
+      credentials: Credentials())
     return try #require(session as? MongoSession)
+  }
+
+  @Test func mongoSearchesOneFieldOfAnyType() async throws {
+    let session = try await Self.mongo()
+    defer { Task { await session.close() } }
+    let id = "6703f1c2e4b0a91c00000001"
+    let uuid = "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+    _ = try await session.run(
+      """
+      use dbpro_test
+      db.scoped.drop()
+      db.scoped.insertMany([
+        { _id: ObjectId("\(id)"), name: "Lamp", price: 12.5, stock: 120, active: true, tags: ["desk", "warm"], added: ISODate("2026-03-14T10:00:00Z"), code: UUID("\(uuid)") },
+        { _id: ObjectId("6703f1c2e4b0a91c00000002"), name: "Chair 12", price: 80, stock: 7, active: false, tags: ["seat"], added: ISODate("2025-01-02T10:00:00Z") }
+      ])
+      """, context: QueryContext(database: "dbpro_test"))
+    let ref = ObjectRef(database: "dbpro_test", name: "scoped", kind: .collection)
+    func matches(_ field: String, _ text: String, _ op: FilterOp = .contains) async throws -> Int {
+      var request = BrowseRequest(ref: ref)
+      request.filters = [Filter(field: field, op: op, value: text)]
+      return try await session.browse(request).records.count
+    }
+    #expect(try await matches("price", "12") == 1)
+    #expect(try await matches("stock", "7") == 1)
+    #expect(try await matches("stock", "12") == 1)
+    #expect(try await matches("active", "true") == 1)
+    #expect(try await matches("added", "2026-03") == 1)
+    #expect(try await matches("_id", "00000002") == 1)
+    #expect(try await matches("tags", "wa") == 1)
+    #expect(try await matches("name", "12") == 1)
+    #expect(try await matches("code", uuid) == 1)
+    #expect(try await matches("price", "12", .notContains) == 1)
+    let fields = try await session.fields(of: ref)
+    #expect(EngineKind.mongodb.searchScopes(in: fields).map(\.name).contains("price"))
   }
 
   @Test func mongoBrowsesEditsAndAggregates() async throws {

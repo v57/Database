@@ -17,6 +17,7 @@
   ///   --select-row N                       select the Nth row (0-based)
   ///   --hide-sidebar                       start with the sidebar hidden
   ///   --sidebar-search "orders"            type in the sidebar's search field
+  ///   --search "12" [--search-field total]  search the list, in one field
   @MainActor
   public enum DebugDriver {
     /// Opens the screen the arguments describe and returns once it has finished loading.
@@ -76,6 +77,7 @@
         }
       }
       if let search = LaunchOptions.value("--search") {
+        browser.searchField = LaunchOptions.value("--search-field")
         browser.request.search = search
         await browser.reload()
       }

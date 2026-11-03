@@ -49,6 +49,16 @@ extension EngineKind {
 
   /// Whether the search box can search this engine.
   public var supportsSearch: Bool { family != .wideColumn }
+
+  /// The fields the search box can look in alone (`FilterOp.contains` on them). SQL reads every column as text, and
+  /// MongoDB every value but an embedded document; bytes aren't text anywhere, and Redis searches its keys only.
+  public func searchScopes(in fields: [FieldInfo]) -> [FieldInfo] {
+    switch family {
+    case .keyValue: fields.filter { $0.category == .text || $0.category == .uuid }
+    case .document: fields.filter { $0.category != .binary && $0.category != .document }
+    default: fields.filter { $0.category != .binary }
+    }
+  }
 }
 
 extension MongoSession {
