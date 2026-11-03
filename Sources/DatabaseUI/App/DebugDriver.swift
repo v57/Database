@@ -16,6 +16,7 @@
   ///   --new-query "SELECT 1" [--run]       open a query tab
   ///   --select-row N                       select the Nth row (0-based)
   ///   --hide-sidebar                       start with the sidebar hidden
+  ///   --sidebar-search "orders"            type in the sidebar's search field
   @MainActor
   public enum DebugDriver {
     /// Opens the screen the arguments describe and returns once it has finished loading.
@@ -33,6 +34,7 @@
       if let name = LaunchOptions.value("--edit-connection"), let profile = app.profiles.first(where: { $0.name == name }) {
         window.editingProfileID = profile.id
       }
+      defer { if let text = LaunchOptions.value("--sidebar-search") { window.searchText = text } }
       guard let path = LaunchOptions.value("--select") else { return }
       let parts = path.split(separator: "/").map(String.init)
       guard let first = parts.first, let profile = app.profiles.first(where: { $0.name == first }) else { return }

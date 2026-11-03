@@ -146,8 +146,14 @@ public struct ConnectionContents: View {
   public var body: some View {
     switch connection.status {
     case .connected:
-      TreeChildren(connection: connection, parent: nil, window: window, level: level)
-      QueryRows(connection: connection, window: window, level: level)
+      // The open tree as one lazy list, however deep it's open: a server can hold thousands of collections, and every
+      // built row costs layout and hit testing on each frame of a scroll.
+      LazyVStack(alignment: .leading, spacing: 2) {
+        ForEach(connection.treeLines(level: level)) { line in
+          TreeLineRow(connection: connection, line: line)
+        }
+        QueryRows(connection: connection, window: window, level: level)
+      }
     case .connecting, .idle:
       NoteLine("Connecting…", systemImage: nil).inTree(level)
     case .failed(let message):
@@ -261,34 +267,65 @@ extension ConnectionProfile {
   }
 }
 
-/// Lazily loaded children of a tree node.
-struct TreeChildren: View {
-  let connection: LiveConnection
-  let parent: TreeNode?
-  @Bindable var window: WindowModel
-  var level: Int
-
-  var body: some View {
-    let key = connection.key(parent)
-    if let nodes = connection.children[key] {
-      if nodes.isEmpty {
-        NoteLine(emptyText, systemImage: nil).inTree(level)
-      }
-      ForEach(nodes) { node in
-        TreeNodeRow(connection: connection, node: node, window: window, level: level)
-      }
-    } else if let error = connection.treeErrors[key] {
-      NoteLine(error, systemImage: nil, hue: .red).inTree(level)
-    } else {
-      NoteLine("Loading…", systemImage: nil).inTree(level)
-        .task { await connection.loadChildren(of: parent) }
-    }
+/// A line of the open tree: a node, or what stands in for a branch's children (loading, empty, what went wrong).
+struct TreeLine: Identifiable {
+  enum Content {
+    case node(TreeNode)
+    case note(String, isError: Bool)
+    case loading(TreeNode?)
   }
 
-  private var emptyText: String {
+  var id: String
+  var content: Content
+  var level: Int
+}
+
+extension LiveConnection {
+  /// The tree's open rows from the top, in order. A branch not loaded yet is a `loading` line, which loads it when it
+  /// comes on screen.
+  func treeLines(level: Int) -> [TreeLine] {
+    var lines: [TreeLine] = []
+    func add(_ parent: TreeNode?, level: Int) {
+      let key = key(parent)
+      if let nodes = children[key] {
+        if nodes.isEmpty {
+          lines.append(TreeLine(id: "note:" + key, content: .note(emptyText(parent), isError: false), level: level))
+        }
+        for node in nodes {
+          lines.append(TreeLine(id: node.id, content: .node(node), level: level))
+          if node.hasChildren, expanded.contains(node.id) { add(node, level: level + 1) }
+        }
+      } else if let error = treeErrors[key] {
+        lines.append(TreeLine(id: "note:" + key, content: .note(error, isError: true), level: level))
+      } else {
+        lines.append(TreeLine(id: "note:" + key, content: .loading(parent), level: level))
+      }
+    }
+    add(nil, level: level)
+    return lines
+  }
+
+  private func emptyText(_ parent: TreeNode?) -> String {
     switch parent?.kind {
-    case .database, .keyspace, .schema: "No \(connection.profile.engine.collectionNoun.plural)"
+    case .database, .keyspace, .schema: "No \(profile.engine.collectionNoun.plural)"
     default: "Nothing here yet"
+    }
+  }
+}
+
+struct TreeLineRow: View {
+  let connection: LiveConnection
+  let line: TreeLine
+
+  var body: some View {
+    switch line.content {
+    case .node(let node):
+      TreeNodeRow(connection: connection, node: node, level: line.level)
+    case .note(let text, let isError):
+      NoteLine(text, systemImage: nil, hue: isError ? .red : nil).inTree(line.level)
+    case .loading(let parent):
+      NoteLine("Loading…", systemImage: nil).inTree(line.level)
+        .task { await connection.loadChildren(of: parent) }
     }
   }
 }
@@ -296,7 +333,6 @@ struct TreeChildren: View {
 struct TreeNodeRow: View {
   let connection: LiveConnection
   let node: TreeNode
-  @Bindable var window: WindowModel
   var level: Int
   @Environment(\.databaseSidebarTag) private var tag
 
@@ -317,9 +353,6 @@ struct TreeNodeRow: View {
       }
       .action { isExpanded.wrappedValue.toggle() }
       .kitRowIndent(level)
-      if isExpanded.wrappedValue {
-        TreeChildren(connection: connection, parent: node, window: window, level: level + 1)
-      }
     } else {
       SidebarRow(value: tag(.node(connection.id, node)), node.title, systemImage: node.symbol) {
         detail
