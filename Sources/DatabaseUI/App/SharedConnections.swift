@@ -88,7 +88,7 @@ enum SharedConnections {
   static func deviceKey() throws -> SSHKey {
     let key = try VaultIdentity.key()
     let blob = VaultIdentity.publicKeyBlob(key)
-    return SSHKey(kind: .ecdsaP256, publicKeyBlob: Array(blob), comment: deviceName) { data in
+    return SSHKey(kind: .ecdsaP256, publicKeyBlob: Array(blob), comment: deviceName, prepare: VaultIdentity.presencePrompt()) { data in
       Array(try VaultIdentity.sshSignature(Data(data), key: key))
     }
   }
