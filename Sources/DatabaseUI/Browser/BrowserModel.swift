@@ -51,6 +51,8 @@ final class BrowserModel {
   private(set) var lastSaved: (undo: [RecordEdit], summary: String)?
   var toast: String?
   var showsReview = false
+  var showsIndexes = false
+  @ObservationIgnored private(set) lazy var indexes = IndexesModel(browser: self)
   /// Set by a double-click: the inspector opens this item for editing.
   var editRequest: String?
 
@@ -87,6 +89,7 @@ final class BrowserModel {
   var records: [Record] { page?.records ?? [] }
   var noun: Noun { engine.itemNoun }
   var isEditable: Bool { ref.isWritable && !connection.profile.isReadOnly }
+  var hasIndexes: Bool { engine.supportsIndexes && ref.isWritable && session is IndexSession }
 
   var visibleFields: [FieldInfo] { fields.filter { !request.hiddenFields.contains($0.name) } }
 

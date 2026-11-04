@@ -15,8 +15,18 @@ import WireKit
 
   static func profile(_ engine: EngineKind) -> (ConnectionProfile, String) {
     switch engine {
-    case .postgres: (ConnectionProfile(engine: .postgres, port: 5432, user: "postgres", database: "postgres"), "postgres")
-    case .mysql: (ConnectionProfile(engine: .mysql, port: 3306, user: "root"), "databasepro")
+    case .postgres:
+      (
+        ConnectionProfile(
+          engine: .postgres, port: ProcessInfo.processInfo.environment["POSTGRES_TEST_PORT"].flatMap(Int.init) ?? 5432,
+          user: "postgres", database: "postgres"), "postgres"
+      )
+    case .mysql:
+      (
+        ConnectionProfile(
+          engine: .mysql, port: ProcessInfo.processInfo.environment["MYSQL_TEST_PORT"].flatMap(Int.init) ?? 3306, user: "root"),
+        "databasepro"
+      )
     case .mariadb: (ConnectionProfile(engine: .mariadb, port: 3307, user: "root"), "databasepro")
     case .sqlserver: (ConnectionProfile(engine: .sqlserver, port: 1433, user: "sa"), "DatabasePro#2026")
     case .sqlite:
@@ -83,6 +93,29 @@ import WireKit
   }
 
   static let engines: [EngineKind] = [.postgres, .mysql, .mariadb, .sqlserver, .sqlite, .duckdb]
+
+  @Test(arguments: engines.filter(\.supportsIndexes)) func indexesCreateListDropAndRestore(engine: EngineKind) async throws {
+    let setup = try await Self.setUp(engine)
+    let session = try #require(setup.session as? IndexSession)
+    let ref = setup.orders
+    let new = NewIndex(keys: [IndexKey(field: "status", isDescending: true), IndexKey(field: "total")], isUnique: false)
+    let name = session.defaultIndexName(for: new, on: ref)
+    #expect(name == "orders_status_total_idx")
+    try await session.runIndexStatement(session.createStatement(for: new, on: ref), on: ref)
+    var indexes = try await session.indexes(of: ref)
+    let created = try #require(indexes.first { $0.name == name })
+    #expect(created.keys.map(\.field) == ["status", "total"])
+    #expect(created.keys.map(\.isDescending) == [true, false])
+    #expect(!created.isUnique && !created.isProtected)
+    if engine != .sqlite { #expect(indexes.first?.isProtected == true) }
+    try await session.runIndexStatement(created.dropStatement, on: ref)
+    indexes = try await session.indexes(of: ref)
+    #expect(!indexes.contains { $0.name == name })
+    try await session.runIndexStatement(created.restoreStatement, on: ref)
+    indexes = try await session.indexes(of: ref)
+    #expect(indexes.first { $0.name == name }?.keys == created.keys)
+    try await session.runIndexStatement(created.dropStatement, on: ref)
+  }
 
   @Test(arguments: engines) func treeFieldsAndRelations(engine: EngineKind) async throws {
     let setup = try await Self.setUp(engine)

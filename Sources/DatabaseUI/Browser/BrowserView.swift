@@ -16,6 +16,9 @@ struct BrowserView: View {
       .kitSheet(isPresented: $browser.showsReview) {
         ReviewSheet(browser: browser).componentKit(accent: .databaseAccent)
       }
+      .kitSheet(isPresented: $browser.showsIndexes) {
+        IndexesSheet(browser: browser).componentKit(accent: .databaseAccent)
+      }
       .kitSheet(isPresented: $adding) {
         NewItemSheet(browser: browser).componentKit(accent: .databaseAccent)
       }
@@ -261,6 +264,10 @@ struct BrowserView: View {
           .kitHelp(
             browser.showsQueryEditor ? "Hide Query Editor" : "Show Query Editor", shortcut: "⇧⌘E",
             systemImage: "chevron.left.forwardslash.chevron.right")
+          if browser.showsQueryEditor, browser.hasIndexes {
+            Button("Indexes", systemImage: "bolt.horizontal") { browser.showsIndexes = true }
+              .kitHelp("Indexes", systemImage: "bolt.horizontal")
+          }
         }
         Button("Refresh", systemImage: "arrow.clockwise") { Task { await browser.reload() } }
           .kitHelp("Refresh", systemImage: "arrow.clockwise")
@@ -271,6 +278,9 @@ struct BrowserView: View {
     } menu: {
       if browser.mode == .find {
         Toggle("Query Editor", systemImage: "chevron.left.forwardslash.chevron.right", isOn: $browser.showsQueryEditor)
+        if browser.showsQueryEditor, browser.hasIndexes {
+          Button("Indexes", systemImage: "bolt.horizontal") { browser.showsIndexes = true }
+        }
       }
       Button("Refresh", systemImage: "arrow.clockwise") { Task { await browser.reload() } }
       if canAdd {

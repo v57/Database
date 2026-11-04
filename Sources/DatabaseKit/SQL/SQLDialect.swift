@@ -34,6 +34,10 @@ protocol SQLDialect: Sendable {
   func outgoingKeysQuery(_ ref: ObjectRef) -> String?
   /// (column here, source database, source schema, source table, source column) for keys coming in.
   func incomingKeysQuery(_ ref: ObjectRef) -> String?
+  /// (index name, unique, protected from dropping, column, descending, definition or NULL), a row per column in the
+  /// index's order; nil when the engine has no index editing yet.
+  func indexesQuery(_ ref: ObjectRef) -> String?
+  func dropIndex(_ name: String, on ref: ObjectRef) -> String
   func explain(_ sql: String) -> [String]
 
   var beginTransaction: String { get }
@@ -47,6 +51,9 @@ protocol SQLDialect: Sendable {
 }
 
 extension SQLDialect {
+  func indexesQuery(_ ref: ObjectRef) -> String? { nil }
+  func dropIndex(_ name: String, on ref: ObjectRef) -> String { "DROP INDEX \(quote(name))" }
+
   func literal(_ value: CellValue, category: ValueCategory) -> String {
     switch value {
     case .unset: return "NULL"
@@ -118,6 +125,23 @@ struct PostgresDialect: SQLDialect {
   }
   func stringLiteral(_ text: String) -> String { singleQuote(text) }
   func bytesLiteral(_ bytes: [UInt8]) -> String { "'\\x\(bytes.hexString)'::bytea" }
+  func indexesQuery(_ ref: ObjectRef) -> String? {
+    """
+    SELECT i.relname, x.indisunique,
+      x.indisprimary OR EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = x.indexrelid),
+      pg_get_indexdef(x.indexrelid, k.n, true), (x.indoption[k.n - 1] & 1) = 1, pg_get_indexdef(x.indexrelid)
+    FROM pg_index x
+    JOIN pg_class i ON i.oid = x.indexrelid
+    JOIN pg_class t ON t.oid = x.indrelid
+    JOIN pg_namespace s ON s.oid = t.relnamespace
+    CROSS JOIN LATERAL generate_series(1, x.indnkeyatts) AS k(n)
+    WHERE s.nspname = \(stringLiteral(ref.schema ?? "public")) AND t.relname = \(stringLiteral(ref.name))
+    ORDER BY x.indisprimary DESC, i.relname, k.n
+    """
+  }
+  func dropIndex(_ name: String, on ref: ObjectRef) -> String {
+    "DROP INDEX " + [ref.schema, name].compactMap { $0 }.map(quote).joined(separator: ".")
+  }
   func boolLiteral(_ value: Bool) -> String { value ? "TRUE" : "FALSE" }
   func textCast(_ expression: String) -> String { "\(expression)::text" }
   let likeOperator = "ILIKE"
@@ -230,6 +254,15 @@ struct MySQLDialect: SQLDialect {
     ORDER BY ORDINAL_POSITION
     """
   }
+  func indexesQuery(_ ref: ObjectRef) -> String? {
+    """
+    SELECT INDEX_NAME, NON_UNIQUE = 0, INDEX_NAME = 'PRIMARY', COLUMN_NAME, COLLATION = 'D', NULL
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = \(stringLiteral(ref.database ?? "")) AND TABLE_NAME = \(stringLiteral(ref.name))
+    ORDER BY INDEX_NAME = 'PRIMARY' DESC, INDEX_NAME, SEQ_IN_INDEX
+    """
+  }
+  func dropIndex(_ name: String, on ref: ObjectRef) -> String { "DROP INDEX \(quote(name)) ON \(qualified(ref))" }
   func outgoingKeysQuery(_ ref: ObjectRef) -> String? {
     """
     SELECT COLUMN_NAME, REFERENCED_TABLE_SCHEMA, NULL, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
@@ -374,6 +407,15 @@ struct SQLiteDialect: SQLDialect {
   func qualified(_ ref: ObjectRef) -> String { quote(ref.name) }
   func stringLiteral(_ text: String) -> String { singleQuote(text) }
   func bytesLiteral(_ bytes: [UInt8]) -> String { "X'\(bytes.hexString)'" }
+  func indexesQuery(_ ref: ObjectRef) -> String? {
+    """
+    SELECT l.name, l."unique", l.origin <> 'c', i.name, i."desc", m.sql
+    FROM pragma_index_list(\(stringLiteral(ref.name))) l
+    JOIN pragma_index_xinfo(l.name) i ON i.key = 1
+    LEFT JOIN sqlite_master m ON m.type = 'index' AND m.name = l.name
+    ORDER BY l.name, i.seqno
+    """
+  }
   func boolLiteral(_ value: Bool) -> String { value ? "1" : "0" }
   func textCast(_ expression: String) -> String { "CAST(\(expression) AS TEXT)" }
   let likeOperator = "LIKE"

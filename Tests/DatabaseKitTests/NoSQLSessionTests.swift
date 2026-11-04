@@ -18,6 +18,37 @@ import WireKit
     return try #require(session as? MongoSession)
   }
 
+  @Test func mongoIndexesCreateListDropAndRestore() async throws {
+    let session = try await Self.mongo()
+    defer { Task { await session.close() } }
+    _ = try await session.run(
+      """
+      use dbpro_test
+      db.indexed.drop()
+      db.indexed.insertMany([{ a: 1, b: "x" }, { a: 2, b: "y" }])
+      """, context: QueryContext(database: "dbpro_test"))
+    let ref = ObjectRef(database: "dbpro_test", name: "indexed", kind: .collection)
+    let new = NewIndex(keys: [IndexKey(field: "a", isDescending: true), IndexKey(field: "b")], isUnique: true)
+    #expect(session.defaultIndexName(for: new, on: ref) == "a_-1_b_1")
+    try await session.runIndexStatement(session.createStatement(for: new, on: ref), on: ref)
+    var indexes = try await session.indexes(of: ref)
+    #expect(indexes.map(\.name).sorted() == ["_id_", "a_-1_b_1"])
+    #expect(indexes.first { $0.name == "_id_" }?.isProtected == true)
+    let created = try #require(indexes.first { $0.name == "a_-1_b_1" })
+    #expect(created.isUnique && !created.isProtected)
+    #expect(created.keys == [IndexKey(field: "a", isDescending: true), IndexKey(field: "b")])
+    try await session.runIndexStatement(created.dropStatement, on: ref)
+    indexes = try await session.indexes(of: ref)
+    #expect(indexes.map(\.name) == ["_id_"])
+    try await session.runIndexStatement(created.restoreStatement, on: ref)
+    indexes = try await session.indexes(of: ref)
+    #expect(indexes.first { $0.name == created.name } == created)
+    // A unique index refuses duplicates: restoring kept the option.
+    await #expect(throws: (any Error).self) {
+      try await session.run("db.indexed.insertOne({ a: 1, b: \"x\" })", context: QueryContext(database: "dbpro_test"))
+    }
+  }
+
   @Test func mongoSearchesOneFieldOfAnyType() async throws {
     let session = try await Self.mongo()
     defer { Task { await session.close() } }

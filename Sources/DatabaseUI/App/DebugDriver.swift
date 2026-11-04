@@ -18,6 +18,7 @@
   ///   --hide-sidebar                       start with the sidebar hidden
   ///   --sidebar-search "orders"            type in the sidebar's search field
   ///   --search "12" [--search-field total]  search the list, in one field
+  ///   --indexes [--index-add] [--index-drop name] [--index-new "a,-b"] [--index-apply] [--index-undo]
   @MainActor
   public enum DebugDriver {
     /// Opens the screen the arguments describe and returns once it has finished loading.
@@ -88,6 +89,20 @@
         browser.selection = [browser.records[row].id]
       }
       if LaunchOptions.flag("--query-editor") { browser.showsQueryEditor = true }
+      if LaunchOptions.flag("--indexes") {
+        browser.showsIndexes = true
+        await browser.indexes.load()
+        if let name = LaunchOptions.value("--index-drop"), let index = browser.indexes.indexes.first(where: { $0.name == name }) {
+          browser.indexes.stageDrop(index)
+        }
+        if let fields = LaunchOptions.value("--index-new") {
+          // "customer,-total": a minus sign means descending.
+          let keys = fields.split(separator: ",").map { IndexKey(field: String($0.drop { $0 == "-" }), isDescending: $0.hasPrefix("-")) }
+          browser.indexes.stageCreate(NewIndex(keys: keys))
+        }
+        if LaunchOptions.flag("--index-apply") { await browser.indexes.apply() }
+        if LaunchOptions.flag("--index-undo") { await browser.indexes.undo() }
+      }
       if LaunchOptions.value("--mode") == "aggregate" {
         await browser.switchMode(.aggregate)
         browser.pipeline.showsFullBuilder = LaunchOptions.flag("--full-builder")

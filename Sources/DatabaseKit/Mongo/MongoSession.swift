@@ -608,6 +608,11 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
       let reply = try await client.command(
         ["createIndexes": .string(collection), "indexes": .array([.document(index)])], database: database)
       return [.documents([reply], note: nil)]
+    case "dropIndex":
+      try writable()
+      guard let name = args.first?.stringValue else { throw InputError("dropIndex() takes the index's name.") }
+      try await client.dropIndex(database: database, collection: collection, name: name)
+      return [.message("Dropped index \(name)")]
     case "drop":
       try writable()
       try await client.dropCollection(database: database, collection: collection)
@@ -669,7 +674,7 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
   func completions(context: QueryContext) async -> [Completion] {
     var out = [
       "find", "findOne", "aggregate", "countDocuments", "distinct", "insertOne", "insertMany", "updateOne",
-      "updateMany", "deleteOne", "deleteMany", "getIndexes", "createIndex", "sort", "limit", "skip",
+      "updateMany", "deleteOne", "deleteMany", "getIndexes", "createIndex", "dropIndex", "sort", "limit", "skip",
     ].map { Completion(text: $0, detail: "method", kind: .function) }
     out += [
       "$match", "$group", "$sort", "$limit", "$skip", "$project", "$set", "$addFields", "$unset", "$unwind", "$lookup",

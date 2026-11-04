@@ -342,6 +342,10 @@ public actor MongoClient {
     return try await drain(cursorReply: reply, database: database, limit: 10_000)
   }
 
+  public func dropIndex(database: String, collection: String, name: String) async throws {
+    try await command(["dropIndexes": .string(collection), "index": .string(name)], database: database)
+  }
+
   public func dropCollection(database: String, collection: String) async throws {
     try await command(["drop": .string(collection)], database: database)
   }
