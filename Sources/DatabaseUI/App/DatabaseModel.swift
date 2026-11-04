@@ -5,6 +5,7 @@ import Observation
 import SSHTunnel
 import SwiftUI
 import VaultKit
+import VaultUI
 
 /// A query kept for later, per connection.
 struct SavedQuery: Codable, Hashable, Identifiable {
@@ -148,14 +149,14 @@ public final class DatabaseModel {
 
   /// The profiles of the shared connections, in their sidebar order.
   private func reloadProfiles() {
-    let store = hostKeys.store
+    let hostKeys = hostKeys
     let personal = vault.personalVault
     var ids: [UUID: String] = [:]
     profiles = vault.databases.compactMap { record in
       let profile = SharedConnections.profile(
         from: record, hosts: vault.hosts, fallbacks: personal.fallbackAddresses(of:)
-      ) { host, port in
-        try? store?.knownFingerprint(host: host, port: port)
+      ) { host in
+        hostKeys.knownHost(for: host)?.fingerprint
       }
       if let profile { ids[profile.id] = record.id }
       return profile
@@ -211,7 +212,9 @@ public final class DatabaseModel {
       vault.save(host)
       hostID = host.id
       if let fingerprint = profile.ssh.hostKeyFingerprint {
-        hostKeys.perform { try $0.trust(fingerprint: fingerprint, host: host.hostname, port: host.port) }
+        if let store = hostKeys.trustStore(for: host) {
+          hostKeys.perform { _ in try store.trust(fingerprint: fingerprint, for: host) }
+        }
       }
     }
     let id = vaultID(for: profile.id)
@@ -279,15 +282,6 @@ public final class DatabaseModel {
     reloadProfiles()
   }
 
-  /// Remembers an SSH host key after the first successful login, for every v57 app.
-  func rememberHostKey(_ fingerprint: String?, for id: UUID) {
-    guard let fingerprint, let profile = profile(id), profile.ssh.enabled,
-      profile.ssh.hostKeyFingerprint != fingerprint
-    else { return }
-    hostKeys.perform { try $0.trust(fingerprint: fingerprint, host: profile.ssh.host, port: profile.ssh.port) }
-    reloadProfiles()
-  }
-
   public func databasePassword(for id: UUID) -> String? { secrets.string("db.\(vaultID(for: id))") }
 
   /// The SSH password saved for the profile's host.
@@ -298,10 +292,16 @@ public final class DatabaseModel {
     let key: SSHKey? =
       profile.ssh.auth == .key
       ? (profile.ssh.keyID.flatMap { keys.key($0) } ?? (try? SharedConnections.deviceKey())) : nil
+    // The first connection to a server: the user decides, before the key or password goes anywhere. A yes pins the key.
+    let host = SharedConnections.host(for: profile.ssh, among: vault.hosts)
+    let hostKeys = hostKeys
     return Credentials(
       password: password ?? databasePassword(for: profile.id),
       sshPassword: sshPassword ?? self.sshPassword(for: profile.id),
-      sshKey: key)
+      sshKey: key,
+      sshUnknownHost: .ask { key in
+        await VaultHostKeyRequest.shared.approve(key.fingerprint, keyType: key.type, for: host, in: hostKeys)
+      })
   }
 
   // MARK: Live connections

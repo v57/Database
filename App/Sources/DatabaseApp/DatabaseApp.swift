@@ -36,6 +36,7 @@ public struct DatabaseApp: App {
       MainWindow(openedAccount: $account)
         .environment(app)
         .kitToasts()
+        .vaultHostKeyRequests()
         .componentKit(accent: .databaseAccent)
     }
     .defaultSize(width: 1440, height: 900)

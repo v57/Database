@@ -71,7 +71,6 @@ public final class LiveConnection: Identifiable {
       closeTunnel = opened.onClose
       self.report = report
       status = .connected
-      app.rememberHostKey(report.sshHostKeyFingerprint, for: profile.id)
       app.markUsed(profile.id)
       await loadChildren(of: nil)
       expanded.insert(Self.rootID)

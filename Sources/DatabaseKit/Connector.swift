@@ -14,7 +14,7 @@ import WireKit
 public struct ConnectionReport: Sendable {
   public var serverDescription: String
   public var elapsed: TimeInterval
-  /// The SSH server's host key, to remember for next time.
+  /// The SSH server's host key, as `SSHServer.trust` accepted it.
   public var sshHostKeyFingerprint: String?
   public var sshHostKeyType: String?
 }
@@ -24,8 +24,15 @@ public struct Credentials: Sendable {
   public var password: String?
   public var sshPassword: String?
   public var sshKey: SSHKey?
+  /// What to do about an SSH server whose key isn't known yet (`SSHSettings.hostKeyFingerprint`). Unless someone can
+  /// be asked, it's refused.
+  public var sshUnknownHost: SSHHostTrust
 
-  public init(password: String? = nil, sshPassword: String? = nil, sshKey: SSHKey? = nil) {
+  public init(
+    password: String? = nil, sshPassword: String? = nil, sshKey: SSHKey? = nil,
+    sshUnknownHost: SSHHostTrust = .refuseUnknown
+  ) {
+    self.sshUnknownHost = sshUnknownHost
     self.password = password
     self.sshPassword = sshPassword
     self.sshKey = sshKey
@@ -48,7 +55,7 @@ public enum Connector {
         user: profile.ssh.user,
         password: profile.ssh.auth == .password ? credentials.sshPassword : nil,
         key: profile.ssh.auth == .key ? credentials.sshKey : nil,
-        knownFingerprint: profile.ssh.hostKeyFingerprint)
+        trust: .known(profile.ssh.hostKeyFingerprint, otherwise: credentials.sshUnknownHost))
       let opened = try await SSHTunnel.open(server: server)
       tunnel = opened
       // The SSH server resolves the name; an empty host is the server itself.

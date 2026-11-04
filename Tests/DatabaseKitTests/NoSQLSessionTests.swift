@@ -366,7 +366,7 @@ import WireKit
     ]
     if engine == .mongodb || engine == .redis { profile.user = "" }
     let (session, report) = try await Connector.connect(
-      profile, credentials: Credentials(password: passwords[engine], sshKey: key))
+      profile, credentials: Credentials(password: passwords[engine], sshKey: key, sshUnknownHost: .ask { _ in true }))
     #expect(report.sshHostKeyFingerprint?.hasPrefix("SHA256:") == true)
     #expect(!report.serverDescription.isEmpty)
     _ = try await session.children(of: nil)

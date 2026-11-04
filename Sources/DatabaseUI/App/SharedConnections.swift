@@ -15,7 +15,7 @@ enum SharedConnections {
   /// `fallbacks` are a host's other addresses to try (`Vault.fallbackAddresses(of:)`).
   static func profile(
     from record: VaultDatabase, hosts: [VaultHost], fallbacks: (VaultHost) -> [String] = { $0.fallbacks },
-    knownFingerprint: (String, Int) -> String?
+    knownFingerprint: (VaultHost) -> String?
   ) -> ConnectionProfile? {
     guard let engine = EngineKind(rawValue: record.engine) else { return nil }
     var profile = ConnectionProfile(
@@ -30,7 +30,7 @@ enum SharedConnections {
         enabled: true, host: host.hostname, fallbackHosts: fallbacks(host), port: host.port, user: host.user,
         auth: host.auth == .password ? .password : .key,
         keyID: host.auth == .importedKey ? host.keyID.flatMap(UUID.init(uuidString:)) : nil,
-        hostKeyFingerprint: knownFingerprint(host.hostname, host.port))
+        hostKeyFingerprint: knownFingerprint(host))
     }
     return profile
   }

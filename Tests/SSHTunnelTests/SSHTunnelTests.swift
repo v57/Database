@@ -23,8 +23,11 @@ import WireKit
 
   static func testKey() throws -> SSHKey { try SSHKey(importing: String(contentsOf: keyURL, encoding: .utf8)) }
 
+  /// The test server's key isn't known ahead of time, and nothing here is secret.
+  static let acceptAnyKey = SSHHostTrust.ask { _ in true }
+
   static var bastion: SSHServer {
-    get throws { SSHServer(host: "127.0.0.1", port: port, user: user, key: try testKey()) }
+    get throws { SSHServer(host: "127.0.0.1", port: port, user: user, key: try testKey(), trust: acceptAnyKey) }
   }
 
   static var macKeyAuthorized: Bool {
@@ -92,7 +95,7 @@ import WireKit
 
   @Test(.enabled(if: !local, "needs the bastion's password login"))
   func logsInWithAPassword() async throws {
-    let server = SSHServer(host: "127.0.0.1", port: Self.port, user: "tunnel", password: "tunnelpass")
+    let server = SSHServer(host: "127.0.0.1", port: Self.port, user: "tunnel", password: "tunnelpass", trust: Self.acceptAnyKey)
     let tunnel = try await SSHTunnel.open(server: server)
     let redis = try await RedisClient.connect(.init(host: Self.redisHost, port: 6379, dialer: tunnel.dialer))
     #expect(try await redis.run("PING").string == "PONG")
@@ -102,7 +105,7 @@ import WireKit
   }
 
   @Test func rejectsAWrongPassword() async throws {
-    let server = SSHServer(host: "127.0.0.1", port: Self.port, user: Self.user, password: "wrong")
+    let server = SSHServer(host: "127.0.0.1", port: Self.port, user: Self.user, password: "wrong", trust: Self.acceptAnyKey)
     await #expect(throws: SSHTunnelError.self) {
       try await SSHTunnel.open(server: server)
     }
@@ -110,7 +113,7 @@ import WireKit
 
   @Test func refusesAChangedHostKey() async throws {
     var server = try Self.bastion
-    server.knownFingerprint = "SHA256:not-the-real-one"
+    server.trust = .pinned("SHA256:not-the-real-one")
     do {
       _ = try await SSHTunnel.open(server: server)
       Issue.record("expected a host key error")
@@ -121,7 +124,7 @@ import WireKit
   }
 
   @Test func reportsAnUnreachableServer() async throws {
-    let server = SSHServer(host: "127.0.0.1", port: 1, user: "nobody", password: "x")
+    let server = SSHServer(host: "127.0.0.1", port: 1, user: "nobody", password: "x", trust: .refuseUnknown)
     await #expect(throws: SSHTunnelError.self) {
       try await SSHTunnel.open(server: server, timeout: 3)
     }
@@ -134,7 +137,7 @@ import WireKit
     // The server through itself: a login to it, a channel from it to its own sshd, a second login over that.
     let portOnServer = Self.local ? Self.port : 22
     let jump = try Self.bastion
-    let server = SSHServer(host: "127.0.0.1", port: portOnServer, user: jump.user, key: jump.key)
+    let server = SSHServer(host: "127.0.0.1", port: portOnServer, user: jump.user, key: jump.key, trust: Self.acceptAnyKey)
     let tunnel = try await SSHTunnel.open(server: server, through: jump, timeout: 10)
     defer { tunnel.close() }
     #expect(tunnel.jumpHostKeyFingerprint?.hasPrefix("SHA256:") == true)
@@ -149,7 +152,7 @@ import WireKit
 
   @Test(.enabled(if: macKeyAuthorized, "add .testing/ssh/id_ed25519.pub to ~/.ssh/authorized_keys"))
   func forwardsThroughThisMac() async throws {
-    let server = SSHServer(host: "127.0.0.1", port: 22, user: NSUserName(), key: try Self.testKey())
+    let server = SSHServer(host: "127.0.0.1", port: 22, user: NSUserName(), key: try Self.testKey(), trust: Self.acceptAnyKey)
     let tunnel = try await SSHTunnel.open(server: server)
     defer { tunnel.close() }
     let redis = try await RedisClient.connect(.init(host: "127.0.0.1", port: 6379, dialer: tunnel.dialer))
