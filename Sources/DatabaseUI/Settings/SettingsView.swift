@@ -71,6 +71,7 @@ struct SSHKeysView: View {
   @State private var importing = false
   @State private var error: String?
   @State private var deleting: StoredSSHKey?
+  @State private var lockedKey: LockedKeyFile?
 
   var body: some View {
     FormCard(footer: "Keys are stored in your Keychain. Give the public key to the SSH server's administrator, or add it to ~/.ssh/authorized_keys yourself.") {
@@ -107,13 +108,22 @@ struct SSHKeysView: View {
       let access = url.startAccessingSecurityScopedResource()
       defer { if access { url.stopAccessingSecurityScopedResource() } }
       do {
-        let key = try SSHKey(importing: try String(contentsOf: url, encoding: .utf8))
-        _ = try app.keys.add(key, name: key.comment.isEmpty ? url.lastPathComponent : key.comment)
-        app.keysVersion += 1
-        error = nil
+        let text = try String(contentsOf: url, encoding: .utf8)
+        do {
+          add(try SSHKey(importing: text), fileName: url.lastPathComponent)
+        } catch SSHKey.ImportError.needsPassphrase {
+          error = nil
+          lockedKey = LockedKeyFile(text: text, fileName: url.lastPathComponent)
+        }
       } catch {
         self.error = FriendlyError.message(error)
       }
+    }
+    .kitSheet(item: $lockedKey) { file in
+      KeyPassphraseSheet(file: file) { key in
+        add(key, fileName: file.fileName)
+      }
+      .componentKit(accent: .databaseAccent)
     }
     .kitConfirmation(
       "Delete \(deleting?.name ?? "")?", isPresented: .init(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
@@ -123,6 +133,16 @@ struct SSHKeysView: View {
       if let deleting { try? app.keys.remove(deleting.id) }
       app.keysVersion += 1
       deleting = nil
+    }
+  }
+
+  private func add(_ key: SSHKey, fileName: String) {
+    do {
+      _ = try app.keys.add(key, name: key.comment.isEmpty ? fileName : key.comment)
+      app.keysVersion += 1
+      error = nil
+    } catch {
+      self.error = FriendlyError.message(error)
     }
   }
 }

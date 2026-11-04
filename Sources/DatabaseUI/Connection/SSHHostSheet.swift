@@ -22,6 +22,7 @@ struct SSHHostSheet: View {
   @State private var fallbacks: [FallbackAddress]
   @State private var importingKey = false
   @State private var keyError: String?
+  @State private var lockedKey: LockedKeyFile?
 
   init(host: VaultHost, isNew: Bool, fingerprint: String?, onSave: @escaping (VaultHost, String) -> Void) {
     original = host
@@ -92,6 +93,12 @@ struct SSHHostSheet: View {
     }
     .fileImporter(isPresented: $importingKey, allowedContentTypes: [.data, .plainText, .item]) { result in
       if case .success(let url) = result { importKey(url) }
+    }
+    .kitSheet(item: $lockedKey) { file in
+      KeyPassphraseSheet(file: file) { key in
+        add(key, fileName: file.fileName)
+      }
+      .componentKit(accent: .databaseAccent)
     }
   }
 
@@ -175,8 +182,20 @@ struct SSHHostSheet: View {
     defer { if access { url.stopAccessingSecurityScopedResource() } }
     do {
       let text = try String(contentsOf: url, encoding: .utf8)
-      let key = try SSHKey(importing: text)
-      let stored = try app.keys.add(key, name: key.comment.isEmpty ? url.lastPathComponent : key.comment)
+      do {
+        add(try SSHKey(importing: text), fileName: url.lastPathComponent)
+      } catch SSHKey.ImportError.needsPassphrase {
+        keyError = nil
+        lockedKey = LockedKeyFile(text: text, fileName: url.lastPathComponent)
+      }
+    } catch {
+      keyError = FriendlyError.message(error)
+    }
+  }
+
+  private func add(_ key: SSHKey, fileName: String) {
+    do {
+      let stored = try app.keys.add(key, name: key.comment.isEmpty ? fileName : key.comment)
       app.keysVersion += 1
       keyID = stored.id
       keyError = nil
