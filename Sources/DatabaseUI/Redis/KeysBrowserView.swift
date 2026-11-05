@@ -297,6 +297,7 @@ struct KeysBrowserView: View {
             Button("Delete \(keys.count == 1 ? "Key" : "\(keys.count) Keys")", systemImage: "trash", role: .destructive) {
               Task { await model?.perform(keys.map { .delete(key: $0) }) }
             }
+            .kitMenuPreview(keys.count == 1 ? "Deletes \(keys[0]) from Redis." : "Deletes these \(keys.count) keys from Redis.")
           }
         }
       }

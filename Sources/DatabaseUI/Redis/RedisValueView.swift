@@ -275,6 +275,7 @@ struct PairsEditor: View {
               draft = value
             }
             Button("Delete \(field)", role: .destructive) { onDelete(field) }
+              .kitMenuPreview("Removes the field \(field) from this hash.")
           }
           Button("Copy Value") { KitPasteboard.copy(value) }
         }
@@ -339,6 +340,7 @@ struct ListValueEditor: View {
               draft = item
             }
             Button("Remove", role: .destructive) { Task { await model.perform([.listRemove(key: key, index: index)]) } }
+              .kitMenuPreview("Removes item \(index) from the list.")
           }
         }
         Rectangle().fill(.kitSeparator).frame(height: 0.5).padding(.leading, 12)
@@ -477,6 +479,7 @@ struct SortedSetEditor: View {
               editing = entry.member
               draftScore = entry.score.formatted(.number.grouping(.never))
             }
+            .kitMenuPreview("Gives \(entry.member) a new score, which moves it to a new place in the sorted set.")
             Button("Remove", role: .destructive) { Task { await model.perform([.zsetRemove(key: key, member: entry.member)]) } }
           }
         }

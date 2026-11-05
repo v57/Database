@@ -251,6 +251,7 @@ public struct ConnectionMenu<Extra: View>: View {
       }
       Button("Refresh", systemImage: "arrow.clockwise") { Task { await connection.refreshTree() } }
       Button("Disconnect", systemImage: "eject") { Task { await app.disconnect(connection.id) } }
+        .kitMenuPreview("Closes the connection to \(connection.profile.displayName). It stays saved.")
     } else {
       Button("Connect", systemImage: "bolt") { window.connect(connection.id) }
     }
@@ -420,6 +421,7 @@ struct QueryRows: View {
             .kitRowIndent(level + 1)
           .kitContextMenu {
             Button("Delete", systemImage: "trash", role: .destructive) { app.deleteQuery(query.id) }
+              .kitMenuPreview("Deletes the saved query “\(query.title)”.")
           }
         }
         ForEach(tabs) { tab in

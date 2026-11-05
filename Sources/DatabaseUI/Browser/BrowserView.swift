@@ -283,6 +283,7 @@ struct BrowserView: View {
         }
       }
       Button("Refresh", systemImage: "arrow.clockwise") { Task { await browser.reload() } }
+        .kitMenuPreview("Loads the \(browser.noun.plural) again, from the first page.")
       if canAdd {
         Button("Add \(browser.noun.capitalized)", systemImage: "plus") { adding = true }
       }

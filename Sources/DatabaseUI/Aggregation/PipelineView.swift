@@ -167,6 +167,7 @@ struct StepCard: View {
           .buttonStyle(.kitIcon)
           .kitMenu(isPresented: $showsActions) {
             Button("Run Through This Step", systemImage: "play") { pipeline.select(step.id) }
+              .kitMenuPreview("Shows the results up to this \(step.kind.name) step. Later steps don’t run.")
             Button("Move Up", systemImage: "arrow.up") { pipeline.move(step.id, by: -1) }.disabled(index == 0)
             Button("Move Down", systemImage: "arrow.down") { pipeline.move(step.id, by: 1) }
               .disabled(index == pipeline.steps.count - 1)
@@ -213,13 +214,13 @@ struct AddStepMenu: View {
       .fixedSize()
       .kitMenu(isPresented: $isOpen) {
         ForEach(pipeline.isSQL ? StepKind.common.filter { StepKind.sqlCompatible.contains($0) } : StepKind.common) { kind in
-          Button("\(kind.name) — \(kind.does)") { pipeline.add(kind) }
+          Button(kind.name) { pipeline.add(kind) }.kitMenuDetail(kind.does)
         }
         if !pipeline.isSQL {
           Divider()
           KitSubmenu("More Steps") {
             ForEach(StepKind.allCases.filter { !StepKind.common.contains($0) }) { kind in
-              Button("\(kind.name) — \(kind.does)") { pipeline.add(kind) }
+              Button(kind.name) { pipeline.add(kind) }.kitMenuDetail(kind.does)
             }
           }
         }

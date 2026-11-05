@@ -75,6 +75,7 @@ struct QueryEditorView: View {
         }
         Button("Explain", systemImage: "list.bullet.indent") { Task { await workspace.explainSelected() } }
           .disabled(tab.isRunning)
+          .kitMenuPreview("Shows how the database plans to run this query.")
       }
       ToolbarSlot(priority: 1) {
         ToolGroup(iconOnly: true) {
@@ -82,6 +83,7 @@ struct QueryEditorView: View {
         }
       } menu: {
         Button("Save…", systemImage: "square.and.arrow.down") { save(tab) }
+          .kitMenuPreview("Keeps this query under a name in the sidebar.")
       }
       Button("Run", systemImage: "play.fill") { Task { await workspace.runSelected() } }
         .buttonStyle(.kitPrimary)
@@ -137,6 +139,7 @@ struct QueryTabView: View {
         if let table = currentTable {
           KitMenuButton("Export", systemImage: "square.and.arrow.up") {
             Button("CSV…") { onExport(ExportDocument(text: Export.csv(fields: table.0, rows: table.1), type: .commaSeparatedText, name: tab.title + ".csv")) }
+              .kitMenuPreview("Saves the results as \(tab.title).csv. You pick where.")
             Button("JSON…") { onExport(ExportDocument(text: Export.json(fields: table.0, rows: table.1), type: .json, name: tab.title + ".json")) }
             Divider()
             Button("Copy as CSV", systemImage: "doc.on.doc") { KitPasteboard.copy(Export.csv(fields: table.0, rows: table.1)) }

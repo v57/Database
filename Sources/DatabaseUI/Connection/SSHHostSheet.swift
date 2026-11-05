@@ -131,6 +131,7 @@ struct SSHHostSheet: View {
                 keyID = key.id
               }
             }
+            .kitMenuPreview("Makes a new SSH key, “Database on \(SharedConnections.deviceName)”, and uses it for this host.")
             Button("Import Private Key…", systemImage: "square.and.arrow.down") { importingKey = true }
           }
           .controlSize(.small)

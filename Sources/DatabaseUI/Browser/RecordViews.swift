@@ -131,6 +131,7 @@ struct RecordMenu: View {
           }
         }
       }
+      .kitMenuPreview("Shows only the \(browser.noun.plural) with the value you pick.")
     } else if !records.isEmpty {
       Button("Copy \(records.count) as JSON", systemImage: "doc.on.doc") {
         KitPasteboard.copy("[\n" + records.map { Exporter.json($0, fields: browser.fields) }.joined(separator: ",\n") + "\n]")

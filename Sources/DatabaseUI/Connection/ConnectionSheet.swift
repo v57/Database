@@ -233,6 +233,7 @@ struct ConnectionSheet: View {
             isOn: Binding(get: { true }, set: { _ in editingHost = HostDraft(host: unsavedHost, isNew: true) }))
           .kitContextMenu {
             Button("Save as Configuration…") { editingHost = HostDraft(host: unsavedHost, isNew: true) }
+              .kitMenuPreview("Saves these SSH details as a configuration you can use again.")
           }
         }
         ChoiceCard(
@@ -255,6 +256,7 @@ struct ConnectionSheet: View {
     }
     if isSelected(host), profile.ssh.hostKeyFingerprint != nil {
       Button("Forget Host Key") { profile.ssh.hostKeyFingerprint = nil }
+        .kitMenuPreview("Drops the saved key from this connection. If the server’s key has changed, the next connection asks you about the new one.")
     }
     Divider()
     Button("Delete…", role: .destructive) { deletingHost = host }
