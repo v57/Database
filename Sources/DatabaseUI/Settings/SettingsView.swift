@@ -14,6 +14,7 @@ public struct SettingsView: View {
     KitSettings(selection: $pane, window: Self.window) {
       SettingsPane("General", systemImage: "gearshape") { GeneralSettings() }
       SettingsPane("SSH Keys", systemImage: "key", hue: .brown) { SSHKeysView() }
+      SettingsPane("Privacy", systemImage: "hand.raised", hue: .blue) { VaultICloudCard() }
       if showsAccounts {
         SettingsPane("Accounts", systemImage: "person.2", hue: .indigo, section: "v57") { VaultAccountsSettings() }
         #if !os(macOS)
