@@ -102,7 +102,6 @@ struct KeysBrowserView: View {
   @Bindable var browser: BrowserModel
   @Bindable var window: WindowModel
   @State private var model: RedisKeyModel?
-  @State private var searchText = ""
   @State private var creating = false
   @State private var commandLine = false
   /// Groups ("cart:") that are open.
@@ -132,11 +131,6 @@ struct KeysBrowserView: View {
       .onChange(of: browser.toast) { _, message in showToast(message) }
       .onAppear {
         if model == nil { model = RedisKeyModel(browser: browser) }
-        searchText = browser.request.search
-      }
-      .onChange(of: browser.selection) { _, selection in
-        guard let id = selection.first, selection.count == 1, id.hasPrefix("key:") else { return }
-        model?.key = String(id.dropFirst(4))
       }
   }
 
@@ -166,15 +160,7 @@ struct KeysBrowserView: View {
   private var main: some View {
     VStack(spacing: 0) {
       HStack(spacing: KitMetrics.gutter) {
-        KitSearchField(text: $searchText, prompt: "Find keys, like cart:*", status: searchStatus)
-          .frame(minWidth: 160, maxWidth: 280)
-          .onSubmit(search)
-          .onChange(of: searchText) { _, text in
-            Task {
-              try? await Task.sleep(for: .milliseconds(450))
-              if text == searchText { search() }
-            }
-          }
+        RedisKeySearch(browser: browser)
         ScrollView(.horizontal, showsIndicators: false) {
           KitSegmented(selection: typeFilter, options: Self.types.map { ($0.0, $0.1) })
             .padding(2)
@@ -192,7 +178,7 @@ struct KeysBrowserView: View {
       ForEach(browser.page?.notes ?? [], id: \.self) {
         Banner($0, systemImage: "info.circle", hue: .gray).padding([.horizontal, .bottom], KitMetrics.gutter)
       }
-      keyList
+      RedisKeyList(browser: browser, model: model, expanded: $expanded)
         .padding(.horizontal, KitMetrics.gutter)
       StatusBar {
         Text("Keys are grouped by the “:” in their names")
@@ -239,12 +225,6 @@ struct KeysBrowserView: View {
       })
   }
 
-  private var searchStatus: WorkStatus {
-    guard !browser.request.search.isEmpty else { return .idle }
-    if browser.isLoading { return .working }
-    return browser.records.isEmpty ? .failed : .done
-  }
-
   private var isConfirming: Binding<Bool> {
     Binding(get: { model?.confirming.isEmpty == false }, set: { if !$0 { model?.confirming = [] } })
   }
@@ -261,10 +241,48 @@ struct KeysBrowserView: View {
     toast(Toast(message, systemImage: "checkmark", duration: .seconds(8), undo: undo))
     browser.toast = nil
   }
+}
+
+/// The key search over the list. A view of its own with its own text, so a keystroke redraws the field alone, not the
+/// list, the inspector and the bar around them.
+private struct RedisKeySearch: View {
+  let browser: BrowserModel
+  @State private var searchText = ""
+
+  var body: some View {
+    KitSearchField(text: $searchText, prompt: "Find keys, like cart:*", status: searchStatus)
+      .frame(minWidth: 160, maxWidth: 280)
+      .onSubmit(search)
+      .onChange(of: searchText) { _, text in
+        Task {
+          try? await Task.sleep(for: .milliseconds(450))
+          if text == searchText { search() }
+        }
+      }
+      .onAppear { searchText = browser.request.search }
+  }
+
+  private var searchStatus: WorkStatus {
+    guard !browser.request.search.isEmpty else { return .idle }
+    if browser.isLoading { return .working }
+    return browser.records.isEmpty ? .failed : .done
+  }
 
   private func search() {
     browser.request.search = searchText
     Task { await browser.reload() }
+  }
+}
+
+/// The keys, grouped by prefix, in the kit's grid. The groups are made once per page here; the selection is read in
+/// `RedisKeyGrid`, so a click doesn't group the page again or rebuild the pane around the grid.
+private struct RedisKeyList: View {
+  let browser: BrowserModel
+  let model: RedisKeyModel?
+  @Binding var expanded: Set<String>
+
+  var body: some View {
+    RedisKeyGrid(browser: browser, model: model, rows: rows, columns: columns, expanded: $expanded)
   }
 
   /// Groups (their keys as children) and loose keys.
@@ -285,22 +303,6 @@ struct KeysBrowserView: View {
       records.first { $0["key"]?.displayText == key }.map { KeyRow(id: $0.id, label: key, record: $0) }
     }
     return out
-  }
-
-  private var keyList: some View {
-    KitGrid(rows, columns: columns, selection: $browser.selection, children: \.children, expanded: $expanded)
-      .rowContextMenu { ids in
-        let keys = ids.filter { $0.hasPrefix("key:") }.sorted().map { String($0.dropFirst(4)) }
-        if !keys.isEmpty {
-          Button("Copy Key Name\(keys.count == 1 ? "" : "s")") { KitPasteboard.copy(keys.joined(separator: "\n")) }
-          if browser.isEditable {
-            Button("Delete \(keys.count == 1 ? "Key" : "\(keys.count) Keys")", systemImage: "trash", role: .destructive) {
-              Task { await model?.perform(keys.map { .delete(key: $0) }) }
-            }
-            .kitMenuPreview(keys.count == 1 ? "Deletes \(keys[0]) from Redis." : "Deletes these \(keys.count) keys from Redis.")
-          }
-        }
-      }
   }
 
   private var columns: [KitGridColumn<KeyRow>] {
@@ -338,6 +340,34 @@ struct KeysBrowserView: View {
     case "JSON": "1 document"
     default: "\(n.formatted()) member\(n == 1 ? "" : "s")"
     }
+  }
+}
+
+private struct RedisKeyGrid: View {
+  @Bindable var browser: BrowserModel
+  let model: RedisKeyModel?
+  let rows: [KeyRow]
+  let columns: [KitGridColumn<KeyRow>]
+  @Binding var expanded: Set<String>
+
+  var body: some View {
+    KitGrid(rows, columns: columns, selection: $browser.selection, children: \.children, expanded: $expanded)
+      .rowContextMenu { ids in
+        let keys = ids.filter { $0.hasPrefix("key:") }.sorted().map { String($0.dropFirst(4)) }
+        if !keys.isEmpty {
+          Button("Copy Key Name\(keys.count == 1 ? "" : "s")") { KitPasteboard.copy(keys.joined(separator: "\n")) }
+          if browser.isEditable {
+            Button("Delete \(keys.count == 1 ? "Key" : "\(keys.count) Keys")", systemImage: "trash", role: .destructive) {
+              Task { await model?.perform(keys.map { .delete(key: $0) }) }
+            }
+            .kitMenuPreview(keys.count == 1 ? "Deletes \(keys[0]) from Redis." : "Deletes these \(keys.count) keys from Redis.")
+          }
+        }
+      }
+      .onChange(of: browser.selection) { _, selection in
+        guard let id = selection.first, selection.count == 1, id.hasPrefix("key:") else { return }
+        model?.key = String(id.dropFirst(4))
+      }
   }
 }
 

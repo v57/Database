@@ -27,7 +27,9 @@ struct BrowserView: View {
         message: "You'll see the change before anything is deleted.", systemImage: "trash", confirm: "Add to Changes",
         action: stageDeletes)
       .onChange(of: browser.toast) { _, message in showToast(message) }
-      .focusedSceneValue(\.deleteAction, deleteAction)
+      // Its own modifier, as the inspector is its own view: the selection read in this body built the whole pane again
+      // (bar, filters, grid, status bar) on every click in the grid.
+      .modifier(DeleteActionFocus(browser: browser, deleting: $deleting))
   }
 
   private var titled: some View {
@@ -42,7 +44,7 @@ struct BrowserView: View {
       ResizableSplit("inspectorWidth", pane: .trailing, width: KitMetrics.inspectorWidth, range: 280...520, mainMinWidth: 420) {
         main
       } pane: {
-        inspector
+        BrowserInspector(browser: browser, window: window, deleting: $deleting)
       }
     } else {
       main
@@ -51,11 +53,6 @@ struct BrowserView: View {
 
   private var isDeleting: Binding<Bool> {
     Binding(get: { !deleting.isEmpty }, set: { if !$0 { deleting = [] } })
-  }
-
-  private var deleteAction: (() -> Void)? {
-    guard browser.isEditable, !browser.selectedRecords.isEmpty else { return nil }
-    return { deleting = browser.selectedRecords }
   }
 
   private func stageDeletes() {
@@ -313,7 +310,16 @@ struct BrowserView: View {
     browser.engine.family == .document ? BrowserModel.ViewMode.allCases : [.table, .json]
   }
 
-  @ViewBuilder private var inspector: some View {
+}
+
+/// The inspector beside the grid: the selected item, several, or none. Reads the selection itself, so a click in the
+/// grid updates it and the grid, not the pane around them.
+private struct BrowserInspector: View {
+  let browser: BrowserModel
+  let window: WindowModel
+  @Binding var deleting: [Record]
+
+  var body: some View {
     if browser.selectedRecords.count > 1 {
       MultiSelectionInspector(browser: browser) { deleting = $0 }
     } else if let record = browser.selectedRecord {
@@ -326,6 +332,21 @@ struct BrowserView: View {
       EmptyState(systemImage: "sidebar.right", title: "No Selection", message: "Select a \(browser.noun.singular) to see its fields.")
         .kitPane(.secondary)
     }
+  }
+}
+
+/// Delete in the Edit menu for the selected items, while there are some to delete.
+private struct DeleteActionFocus: ViewModifier {
+  let browser: BrowserModel
+  @Binding var deleting: [Record]
+
+  func body(content: Content) -> some View {
+    content.focusedSceneValue(\.deleteAction, deleteAction)
+  }
+
+  private var deleteAction: (() -> Void)? {
+    guard browser.isEditable, !browser.selectedRecords.isEmpty else { return nil }
+    return { [browser, binding = $deleting] in binding.wrappedValue = browser.selectedRecords }
   }
 }
 

@@ -149,22 +149,29 @@ struct RecordMenu: View {
 /// Documents as cards: a title, a few fields, and chips for arrays and sub-documents.
 struct CardsView: View {
   @Bindable var browser: BrowserModel
-  @Environment(\.self) private var environment
 
   var body: some View {
     ScrollView {
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 12)], spacing: 12) {
         ForEach(browser.records) { record in
-          card(record)
+          RecordCard(browser: browser, record: record, selected: browser.selection.contains(record.id))
         }
       }
       .padding(KitMetrics.gutter)
     }
     .kitPane(.content)
   }
+}
 
-  private func card(_ record: Record) -> some View {
-    let selected = browser.selection.contains(record.id)
+/// One document as a card. A view of its own, so a click redraws the two cards whose ring changed, not every card on
+/// screen.
+private struct RecordCard: View {
+  let browser: BrowserModel
+  let record: Record
+  let selected: Bool
+  @Environment(\.self) private var environment
+
+  var body: some View {
     let fields = browser.visibleFields.filter { $0.name != "_id" }
     let scalars = fields.filter { field in
       guard let value = record[field.name]?.bsonValue ?? (record[field.name]?.isNull == false ? .string("") : nil) else { return false }
@@ -241,21 +248,31 @@ struct JSONListView: View {
       // A page of tall cards: built near the screen, a few a frame, keeping the heights of those let go.
       KitLazyStack(spacing: KitMetrics.gutter) {
         ForEach(browser.records) { record in
-          let selected = browser.selection.contains(record.id)
-          Text(Exporter.json(record, fields: browser.fields))
-            .kitFont(.monoSmall)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .kitSurface(.card)
-            .kitSelectedRing(selected)
-            .contentShape(Rectangle())
-            .onTapGesture { browser.selection = [record.id] }
+          JSONCard(browser: browser, record: record, selected: browser.selection.contains(record.id))
         }
       }
       .padding(KitMetrics.gutter)
     }
     .kitPane(.content)
+  }
+}
+
+/// One item's JSON. A view of its own, so a click rings the new card without encoding every card on screen again.
+private struct JSONCard: View {
+  let browser: BrowserModel
+  let record: Record
+  let selected: Bool
+
+  var body: some View {
+    Text(Exporter.json(record, fields: browser.fields))
+      .kitFont(.monoSmall)
+      .textSelection(.enabled)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(12)
+      .kitSurface(.card)
+      .kitSelectedRing(selected)
+      .contentShape(Rectangle())
+      .onTapGesture { browser.selection = [record.id] }
   }
 }
 
