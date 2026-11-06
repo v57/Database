@@ -14,7 +14,7 @@ struct QueryEditorView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      tabBar
+      QueryTabStrip(workspace: workspace, window: window)
       if let tab = workspace.selected {
         QueryTabView(tab: tab, workspace: workspace, onExport: { exporting = $0 })
           .id(tab.id)
@@ -25,12 +25,7 @@ struct QueryEditorView: View {
       }
     }
     .kitPane(.content)
-    .kitToolbar(
-      workspace.selected?.title ?? "Query", meta: [workspace.connection.profile.displayName], systemImage: "bolt",
-      hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle
-    ) {
-      tools
-    }
+    .modifier(QueryToolbar(workspace: workspace, onSave: save))
     .kitPrompt(
       "Save Query", isPresented: $saving, text: $savingTitle, message: "Saved queries show under Queries in the sidebar.",
       systemImage: "square.and.arrow.down", confirm: "Save"
@@ -49,10 +44,34 @@ struct QueryEditorView: View {
     saving = true
   }
 
-  private var tabBar: some View {
+}
+
+/// The query tabs over the editor. A view of its own, so a title or an edited dot changing (the first keystroke in a
+/// saved query) redraws the strip, not the editor and results under it.
+private struct QueryTabStrip: View {
+  @Bindable var workspace: QueryWorkspace
+  let window: WindowModel
+
+  var body: some View {
     KitTabStrip(
       tabs: workspace.tabs.map { KitTab(id: $0.id, title: $0.title, isEdited: $0.isDirty && $0.savedID != nil) },
       selection: $workspace.selectedID, onClose: { workspace.close($0) }, onAdd: { window.newQuery() })
+  }
+}
+
+/// The query pane's title bar and tools. A modifier of its own: the running tab's state and title read in the pane's
+/// body rebuilt the editor and the results on every run.
+private struct QueryToolbar: ViewModifier {
+  let workspace: QueryWorkspace
+  let onSave: (QueryTab) -> Void
+
+  func body(content: Content) -> some View {
+    content.kitToolbar(
+      workspace.selected?.title ?? "Query", meta: [workspace.connection.profile.displayName], systemImage: "bolt",
+      hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle
+    ) {
+      tools
+    }
   }
 
   /// Format and Explain fold into "…" first, then Save; Run never folds.
@@ -79,10 +98,10 @@ struct QueryEditorView: View {
       }
       ToolbarSlot(priority: 1) {
         ToolGroup(iconOnly: true) {
-          Button("Save…", systemImage: "square.and.arrow.down") { save(tab) }
+          Button("Save…", systemImage: "square.and.arrow.down") { onSave(tab) }
         }
       } menu: {
-        Button("Save…", systemImage: "square.and.arrow.down") { save(tab) }
+        Button("Save…", systemImage: "square.and.arrow.down") { onSave(tab) }
           .kitMenuPreview("Keeps this query under a name in the sidebar.")
       }
       Button("Run", systemImage: "play.fill") { Task { await workspace.runSelected() } }
@@ -94,28 +113,35 @@ struct QueryEditorView: View {
   }
 }
 
-/// One query tab: editor on top, results below.
+/// One query tab: editor on top, results below. The two are views of their own: a keystroke updates the editor alone,
+/// and a run the results alone (the text's binding, made in one body for both, rebuilt the results on every keystroke).
 struct QueryTabView: View {
-  @Bindable var tab: QueryTab
+  let tab: QueryTab
   let workspace: QueryWorkspace
   let onExport: (ExportDocument) -> Void
 
   var body: some View {
     #if os(macOS)
       ResizableSplit("queryEditorHeight", pane: .top, height: 240, range: 120...420, mainMinHeight: 200, showsLine: true) {
-        results
+        QueryTabResults(tab: tab, workspace: workspace, onExport: onExport)
       } pane: {
-        editor
+        QueryTabEditor(tab: tab, workspace: workspace)
       }
     #else
       VStack(spacing: 0) {
-        editor.frame(minHeight: 160, maxHeight: 300)
-        results
+        QueryTabEditor(tab: tab, workspace: workspace).frame(minHeight: 160, maxHeight: 300)
+        QueryTabResults(tab: tab, workspace: workspace, onExport: onExport)
       }
     #endif
   }
+}
 
-  private var editor: some View {
+/// A query tab's editor, with where it runs above it.
+private struct QueryTabEditor: View {
+  @Bindable var tab: QueryTab
+  let workspace: QueryWorkspace
+
+  var body: some View {
     VStack(spacing: 0) {
       ContextBar(tab: tab, workspace: workspace)
       CodeEditor(
@@ -124,8 +150,15 @@ struct QueryTabView: View {
     }
     .kitPane(.content)
   }
+}
 
-  private var results: some View {
+/// A query tab's results, messages or plan, with the run's status and Export.
+private struct QueryTabResults: View {
+  @Bindable var tab: QueryTab
+  let workspace: QueryWorkspace
+  let onExport: (ExportDocument) -> Void
+
+  var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 10) {
         KitSegmented(selection: $tab.output, options: QueryTab.Output.allCases.map { ($0.rawValue, $0) })

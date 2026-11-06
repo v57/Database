@@ -71,15 +71,16 @@ struct ResultRow: Identifiable {
   let cells: [CellValue]
 }
 
-/// Query rows in the kit's grid.
+/// Query rows in the kit's grid. The rows and columns are made here, once per result; the selection lives in
+/// `ResultGrid`, so a click doesn't wrap every row of a long result again.
 struct ResultTable: View {
   let fields: [FieldInfo]
   let rows: [[CellValue]]
-  @State private var selection: Set<Int> = []
 
   var body: some View {
-    KitGrid(
-      rows.enumerated().map { ResultRow(id: $0.offset, cells: $0.element) },
+    ResultGrid(
+      fields: fields, rows: rows,
+      gridRows: rows.enumerated().map { ResultRow(id: $0.offset, cells: $0.element) },
       columns: fields.enumerated().map { index, field in
         KitGridColumn<ResultRow>(
           field.name, id: "\(index)", width: field.category.isNumeric ? 100 : 160,
@@ -88,9 +89,19 @@ struct ResultTable: View {
           let value = index < row.cells.count ? row.cells[index] : .null
           return value.isNull ? nil : value.displayText
         }
-      },
-      selection: $selection
-    )
+      })
+  }
+}
+
+private struct ResultGrid: View {
+  let fields: [FieldInfo]
+  let rows: [[CellValue]]
+  let gridRows: [ResultRow]
+  let columns: [KitGridColumn<ResultRow>]
+  @State private var selection: Set<Int> = []
+
+  var body: some View {
+    KitGrid(gridRows, columns: columns, selection: $selection)
     .rowContextMenu { ids in
       let picked = ids.sorted().compactMap { rows.indices.contains($0) ? rows[$0] : nil }
       Button("Copy \(picked.count == 1 ? "Row" : "\(picked.count) Rows") as CSV") {
