@@ -26,6 +26,13 @@ public final class WindowModel {
     case connection(UUID)
     case browse(UUID, ObjectRef)
     case query(UUID)
+
+    var connectionID: UUID? {
+      switch self {
+      case .welcome: nil
+      case .connection(let id), .browse(let id, _), .query(let id): id
+      }
+    }
   }
 
   public let app: DatabaseModel
@@ -38,7 +45,12 @@ public final class WindowModel {
   /// Called when the selection changes, by a row or from inside (a new query tab, a foreign key's table), for apps
   /// whose own sidebar shows the tree (Shell).
   @ObservationIgnored public var onSelect: ((SidebarItem?) -> Void)?
-  public private(set) var route: Route = .welcome
+  public private(set) var route: Route = .welcome {
+    didSet {
+      let id = route.connectionID
+      if id != currentConnectionID { currentConnectionID = id }
+    }
+  }
   public var showsInspector = true
   public var showsNewConnection = false
   /// The SSH host a new connection starts out going through (Shell's per-host New Database).
@@ -48,12 +60,9 @@ public final class WindowModel {
 
   public init(app: DatabaseModel) { self.app = app }
 
-  public var currentConnectionID: UUID? {
-    switch route {
-    case .welcome: nil
-    case .connection(let id), .browse(let id, _), .query(let id): id
-    }
-  }
+  /// The open connection's id. Kept apart from `route` and set only when it changes, so a view showing the connection
+  /// (the sidebar's card) doesn't update each time another table or tab of it opens.
+  public private(set) var currentConnectionID: UUID?
 
   public var currentConnection: LiveConnection? { currentConnectionID.map { app.connection(for: $0) } }
 

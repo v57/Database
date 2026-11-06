@@ -39,7 +39,7 @@ public struct SidebarView: View {
     let current = current
     let others = profiles.filter { $0.id != current?.id }
     // The Mac's toggle hides the sidebar through the window's split view; iPad and iPhone need the binding.
-    KitSidebar(selection: $window.selection, searchText: $window.searchText, columnVisibility: idiom.isTouch ? $columnVisibility : nil) {
+    SidebarFrame(window: window, columnVisibility: idiom.isTouch ? $columnVisibility : nil) {
       VaultAccountPicker(meta: app.profiles.count == 1 ? "1 connection" : "\(app.profiles.count) connections")
       // A long tree keeps the open connection's title in view; Connections waits at the bottom while it's below.
       if let current {
@@ -95,6 +95,29 @@ public struct SidebarView: View {
         shown.last.flatMap { all.firstIndex(of: $0.id) }.map { $0 + 1 } ?? all.count
       }
     app.move(from: from, to: to)
+  }
+}
+
+/// The kit's sidebar around the rows, bound to the window's selection. A view of its own: a binding reads its value
+/// as it's made, so made in `SidebarView`'s body the selection rebuilt every card and row (new closures each time) on
+/// each click in the tree. Here the rows come in built and stay the same value when only the selection changes.
+private struct SidebarFrame<Content: View>: View {
+  @Bindable var window: WindowModel
+  let columnVisibility: Binding<NavigationSplitViewVisibility>?
+  let content: Content
+
+  init(
+    window: WindowModel, columnVisibility: Binding<NavigationSplitViewVisibility>?, @ViewBuilder content: () -> Content
+  ) {
+    self.window = window
+    self.columnVisibility = columnVisibility
+    self.content = content()
+  }
+
+  var body: some View {
+    KitSidebar(selection: $window.selection, searchText: $window.searchText, columnVisibility: columnVisibility) {
+      content
+    }
   }
 }
 

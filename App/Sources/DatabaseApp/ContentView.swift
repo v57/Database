@@ -83,9 +83,7 @@ private struct WindowContent: View {
     }
     .focusedSceneValue(\.databaseWindow, window)
     .databaseSheets(window)
-    .onChange(of: window.route) { _, route in
-      if case .welcome = route { compactColumn = .sidebar } else { compactColumn = .detail }
-    }
+    .modifier(CompactColumnFollower(window: window, column: $compactColumn))
     .onOpenURL { url in
       if let profile = app.addFile(url) { window.connect(profile.id) }
     }
@@ -105,5 +103,19 @@ private struct WindowContent: View {
       }
       .kitSheet(item: $importOffer) { offer in VaultImportSheet(offer, vault: app.vault, app: "Database") }
     #endif
+  }
+}
+
+/// Shows the page on a phone once something is open, the sidebar on Welcome. A modifier of its own: read in the
+/// window's body, the route (a new one on every table, query tab or connection picked) built the split view again,
+/// the sidebar with it.
+private struct CompactColumnFollower: ViewModifier {
+  let window: WindowModel
+  @Binding var column: NavigationSplitViewColumn
+
+  func body(content: Content) -> some View {
+    content.onChange(of: window.route) { _, route in
+      if case .welcome = route { column = .sidebar } else { column = .detail }
+    }
   }
 }

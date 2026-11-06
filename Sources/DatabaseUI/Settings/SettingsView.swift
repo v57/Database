@@ -6,7 +6,7 @@ import VaultUI
 
 /// Settings: how much the browser loads, the DuckDB download, SSH keys, and the v57 accounts.
 public struct SettingsView: View {
-  @AppStorage("settings.pane") private var pane = "General"
+  @KitStorage("settings.pane") private var pane = "General"
 
   public init() {}
 
@@ -51,7 +51,7 @@ public struct SettingsView: View {
 }
 
 struct GeneralSettings: View {
-  @AppStorage("pageSize") private var pageSize = 50
+  @KitStorage("pageSize") private var pageSize = 50
 
   var body: some View {
     FormCard(footer: "Production connections always show their changes for review before saving.") {
