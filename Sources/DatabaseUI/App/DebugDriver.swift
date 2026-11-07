@@ -37,28 +37,7 @@
         window.editingProfileID = profile.id
       }
       defer { if let text = LaunchOptions.value("--sidebar-search") { window.searchText = text } }
-      guard let path = LaunchOptions.value("--select") else { return }
-      let parts = path.split(separator: "/").map(String.init)
-      guard let first = parts.first, let profile = app.profiles.first(where: { $0.name == first }) else { return }
-      window.selection = .connection(profile.id)
-      let connection = app.connection(for: profile.id)
-      await connection.connect()
-      var parent: TreeNode?
-      var target: TreeNode?
-      for title in parts.dropFirst() {
-        await connection.loadChildren(of: parent)
-        guard let node = connection.children[connection.key(parent)]?.first(where: { $0.title == title }) else { break }
-        connection.expanded.insert(connection.key(parent))
-        if node.hasChildren {
-          connection.expanded.insert(node.id)
-          parent = node
-        } else {
-          target = node
-        }
-      }
-      if let target {
-        window.selection = .node(profile.id, target)
-      }
+      guard let path = LaunchOptions.value("--select"), let connection = await DebugSelect.select(path, in: window) else { return }
       if LaunchOptions.flag("--no-inspector") { window.showsInspector = false }
       if let text = LaunchOptions.value("--new-query") {
         window.newQuery()

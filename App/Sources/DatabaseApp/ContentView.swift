@@ -43,6 +43,7 @@ struct ContentView: View {
           }
           #if os(macOS)
             if !Screenshots.isCapturing { Task { await DebugPresenter.runIfRequested() } }
+            DebugSelect.listenForSelectRequests(model)
           #endif
         #endif
       }
