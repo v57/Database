@@ -26,7 +26,7 @@ struct DocumentInspector: View {
   var body: some View {
     KitInspector(width: nil) {
       InspectorHeader(
-        browser.displayName(for: record) ?? "Document", meta: ["Document in \(browser.ref.name)", "\(document.count) fields"],
+        browser.displayName(for: record).map { "\($0)" } ?? "Document", meta: ["Document in \(browser.ref.name)", "\(document.count) fields"],
         systemImage: browser.ref.symbol, hue: browser.engine.hue)
       if editing {
         editor
@@ -195,7 +195,7 @@ private struct FieldEditor: View {
             .kitField(mono: true)
             .frame(maxWidth: 160)
         }
-        KitPicker("Type", selection: $row.type, options: documentFieldTypes.map { ($0, $0) })
+        KitPicker("Type", selection: $row.type, options: documentFieldTypes.map { ("\($0)", $0) })
         .disabled(row.name == "_id")
         Spacer()
         if row.name != "_id" {

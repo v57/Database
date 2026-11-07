@@ -14,7 +14,7 @@ struct FilterBar: View {
       if browser.engine.supportsSearch {
         KitSearchField(
           text: $searchText, prompt: "Search \(browser.ref.name)", scope: scope, scopes: scopes,
-          status: searchStatus, count: searchCount
+          status: searchStatus, count: searchCount.map { "\($0)" }
         )
         .frame(minWidth: 180, maxWidth: 300)
         .onSubmit { commitSearch() }
@@ -138,10 +138,10 @@ struct AddFilterView: View {
     VStack(alignment: .leading, spacing: 10) {
       FormCard("Add Filter") {
         FormRow("Field", systemImage: "tablecells", hue: .gray) {
-          KitPicker("Field", selection: $field, options: browser.fields.map { ($0.keyRole != nil ? "\($0.name) (key)" : $0.name, $0.name) })
+          KitPicker("Field", selection: $field, options: browser.fields.map { ($0.keyRole != nil ? "\($0.name) (key)" : "\($0.name)", $0.name) })
         }
         FormRow("Condition", systemImage: "line.3.horizontal.decrease", hue: .accent) {
-          KitPicker("Condition", selection: $op, options: ops.map { ($0.label(for: selectedField?.category ?? .text), $0) })
+          KitPicker("Condition", selection: $op, options: ops.map { ("\($0.label(for: selectedField?.category ?? .text))", $0) })
         }
         if op.needsValue {
           if selectedField?.category == .boolean {

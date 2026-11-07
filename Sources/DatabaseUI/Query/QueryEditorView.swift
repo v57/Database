@@ -67,7 +67,7 @@ private struct QueryToolbar: ViewModifier {
 
   func body(content: Content) -> some View {
     content.kitToolbar(
-      workspace.selected?.title ?? "Query", meta: [workspace.connection.profile.displayName], systemImage: "bolt",
+      workspace.selected.map { "\($0.title)" } ?? "Query", meta: [workspace.connection.profile.displayName], systemImage: "bolt",
       hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle
     ) {
       tools
@@ -185,7 +185,7 @@ private struct QueryTabResults: View {
       switch tab.output {
       case .results:
         if tab.resultOutputs.isEmpty {
-          EmptyState(systemImage: tab.error == nil ? "play" : "exclamationmark.triangle", title: tab.error ?? "Run a query to see results")
+          EmptyState(systemImage: tab.error == nil ? "play" : "exclamationmark.triangle", title: tab.error.map { "\($0)" } ?? "Run a query to see results")
         } else {
           QueryResultsView(outputs: tab.resultOutputs, connection: workspace.connection)
         }

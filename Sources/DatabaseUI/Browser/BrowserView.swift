@@ -111,7 +111,7 @@ struct BrowserView: View {
 
   @ViewBuilder private var content: some View {
     if let error = browser.errorMessage, browser.page == nil {
-      EmptyState(systemImage: "exclamationmark.triangle", title: "Couldn't Load \(browser.noun.pluralCapitalized)", message: error) {
+      EmptyState(systemImage: "exclamationmark.triangle", title: "Couldn't Load \(browser.noun.pluralCapitalized)", message: "\(error)") {
         Button("Try Again") { Task { await browser.reload() } }.buttonStyle(.kitPrimary)
       }
     } else if let runs = browser.customRunsForDisplay {

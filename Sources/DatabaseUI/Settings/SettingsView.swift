@@ -77,7 +77,7 @@ struct SSHKeysView: View {
   var body: some View {
     FormCard(footer: "Keys are stored in your Keychain. Give the public key to the SSH server's administrator, or add it to ~/.ssh/authorized_keys yourself.") {
       ForEach(app.keys.keys) { key in
-        FormRow(key.name, help: "\(key.kind.label) · \(key.fingerprint)", systemImage: "key", hue: .brown) {
+        FormRow("\(key.name)", help: "\(key.kind.label) · \(key.fingerprint)", systemImage: "key", hue: .brown) {
           HStack(spacing: 2) {
             Button("Copy Public Key", systemImage: "doc.on.doc") { KitPasteboard.copy(key.publicKeyLine) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = key }

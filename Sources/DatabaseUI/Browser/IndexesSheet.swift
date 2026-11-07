@@ -179,8 +179,9 @@ struct IndexesSheet: View {
     #endif
   }
 
-  private var meta: String {
-    "\(browser.ref.name) on \(profile.displayName)" + (profile.isProduction ? " (Production)" : "")
+  private var meta: LocalizedStringKey {
+    profile.isProduction
+      ? "\(browser.ref.name) on \(profile.displayName) (Production)" : "\(browser.ref.name) on \(profile.displayName)"
   }
 
   private var applyTitle: String {
@@ -300,7 +301,7 @@ private struct AddIndexCard: View {
   @State private var isUnique = false
 
   private var model: IndexesModel { browser.indexes }
-  private var fieldOptions: [(String, String)] { browser.fields.map { ($0.name, $0.name) } }
+  private var fieldOptions: [(LocalizedStringKey, String)] { browser.fields.map { ("\($0.name)", $0.name) } }
   private var new: NewIndex { NewIndex(name: name.trimmingCharacters(in: .whitespaces), keys: keys, isUnique: isUnique) }
   private var finalName: String { new.name.isEmpty ? model.defaultName(for: new) : new.name }
 

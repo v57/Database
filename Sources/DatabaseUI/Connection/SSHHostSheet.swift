@@ -76,7 +76,7 @@ struct SSHHostSheet: View {
           }
           if let fingerprint {
             FormCard {
-              FormRow("Remembered host key", help: fingerprint, systemImage: "checkmark.shield", hue: .green)
+              FormRow("Remembered host key", help: "\(fingerprint)", systemImage: "checkmark.shield", hue: .green)
             }
           }
         }
@@ -143,7 +143,7 @@ struct SSHHostSheet: View {
         }
       }
       if let keyError {
-        FormRow("Couldn't import the key", systemImage: "exclamationmark.triangle", hue: .red, error: keyError)
+        FormRow("Couldn't import the key", systemImage: "exclamationmark.triangle", hue: .red, error: "\(keyError)")
       }
     }
     .id(app.keysVersion)

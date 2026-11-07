@@ -16,7 +16,8 @@ struct ReviewSheet: View {
 
   var body: some View {
     KitSheet(
-      title: "Review \(browser.pending.count) Change\(browser.pending.count == 1 ? "" : "s")", meta: meta, width: 600,
+      title: browser.pending.count == 1 ? "Review 1 Change" : "Review \(browser.pending.count) Changes", meta: meta,
+      width: 600,
       icon: { browser.connection.liveTile(size: 32) }
     ) {
       ScrollView {
@@ -66,16 +67,19 @@ struct ReviewSheet: View {
     }
   }
 
-  private var meta: String {
-    var parts = ["\(browser.ref.name) on \(profile.displayName)" + (profile.isProduction ? " (Production)" : "")]
-    if let note = transactionNote { parts.append(note) }
-    return parts.joined(separator: " · ")
+  private var meta: LocalizedStringKey {
+    switch (profile.isProduction, transactionNote) {
+    case (false, nil): "\(browser.ref.name) on \(profile.displayName)"
+    case (true, nil): "\(browser.ref.name) on \(profile.displayName) (Production)"
+    case (false, let note?): "\(browser.ref.name) on \(profile.displayName) · \(note)"
+    case (true, let note?): "\(browser.ref.name) on \(profile.displayName) (Production) · \(note)"
+    }
   }
 
   private var transactionNote: String? {
     switch browser.engine.family {
-    case .sql: browser.pending.count > 1 ? "saved together, or none are" : nil
-    case .wideColumn: browser.pending.count > 1 ? "saved as one batch" : nil
+    case .sql: browser.pending.count > 1 ? String(localized: "saved together, or none are") : nil
+    case .wideColumn: browser.pending.count > 1 ? String(localized: "saved as one batch") : nil
     default: nil
     }
   }

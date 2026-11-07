@@ -30,7 +30,7 @@ struct RedisValueView: View {
       KitCodeBlock(commandHint, font: .monoSmall)
     }
     .kitPrompt(
-      "Rename Key", isPresented: $renaming, text: $newName, message: key,
+      "Rename Key", isPresented: $renaming, text: $newName, message: "\(key)",
       field: KitPromptField("New name", placeholder: "New name", systemImage: "key", mono: true), confirm: "Rename"
     ) { name in
       if name != key { Task { await model.perform([.rename(key: key, to: name)]) } }

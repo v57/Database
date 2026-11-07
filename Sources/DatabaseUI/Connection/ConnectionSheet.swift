@@ -14,7 +14,7 @@ struct ConnectionSheet: View {
 
   @State private var profile: ConnectionProfile
   @State private var link = ""
-  @State private var recognized: String?
+  @State private var recognized: LocalizedStringKey?
   @State private var password = ""
   @State private var sshPassword = ""
   /// The server shows as a summary (a pasted link, a saved connection) until Edit turns it back into a form.
@@ -219,8 +219,8 @@ struct ConnectionSheet: View {
         // Devices on the user's Hub (kept by the Vault app) come with the rest, reached at their Hub Network address.
         ForEach(app.vault.hosts) { host in
           ChoiceCard(
-            host.name.isEmpty ? host.hostname : host.name,
-            subtitle: host.isViaHub ? "Via Hub · \(address(of: host))" : address(of: host),
+            host.name.isEmpty ? "\(host.hostname)" : "\(host.name)",
+            subtitle: host.isViaHub ? "Via Hub · \(address(of: host))" : "\(address(of: host))",
             systemImage: host.isViaHub ? "point.3.connected.trianglepath.dotted" : "server.rack",
             hue: host.isViaHub ? .purple : .teal,
             isOn: Binding(get: { isSelected(host) }, set: { if $0 { use(host) } }))
@@ -229,7 +229,7 @@ struct ConnectionSheet: View {
         // SSH settings no saved configuration matches (made before configurations were shared).
         if profile.ssh.enabled, !app.vault.hosts.contains(where: isSelected) {
           ChoiceCard(
-            profile.ssh.host.isEmpty ? "SSH server" : profile.ssh.host, subtitle: "Not saved", systemImage: "server.rack", hue: .teal,
+            profile.ssh.host.isEmpty ? "SSH server" : "\(profile.ssh.host)", subtitle: "Not saved", systemImage: "server.rack", hue: .teal,
             isOn: Binding(get: { true }, set: { _ in editingHost = HostDraft(host: unsavedHost, isNew: true) }))
           .kitContextMenu {
             Button("Save as Configuration…") { editingHost = HostDraft(host: unsavedHost, isNew: true) }
@@ -263,7 +263,7 @@ struct ConnectionSheet: View {
       .disabled(isInUse(host))
   }
 
-  private static var thisDevice: String {
+  private static var thisDevice: LocalizedStringKey {
     #if os(macOS)
       "This Mac"
     #elseif os(Windows)
@@ -422,8 +422,8 @@ struct ConnectionSheet: View {
     VStack(alignment: .leading, spacing: KitMetrics.gutter) {
       FormCard("File", footer: profile.engine == .duckdb ? "A .duckdb file, or a Parquet, CSV or JSON file to query directly." : nil) {
         FormRow(
-          profile.filePath.isEmpty ? "No file chosen" : (profile.filePath as NSString).lastPathComponent,
-          help: profile.filePath.isEmpty ? nil : (profile.filePath as NSString).abbreviatingWithTildeInPath,
+          profile.filePath.isEmpty ? "No file chosen" : "\((profile.filePath as NSString).lastPathComponent)",
+          help: profile.filePath.isEmpty ? nil : "\((profile.filePath as NSString).abbreviatingWithTildeInPath)",
           systemImage: "doc", hue: profile.engine.hue
         ) {
           Button("Choose…") { pickingFile = true }.buttonStyle(.kit).controlSize(.small)

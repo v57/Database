@@ -470,7 +470,7 @@ struct NewKeySheet: View {
       FormCard {
         FormRow("Key name", systemImage: "key", hue: .red, field: TextField("Key name", text: $name, prompt: Text("session:1234")))
         FormRow("Type", systemImage: "square.grid.2x2", hue: .gray) {
-          KitPicker("Type", selection: $type, options: KeysBrowserView.types.compactMap(\.1).map { (label($0), $0) })
+          KitPicker("Type", selection: $type, options: KeysBrowserView.types.compactMap(\.1).map { ("\(label($0))", $0) })
         }
         switch type {
         case "hash", "stream":
