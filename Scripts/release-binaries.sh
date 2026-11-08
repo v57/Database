@@ -1,36 +1,17 @@
 #!/bin/zsh
-# Packs one of the prebuilt libraries in Binary/ for GitHub Releases and points the code at it.
-# The binaries aren't in git: ../SSH downloads the libssh2 release asset (or links Binary/ there), and the app downloads
-# DuckDB at runtime when someone asks for it.
+# Packs the prebuilt DuckDB in Binary/ for GitHub Releases and points the code at it. The binary isn't in git: the app
+# downloads it at runtime when someone asks for it. libssh2 is ../SSH's (Scripts/build-libssh2.sh, release-libssh2.sh).
 #
-#   Scripts/release-binaries.sh libssh2|duckdb
+#   Scripts/release-binaries.sh duckdb
 #
-# The release is tagged with the library's version (libssh2-1.11.1, duckdb-1.5.6). libssh2 is released on v57/Shell,
-# DuckDB on v57/Database. Publishing stays manual: the script prints the `gh release create` command.
+# The release is tagged with the library's version (duckdb-1.5.6) on v57/Database. Publishing stays manual: the script
+# prints the `gh release create` command.
 set -euo pipefail
 cd "${0:A:h}/.."
 
 OUT=build/release
 mkdir -p $OUT
 case ${1:-} in
-  libssh2)
-    NAME=Libssh2 TITLE=libssh2 REPO=v57/Shell
-    VERSION=$(awk -F'"' '/define LIBSSH2_VERSION /{sub(/_DEV$/, "", $2); print $2; exit}' \
-      Binary/Libssh2.xcframework/macos-arm64/Headers/libssh2.h)
-    NOTES="libssh2 + mbedTLS (mbedTLS symbols prefixed _dbpro_) for macOS, iOS and the iOS simulator (arm64), made by Database's Scripts/build-libssh2.sh. SSHKit (v57/SSH) links it as its Libssh2 binary target."
-    [[ -d Binary/$NAME.xcframework ]] || { echo "No Binary/$NAME.xcframework: run Scripts/build-libssh2.sh"; exit 1; }
-    TAG=$1-$VERSION
-    ZIP=$OUT/$NAME.xcframework.zip
-    rm -f $ZIP
-    (cd Binary && zip -qry -X ../$ZIP $NAME.xcframework)
-    CHECKSUM=$(swift package compute-checksum $ZIP)
-    # The binary target in ../SSH's Package.swift (SSHKit links it; Database gets it from there).
-    PKG=${SSH_REPO:-../SSH}/Package.swift
-    sed -i '' -E -e "s|releases/download/[^/]*/$NAME.xcframework.zip|releases/download/$TAG/$NAME.xcframework.zip|" \
-      -e "s|checksum: \"[0-9a-f]*\"|checksum: \"$CHECKSUM\"|" $PKG
-    grep -q $CHECKSUM $PKG || { echo "$PKG wasn't updated"; exit 1; }
-    echo "==> $ZIP ($(du -h $ZIP | cut -f1)), checksum $CHECKSUM"
-    echo "$PKG now points at release $TAG. Commit it there, then publish:" ;;
   duckdb)
     # Signed with the app's Developer ID: the hardened runtime only loads libraries from the same team.
     TITLE=DuckDB REPO=v57/Database
@@ -57,6 +38,6 @@ case ${1:-} in
     grep -q $CHECKSUM $PIN || { echo "$PIN wasn't updated"; exit 1; }
     echo "==> $ZIP ($(du -h $ZIP | cut -f1)), sha256 $CHECKSUM, $SIZE bytes"
     echo "$PIN now points at release $TAG. Commit it, then publish:" ;;
-  *) echo "Usage: Scripts/release-binaries.sh libssh2|duckdb"; exit 1 ;;
+  *) echo "Usage: Scripts/release-binaries.sh duckdb (libssh2: ../SSH/Scripts/release-libssh2.sh)"; exit 1 ;;
 esac
 echo "  gh release create $TAG $ZIP --repo $REPO --title \"$TITLE $VERSION\" --notes \"$NOTES\""

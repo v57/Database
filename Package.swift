@@ -29,8 +29,8 @@ let package = Package(
     // Shell's database connections.
     .library(name: "DatabaseUI", targets: ["DatabaseUI"]),
   ],
-  // SSHKit: logins, keys, SFTP, commands and libssh2 (Scripts/build-libssh2.sh still makes the prebuilt libssh2 and
-  // Scripts/release-binaries.sh publishes it on this repository's releases, which ../SSH downloads).
+  // SSHKit: logins, keys, SFTP, commands and libssh2 (prebuilt and released by ../SSH's Scripts/build-libssh2.sh and
+  // Scripts/release-libssh2.sh).
   dependencies: [v57("SSH"), v57("Component"), v57("Vault"), v57("Code")],
   targets: [
     .target(name: "Libssh2Exports", dependencies: [.product(name: "Libssh2", package: "SSH")]),
