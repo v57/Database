@@ -31,6 +31,7 @@ struct BrowserView: View {
       // Its own modifier, as the inspector is its own view: the selection read in this body built the whole pane again
       // (bar, filters, grid, status bar) on every click in the grid.
       .modifier(DeleteActionFocus(browser: browser, deleting: $deleting))
+      .modifier(PageSizeSetting(browser: browser))
   }
 
   private var titled: some View {
@@ -420,6 +421,17 @@ struct InspectorSplit<Main: View, Pane: View, Over: View>: View {
 }
 
 /// Delete in the Edit menu for the selected items, while there are some to delete.
+/// Follows Settings ▸ General ▸ Items per page while the browser is open (D-019), in its own view so the pane doesn't
+/// read the setting.
+private struct PageSizeSetting: ViewModifier {
+  let browser: BrowserModel
+  @KitStorage(BrowserModel.pageSizeKey) private var pageSize = 50
+
+  func body(content: Content) -> some View {
+    content.onChange(of: pageSize) { _, size in Task { await browser.changePageSize(to: size) } }
+  }
+}
+
 private struct DeleteActionFocus: ViewModifier {
   let browser: BrowserModel
   @Binding var deleting: [Record]

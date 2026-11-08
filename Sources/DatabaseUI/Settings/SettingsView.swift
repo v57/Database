@@ -51,7 +51,7 @@ public struct SettingsView: View {
 }
 
 struct GeneralSettings: View {
-  @KitStorage("pageSize") private var pageSize = 50
+  @KitStorage(BrowserModel.pageSizeKey) private var pageSize = 50
 
   var body: some View {
     FormCard(footer: "Production connections always show their changes for review before saving.") {

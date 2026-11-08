@@ -77,9 +77,7 @@ final class BrowserModel {
   init(connection: LiveConnection, ref: ObjectRef) {
     self.connection = connection
     self.ref = ref
-    var request = BrowseRequest(ref: ref, limit: 50)
-    if connection.profile.engine == .redis { request.limit = 100 }
-    self.request = request
+    self.request = BrowseRequest(ref: ref, limit: Self.pageSize(for: connection.profile.engine))
     viewMode = connection.profile.engine == .mongodb ? .cards : .table
   }
 
@@ -147,6 +145,24 @@ final class BrowserModel {
     request.offset = 0
     customRuns = nil
     queryIsCustom = false
+    await load()
+  }
+
+  /// Settings ▸ General ▸ Items per page (D-019).
+  static let pageSizeKey = "pageSize"
+
+  /// How many items a page loads: Items per page once it's picked, until then 50 (Redis keys 100).
+  static func pageSize(for engine: EngineKind) -> Int {
+    let picked = UserDefaults.standard.integer(forKey: pageSizeKey)
+    return picked > 0 ? picked : engine == .redis ? 100 : 50
+  }
+
+  /// Items per page changed in Settings: the page reloads at the new size, on the page that holds its first item.
+  func changePageSize(to size: Int) async {
+    guard size > 0, size != request.limit else { return }
+    request.offset = request.offset / size * size
+    request.limit = size
+    guard page != nil else { return }
     await load()
   }
 

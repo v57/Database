@@ -49,7 +49,8 @@ Redis, Cassandra and ScyllaDB don't have Sort. Redis doesn't have Fields.
 ## Pages
 
 The status bar shows which items you're looking at and how long the page took. **Previous Page** and **Next Page**
-move through them. A page holds 50 items, or 100 keys in Redis.
+move through them. A page holds 50 items, or 100 keys in Redis, until you pick another size in **Settings ▸ General ▸
+Items per page** (Mac and Linux).
 
 The status bar also notes **Production**, **Read only**, or **View: read only** for a database view, which can't be
 changed. **Refresh** loads the items again from the first page.

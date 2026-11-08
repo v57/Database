@@ -6,6 +6,8 @@ another v57 app's Settings.
 
 ## General
 
+- **Items per page**: how many rows, documents or keys a page of the browser loads (25, 50, 100, 200 or 500). An open
+  browser reloads at the new size.
 - **DuckDB**: download DuckDB, update it when a newer version is available, or **Remove** it. Database downloads it
   from GitHub only when you choose **Download**, and shows its size first. Removing it takes effect after Database
   restarts. See [Connections](Connections.md#duckdb-on-the-mac).
