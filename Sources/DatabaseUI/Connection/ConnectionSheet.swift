@@ -11,6 +11,7 @@ struct ConnectionSheet: View {
   let onSave: (ConnectionProfile) -> Void
   @Environment(DatabaseModel.self) private var app
   @Environment(\.kitDismiss) private var dismiss
+  @Environment(\.kitIdiom) private var idiom
 
   @State private var profile: ConnectionProfile
   @State private var link = ""
@@ -241,8 +242,15 @@ struct ConnectionSheet: View {
           isOn: Binding(get: { false }, set: { _ in editingHost = HostDraft(host: VaultHost(hostname: "", source: "databasepro"), isNew: true) }))
       }
       if let host = app.vault.hosts.first(where: isSelected) {
-        Text("Connects through \(host.displayName) to \(profile.host.isEmpty ? "the database" : profile.host):\(profile.port.formatted(.number.grouping(.never))). Right-click a configuration to edit it.")
-          .kitFont(.caption).padding(.horizontal, 4)
+        // A touch has no right click: there it's touch and hold (Shell S-005).
+        Group {
+          if idiom.isTouch {
+            Text("Connects through \(host.displayName) to \(profile.host.isEmpty ? "the database" : profile.host):\(profile.port.formatted(.number.grouping(.never))). Touch and hold a configuration to edit it.")
+          } else {
+            Text("Connects through \(host.displayName) to \(profile.host.isEmpty ? "the database" : profile.host):\(profile.port.formatted(.number.grouping(.never))). Right-click a configuration to edit it.")
+          }
+        }
+        .kitFont(.caption).padding(.horizontal, 4)
       }
     }
   }
