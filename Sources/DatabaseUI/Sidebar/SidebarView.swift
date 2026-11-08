@@ -73,7 +73,7 @@ public struct SidebarView: View {
       systemImage: "trash", confirm: "Delete Connection"
     ) {
       if let deleting {
-        if window.currentConnectionID == deleting.id { window.selection = nil }
+        window.leave(deleting.id)
         app.delete(deleting.id)
       }
       deleting = nil
@@ -273,7 +273,10 @@ public struct ConnectionMenu<Extra: View>: View {
         window.newQuery()
       }
       Button("Refresh", systemImage: "arrow.clockwise") { Task { await connection.refreshTree() } }
-      Button("Disconnect", systemImage: "eject") { Task { await app.disconnect(connection.id) } }
+      Button("Disconnect", systemImage: "eject") {
+        window.leave(connection.id)
+        Task { await app.disconnect(connection.id) }
+      }
         .kitMenuPreview("Closes the connection to \(connection.profile.displayName). It stays saved.")
     } else {
       Button("Connect", systemImage: "bolt") { window.connect(connection.id) }

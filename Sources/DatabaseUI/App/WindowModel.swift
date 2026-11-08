@@ -99,6 +99,15 @@ public final class WindowModel {
     }
   }
 
+  /// Leaves a connection that was closed or deleted: while the window shows it, the selection goes and the detail
+  /// returns to the welcome, rather than showing a table of a connection that's gone (D-016) or connecting it again
+  /// (D-003: an empty selection alone left the route, whose card read "Connecting…").
+  public func leave(_ id: UUID) {
+    guard currentConnectionID == id else { return }
+    selection = nil
+    route = .welcome
+  }
+
   /// Opens a table or collection by reference (from a foreign-key link, for example).
   func open(_ ref: ObjectRef, in connectionID: UUID) {
     let connection = app.connection(for: connectionID)
