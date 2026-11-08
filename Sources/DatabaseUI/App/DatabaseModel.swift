@@ -211,7 +211,9 @@ public final class DatabaseModel {
       let host = SharedConnections.host(for: profile.ssh, among: vault.hosts)
       vault.save(host)
       hostID = host.id
-      if let fingerprint = profile.ssh.hostKeyFingerprint {
+      // A key the profile learned (Test Connection) is pinned only where nothing is: the vault's pin is the one every
+      // app checks, and a copy read earlier mustn't replace a key accepted since (security audit M6).
+      if let fingerprint = profile.ssh.hostKeyFingerprint, hostKeys.knownHost(for: host) == nil {
         if let store = hostKeys.trustStore(for: host) {
           hostKeys.perform { _ in try store.trust(fingerprint: fingerprint, for: host) }
         }
@@ -336,10 +338,29 @@ public final class DatabaseModel {
   func open(_ profile: ConnectionProfile, credentials: Credentials, tunnelClosed: @escaping @MainActor (String?) -> Void)
     async throws -> OpenedSession
   {
+    let profile = withVaultHostKey(profile)
     if let opener { return try await opener(profile, credentials, tunnelClosed) }
     let (session, report) = try await Connector.connect(profile, credentials: credentials)
     session.onTunnelClosed { reason in Task { @MainActor in tunnelClosed(reason) } }
     return OpenedSession(session: session, report: report)
+  }
+
+  /// The profile with the SSH server's key as the vault pins it now, not the copy read with the profile: another app,
+  /// Vault's Forget Key or this app's Forget Host Key may have changed it since (security audit M6).
+  func withVaultHostKey(_ profile: ConnectionProfile) -> ConnectionProfile {
+    guard profile.ssh.enabled, !profile.engine.isFileBased, !profile.ssh.host.isEmpty else { return profile }
+    var profile = profile
+    profile.ssh.hostKeyFingerprint = hostKeys.knownHost(for: SharedConnections.host(for: profile.ssh, among: vault.hosts))?
+      .fingerprint
+    return profile
+  }
+
+  /// Drops the vault's pin of the server's key for every app, so the next connection asks about the key it then
+  /// shows (security audit M6). A changed key is refused until then.
+  public func forgetHostKey(of host: VaultHost) {
+    guard let known = hostKeys.knownHost(for: host), let store = hostKeys.trustStore(for: host) else { return }
+    hostKeys.perform { _ in try store.untrust(fingerprint: known.fingerprint, for: host) }
+    reloadProfiles()
   }
 
   /// Tries a profile without saving it.

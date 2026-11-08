@@ -254,9 +254,12 @@ struct ConnectionSheet: View {
     {
       Button("Copy Public Key") { KitPasteboard.copy(line) }
     }
-    if isSelected(host), profile.ssh.hostKeyFingerprint != nil {
-      Button("Forget Host Key") { profile.ssh.hostKeyFingerprint = nil }
-        .kitMenuPreview("Drops the saved key from this connection. If the server’s key has changed, the next connection asks you about the new one.")
+    if isSelected(host), profile.ssh.hostKeyFingerprint != nil || app.hostKeys.knownHost(for: host) != nil {
+      Button("Forget Host Key") {
+        app.forgetHostKey(of: host)
+        profile.ssh.hostKeyFingerprint = nil
+      }
+      .kitMenuPreview("Drops the server’s saved key for every app. If its key has changed, the next connection asks you about the new one.")
     }
     Divider()
     Button("Delete…", role: .destructive) { deletingHost = host }
