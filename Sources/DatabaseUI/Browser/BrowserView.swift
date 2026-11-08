@@ -7,6 +7,7 @@ struct BrowserView: View {
   @Bindable var browser: BrowserModel
   @Bindable var window: WindowModel
   @Environment(\.horizontalSizeClass) private var sizeClass
+  @Environment(\.kitIdiom) private var idiom
   @Environment(\.showToast) private var toast
   @State private var adding = false
   @State private var deleting: [Record] = []
@@ -39,15 +40,13 @@ struct BrowserView: View {
       }
   }
 
-  @ViewBuilder private var split: some View {
-    if showsInspector {
-      ResizableSplit("inspectorWidth", pane: .trailing, width: KitMetrics.inspectorWidth, range: 280...520, mainMinWidth: 420) {
-        main
-      } pane: {
-        BrowserInspector(browser: browser, window: window, deleting: $deleting)
-      }
-    } else {
+  private var split: some View {
+    InspectorSplit("inspectorWidth", range: 280...520, isShown: showsInspector) {
       main
+    } pane: {
+      BrowserInspector(browser: browser, window: window, deleting: $deleting)
+    } over: {
+      SelectionInspector(browser: browser, window: window, deleting: $deleting)
     }
   }
 
@@ -271,6 +270,13 @@ struct BrowserView: View {
         if canAdd {
           Button("Add \(browser.noun.capitalized)", systemImage: "plus") { adding = true }
         }
+        // The Mac has View › Show Inspector; an iPad only this (D-014).
+        if hasInspectorTool {
+          Button(window.showsInspector ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.right") {
+            withKitAnimation { window.showsInspector.toggle() }
+          }
+          .kitToolOn(window.showsInspector)
+        }
       }
     } menu: {
       if browser.mode == .find {
@@ -284,10 +290,17 @@ struct BrowserView: View {
       if canAdd {
         Button("Add \(browser.noun.capitalized)", systemImage: "plus") { adding = true }
       }
+      if hasInspectorTool {
+        Toggle("Inspector", systemImage: "sidebar.right", isOn: $window.showsInspector)
+      }
     }
   }
 
   private var canAdd: Bool { browser.isEditable && browser.mode == .find }
+
+  private var hasInspectorTool: Bool {
+    idiom != .mac && sizeClass != .compact && browser.mode == .find && !browser.collapsesInspector
+  }
 
   /// The title's live icon: the arc while the page loads.
   private var titleStatus: WorkStatus {
@@ -331,6 +344,77 @@ private struct BrowserInspector: View {
     } else {
       EmptyState(systemImage: "sidebar.right", title: "No Selection", message: "Select a \(browser.noun.singular) to see its fields.")
         .kitPane(.secondary)
+    }
+  }
+}
+
+/// The inspector over the grid while something is selected, where the pane has no room beside it.
+private struct SelectionInspector: View {
+  let browser: BrowserModel
+  let window: WindowModel
+  @Binding var deleting: [Record]
+
+  var body: some View {
+    if !browser.selectedRecords.isEmpty {
+      BrowserInspector(browser: browser, window: window, deleting: $deleting)
+    }
+  }
+}
+
+/// A pane's main view with its inspector beside it, resizable, or, where the two don't fit side by side (an iPad mini
+/// in portrait, beside the sidebar: D-014), the inspector floating over the main view's trailing side while `over`
+/// has something to show. The toolbar's Hide Inspector takes it away.
+struct InspectorSplit<Main: View, Pane: View, Over: View>: View {
+  let autosaveName: String
+  let range: ClosedRange<CGFloat>
+  let isShown: Bool
+  let main: Main
+  let pane: Pane
+  let over: Over
+
+  static var mainMinWidth: CGFloat { 420 }
+
+  init(
+    _ autosaveName: String, range: ClosedRange<CGFloat>, isShown: Bool, @ViewBuilder main: () -> Main,
+    @ViewBuilder pane: () -> Pane, @ViewBuilder over: () -> Over
+  ) {
+    self.autosaveName = autosaveName
+    self.range = range
+    self.isShown = isShown
+    self.main = main()
+    self.pane = pane()
+    self.over = over()
+  }
+
+  var body: some View {
+    // The width offered, not the width taken: a split wider than the pane would measure as fitting.
+    GeometryReader { proxy in
+      layout(width: proxy.size.width)
+        .frame(width: proxy.size.width, height: proxy.size.height)
+    }
+  }
+
+  @ViewBuilder private func layout(width: CGFloat) -> some View {
+    if isShown && width >= Self.mainMinWidth + range.lowerBound {
+      ResizableSplit(
+        autosaveName, pane: .trailing, width: KitMetrics.inspectorWidth, range: range, mainMinWidth: Self.mainMinWidth
+      ) {
+        main
+      } pane: {
+        pane
+      }
+    } else {
+      main
+        .overlay(alignment: .trailing) {
+          if isShown {
+            over
+              .frame(width: min(range.lowerBound + 20, max(0, width - 64)))
+              .frame(maxHeight: .infinity)
+              .kitOverlayCard()
+              .padding(KitMetrics.gutter)
+              .transition(.move(edge: .trailing).combined(with: .opacity))
+          }
+        }
     }
   }
 }
