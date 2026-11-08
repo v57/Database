@@ -17,12 +17,16 @@ public actor MySQLClient {
     public var connectTimeout: TimeInterval
     /// How to reach the server: TCP from this device, or a channel of an SSH connection.
     public var dialer: WireDialer
+    /// Sends the password as `mysql_clear_password`, or encrypted to an RSA key the server sends, on a connection
+    /// without SSH (security audit M9). Off: such a login is refused, as libmysqlclient does by default.
+    public var allowsInsecureLogin: Bool
 
     public init(
       host: String = "127.0.0.1", port: Int = 3306, user: String, password: String = "",
       database: String? = nil, connectTimeout: TimeInterval = 15,
-      dialer: WireDialer = .direct
+      dialer: WireDialer = .direct, allowsInsecureLogin: Bool = false
     ) {
+      self.allowsInsecureLogin = allowsInsecureLogin
       self.host = host
       self.port = port
       self.user = user
@@ -149,6 +153,7 @@ public actor MySQLClient {
     if config.database?.isEmpty == false { flags |= Self.connectWithDB }
     flags &= capabilities | Self.connectWithDB
 
+    if pluginName == "mysql_clear_password" { try checkInsecureLogin("in cleartext") }
     let authResponse = try Self.authResponse(plugin: pluginName, password: config.password, scramble: scramble)
     var w = ByteWriter()
     w.writeLE(flags)
@@ -183,12 +188,15 @@ public actor MySQLClient {
         var data = r.readRest()
         if data.last == 0 { data.removeLast() }
         scramble = data
+        if plugin == "mysql_clear_password" { try checkInsecureLogin("in cleartext") }
         try await writePacket(try Self.authResponse(plugin: plugin, password: config.password, scramble: scramble))
       case 0x01:
         // caching_sha2_password: 3 = fast auth succeeded (OK follows), 4 = send the full password.
         guard packet.count >= 2 else { throw WireError.truncated }
         if plugin == "caching_sha2_password" && packet[1] == 0x03 { continue }
         if plugin == "caching_sha2_password" && packet[1] == 0x04 {
+          // The full password, encrypted to a key the server (or anyone between) sends.
+          try checkInsecureLogin("encrypted to a key it sent")
           try await writePacket([0x02])  // ask for the server's RSA key
           let keyPacket = try await readPacket()
           guard keyPacket.first == 0x01 else { throw Self.serverError(keyPacket) }
@@ -202,6 +210,14 @@ public actor MySQLClient {
       default:
         throw WireError.protocolViolation("unexpected packet 0x\(String(head, radix: 16)) during login")
       }
+    }
+  }
+
+  /// Refuses a login that would send the password readably on a link that doesn't protect it, unless the connection
+  /// allows it. MySQL here has no TLS, so only SSH or this device count.
+  private func checkInsecureLogin(_ form: String) throws {
+    guard config.allowsInsecureLogin || config.dialer.protects(host: config.host, tls: .off) else {
+      throw WireError.insecureLogin(form)
     }
   }
 

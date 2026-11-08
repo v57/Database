@@ -162,6 +162,15 @@ public enum EngineKind: String, Codable, CaseIterable, Identifiable, Sendable {
   }
 
   /// Encrypted connections the drivers can make by themselves (TLS from the first byte).
+  /// Whether a server can ask for the password in a readable form (PostgreSQL's cleartext and MD5, MySQL's clear
+  /// password and server key), which the connection refuses off SSH or TLS unless it allows insecure logins.
+  public var hasInsecureLogins: Bool {
+    switch self {
+    case .postgres, .mysql, .mariadb: true
+    default: false
+    }
+  }
+
   public var supportsDirectTLS: Bool {
     switch self {
     case .postgres, .mongodb, .redis, .cassandra, .scylla: true

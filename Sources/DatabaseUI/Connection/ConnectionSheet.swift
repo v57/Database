@@ -470,6 +470,15 @@ struct ConnectionSheet: View {
             help: "\(profile.engine.displayName) encrypts after the connection starts. Connect through SSH to encrypt it end to end.",
             systemImage: "lock.shield", hue: .gray)
         }
+        if profile.engine.hasInsecureLogins, !profile.ssh.enabled {
+          FormRow(
+            "Allow insecure login",
+            help: "Sends the password when the server asks for it in a form anyone on the network could read. Off, Database refuses unless the connection goes through SSH or is encrypted.",
+            systemImage: "lock.open", hue: .red
+          ) {
+            Toggle("Allow insecure login", isOn: $profile.allowsInsecureLogin).toggleStyle(.kitSwitch).kitLabelsHidden()
+          }
+        }
       }
     }
   }

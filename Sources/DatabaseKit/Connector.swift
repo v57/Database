@@ -93,7 +93,8 @@ public enum Connector {
     case .postgres:
       let config = PostgresClient.Config(
         host: host, port: port, user: profile.user, password: password,
-        database: profile.database.isEmpty ? "postgres" : profile.database, tls: tls(profile), dialer: dialer)
+        database: profile.database.isEmpty ? "postgres" : profile.database, tls: tls(profile), dialer: dialer,
+        allowsInsecureLogin: profile.allowsInsecureLogin)
       let client = try await PostgresClient.connect(config)
       return SQLSession(
         profile: profile, dialect: PostgresDialect(), executor: PostgresExecutor(base: config, first: client),
@@ -105,7 +106,8 @@ public enum Connector {
       }
       let client = try await MySQLClient.connect(
         .init(host: host, port: port, user: profile.user, password: password,
-              database: profile.database.isEmpty ? nil : profile.database, dialer: dialer))
+              database: profile.database.isEmpty ? nil : profile.database, dialer: dialer,
+              allowsInsecureLogin: profile.allowsInsecureLogin))
       // A server answering as MariaDB gets MariaDB's dialect, whatever was picked.
       let engine: EngineKind = await client.isMariaDB ? .mariadb : .mysql
       return SQLSession(

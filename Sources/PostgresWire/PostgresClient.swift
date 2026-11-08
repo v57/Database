@@ -15,13 +15,17 @@ public actor PostgresClient {
     public var connectTimeout: TimeInterval
     /// How to reach the server: TCP from this device, or a channel of an SSH connection.
     public var dialer: WireDialer
+    /// Answers a server that asks for the password in cleartext or as MD5 on a connection with neither SSH nor TLS
+    /// (security audit M9). Off: such a login is refused, as libpq's `require_auth=scram-sha-256` would.
+    public var allowsInsecureLogin: Bool
 
     public init(
       host: String = "127.0.0.1", port: Int = 5432, user: String, password: String = "",
       database: String = "postgres", tls: TLSSettings = .off, applicationName: String = "Database",
       connectTimeout: TimeInterval = 15,
-      dialer: WireDialer = .direct
+      dialer: WireDialer = .direct, allowsInsecureLogin: Bool = false
     ) {
+      self.allowsInsecureLogin = allowsInsecureLogin
       self.host = host
       self.port = port
       self.user = user
@@ -107,6 +111,13 @@ public actor PostgresClient {
 
   // MARK: - Startup and authentication
 
+  /// Refuses a cleartext or MD5 login on a link that doesn't protect it, unless the connection allows it.
+  private func checkInsecureLogin(_ form: String) throws {
+    guard config.allowsInsecureLogin || config.dialer.protects(host: config.host, tls: config.tls) else {
+      throw WireError.insecureLogin(form)
+    }
+  }
+
   private func startup() async throws {
     var body = ByteWriter()
     body.writeBE(Int32(196608))  // protocol 3.0
@@ -133,10 +144,12 @@ public actor PostgresClient {
         switch code {
         case 0: break  // AuthenticationOk
         case 3:
+          try checkInsecureLogin("in cleartext")
           var w = ByteWriter()
           w.writeCString(config.password)
           try await send(type: UInt8(ascii: "p"), w.bytes)
         case 5:
+          try checkInsecureLogin("as an MD5 hash")
           let salt = try reader.readBytes(4)
           let inner = Digest.md5Hex(Array((config.password + config.user).utf8))
           let outer = "md5" + Digest.md5Hex(Array(inner.utf8) + salt)

@@ -110,6 +110,15 @@ public struct ConnectionProfile: Codable, Hashable, Identifiable, Sendable {
     self.lastUsed = lastUsed
   }
 
+  /// Whether a login may send the password when the server asks for it in cleartext or as MD5 (PostgreSQL) or in the
+  /// clear or to a key it sends (MySQL, MariaDB) on a connection with neither SSH nor TLS (security audit M9). Off by
+  /// default; kept in `options` (`allowInsecureLogin`), so the vault's record carries it with no new field.
+  public var allowsInsecureLogin: Bool {
+    get { options[Self.allowInsecureLoginOption] == "true" }
+    set { options[Self.allowInsecureLoginOption] = newValue ? "true" : nil }
+  }
+  static let allowInsecureLoginOption = "allowInsecureLogin"
+
   /// Name shown in the sidebar.
   public var displayName: String {
     if !name.isEmpty { return name }

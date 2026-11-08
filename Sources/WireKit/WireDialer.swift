@@ -6,12 +6,30 @@ import Foundation
 public struct WireDialer: Sendable {
   private let dial: @Sendable (_ host: String, _ port: Int, _ tls: TLSSettings, _ timeout: TimeInterval) async throws
     -> WireConnection
+  /// Whether what it dials travels inside something encrypted (an SSH channel), so a login may send a password the
+  /// server asks for in the clear.
+  public let isTunnel: Bool
 
   public init(
+    isTunnel: Bool = false,
     _ dial: @escaping @Sendable (_ host: String, _ port: Int, _ tls: TLSSettings, _ timeout: TimeInterval)
       async throws -> WireConnection
   ) {
+    self.isTunnel = isTunnel
     self.dial = dial
+  }
+
+  /// Whether a login to `host` over this dialer, with `tls`, can send a password readably: through a tunnel, over TLS,
+  /// or to this device itself. Otherwise a cleartext or MD5 login is refused unless the connection allows it
+  /// (security audit M9).
+  public func protects(host: String, tls: TLSSettings) -> Bool {
+    isTunnel || tls.enabled || Self.isLoopback(host)
+  }
+
+  /// `localhost`, `127.x.x.x` and `::1`: a server on this device, where nothing crosses the network.
+  public static func isLoopback(_ host: String) -> Bool {
+    let name = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+    return name == "localhost" || name == "::1" || name.hasPrefix("127.") || name == "0:0:0:0:0:0:0:1"
   }
 
   /// A connection to `host:port` (as the dialer sees it: through SSH, the SSH server resolves the name).
@@ -30,7 +48,7 @@ public struct WireDialer: Sendable {
   public static func streams(
     _ open: @escaping @Sendable (_ host: String, _ port: Int, _ timeout: TimeInterval) async throws -> any WireStream
   ) -> WireDialer {
-    WireDialer { host, port, tls, timeout in
+    WireDialer(isTunnel: true) { host, port, tls, timeout in
       let stream = try await open(host, port, timeout)
       guard tls.enabled else { return WireConnection(stream: stream) }
       #if canImport(Darwin) || os(Windows) || os(Linux)

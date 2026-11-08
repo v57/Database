@@ -9,6 +9,9 @@ public enum WireError: Error, LocalizedError, Sendable, Equatable {
   case protocolViolation(String)
   case authenticationFailed(String)
   case unsupported(String)
+  /// The server asked for the password in a form anyone on the network could read or replay (cleartext, MD5, a key it
+  /// sent), on a connection with neither SSH nor TLS (security audit M9).
+  case insecureLogin(String)
 
   public var errorDescription: String? {
     switch self {
@@ -19,6 +22,8 @@ public enum WireError: Error, LocalizedError, Sendable, Equatable {
     case .protocolViolation(let detail): "Unexpected reply from the server: \(detail)"
     case .authenticationFailed(let detail): "Sign-in failed: \(detail)"
     case .unsupported(let detail): "Not supported: \(detail)"
+    case .insecureLogin(let detail):
+      "The server asked for the password \(detail), which anyone on the network could read. Database didn't send it: turn on SSH or encryption, or Allow Insecure Login in the connection's settings."
     }
   }
 }
