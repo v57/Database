@@ -384,17 +384,22 @@ struct OutputPanel: View {
   }
 
   private var title: String {
-    if pipeline.results != nil || pipeline.resultRows != nil { return "Pipeline results" }
-    if let index = pipeline.selectedIndex { return "After step \(index + 1) · \(pipeline.steps[index].kind.name)" }
-    return "Output"
+    if pipeline.results != nil || pipeline.resultRows != nil { return String(localized: "Pipeline results") }
+    if let index = pipeline.selectedIndex {
+      return String(localized: "After step \(index + 1) · \(pipeline.steps[index].kind.name)")
+    }
+    return String(localized: "Output")
   }
 
   private var subtitle: String {
-    if let results = pipeline.results { return "\(results.count) documents" }
-    if let rows = pipeline.resultRows { return "\(rows.rows.count) rows" }
+    if let results = pipeline.results { return String(localized: "\(results.count) documents") }
+    if let rows = pipeline.resultRows { return String(localized: "\(rows.rows.count) rows") }
     var parts: [String] = []
-    if let count = pipeline.previewCount { parts.append("\(count.formatted()) \(pipeline.isSQL ? "rows" : "documents")") }
-    parts.append("first 20 shown")
+    if let count = pipeline.previewCount {
+      parts.append(
+        pipeline.isSQL ? String(localized: "\(count.formatted()) rows") : String(localized: "\(count.formatted()) documents"))
+    }
+    parts.append(String(localized: "first 20 shown"))
     if let elapsed = pipeline.previewElapsed { parts.append(formatDuration(elapsed)) }
     return parts.joined(separator: " · ")
   }
@@ -500,7 +505,7 @@ struct StepInspector: View {
         fieldsHere
         KitSection(
           "Output of step \(index + 1)",
-          meta: ["\(pipeline.previewCount?.formatted() ?? "…") documents"] + (pipeline.previewElapsed.map { [formatDuration($0)] } ?? []),
+          meta: [String(localized: "\(pipeline.previewCount?.formatted() ?? "…") documents")] + (pipeline.previewElapsed.map { [formatDuration($0)] } ?? []),
           systemImage: "doc.on.doc", hue: browser.engine.hue
         ) {
           if let error = pipeline.previewError {

@@ -341,9 +341,9 @@ struct ConnectionSheet: View {
 
   private var databaseLabel: String {
     switch profile.engine {
-    case .redis: "Index"
-    case .cassandra, .scylla: "Keyspace"
-    default: "Database"
+    case .redis: String(localized: "Index")
+    case .cassandra, .scylla: String(localized: "Keyspace")
+    default: String(localized: "Database")
     }
   }
 
@@ -379,8 +379,8 @@ struct ConnectionSheet: View {
   private var serverDetails: String {
     var parts: [String] = []
     if !profile.database.isEmpty { parts.append("\(databaseLabel) \(profile.database)") }
-    if !profile.user.isEmpty { parts.append("User \(profile.user)") }
-    if profile.engine == .mongodb, let source = profile.options["authSource"] { parts.append("Auth database \(source)") }
+    if !profile.user.isEmpty { parts.append(String(localized: "User \(profile.user)")) }
+    if profile.engine == .mongodb, let source = profile.options["authSource"] { parts.append(String(localized: "Auth database \(source)")) }
     return parts.isEmpty ? profile.engine.displayName : parts.joined(separator: " · ")
   }
 

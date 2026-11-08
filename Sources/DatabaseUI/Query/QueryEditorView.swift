@@ -214,7 +214,7 @@ private struct QueryTabResults: View {
   }
 
   private var statusText: String {
-    if tab.error != nil { return "Failed" }
+    if tab.error != nil { return String(localized: "Failed") }
     let rows = tab.resultOutputs.compactMap { output -> Int? in
       switch output {
       case .table(_, let rows, _): rows.count
@@ -222,8 +222,8 @@ private struct QueryTabResults: View {
       default: nil
       }
     }
-    if let last = rows.last { return "\(last) row\(last == 1 ? "" : "s")" }
-    return "Done"
+    if let last = rows.last { return last == 1 ? String(localized: "1 row") : String(localized: "\(last) rows") }
+    return String(localized: "Done")
   }
 
   private var currentTable: ([FieldInfo], [[CellValue]])? {

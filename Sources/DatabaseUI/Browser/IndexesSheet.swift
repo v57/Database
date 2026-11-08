@@ -185,12 +185,15 @@ struct IndexesSheet: View {
   }
 
   private var applyTitle: String {
-    model.pending.count > 1 ? "Apply \(model.pending.count) Changes" : "Apply Change"
+    model.pending.count > 1 ? String(localized: "Apply \(model.pending.count) Changes") : String(localized: "Apply Change")
   }
 
   private var summary: String {
-    if !model.pending.isEmpty { return model.pending.count == 1 ? "1 change to apply" : "\(model.pending.count) changes to apply" }
-    return model.indexes.count == 1 ? "1 index" : "\(model.indexes.count) indexes"
+    if !model.pending.isEmpty {
+      return model.pending.count == 1
+        ? String(localized: "1 change to apply") : String(localized: "\(model.pending.count) changes to apply")
+    }
+    return model.indexes.count == 1 ? String(localized: "1 index") : String(localized: "\(model.indexes.count) indexes")
   }
 
   @ViewBuilder private var indexList: some View {

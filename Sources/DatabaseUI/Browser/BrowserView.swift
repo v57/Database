@@ -145,13 +145,13 @@ struct BrowserView: View {
 
   private var emptyTitle: String {
     browser.request.activeFilters.isEmpty && browser.request.search.isEmpty
-      ? "No \(browser.noun.pluralCapitalized)" : "No Matches"
+      ? String(localized: "No \(browser.noun.pluralCapitalized)") : String(localized: "No Matches")
   }
 
   private var emptyDescription: String {
     browser.request.activeFilters.isEmpty && browser.request.search.isEmpty
-      ? "This \(browser.engine.collectionNoun.singular) is empty."
-      : "Nothing matches the search and filters."
+      ? String(localized: "This \(browser.engine.collectionNoun.singular) is empty.")
+      : String(localized: "Nothing matches the search and filters.")
   }
 
   @ViewBuilder private var notices: some View {

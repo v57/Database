@@ -96,18 +96,18 @@ public enum EngineKind: String, Codable, CaseIterable, Identifiable, Sendable {
   /// The noun for one item in the main list.
   public var itemNoun: Noun {
     switch self {
-    case .mongodb: Noun("document")
-    case .redis: Noun("key")
-    default: Noun("row")
+    case .mongodb: Noun(String(localized: "document"), plural: String(localized: "documents"))
+    case .redis: Noun(String(localized: "key"), plural: String(localized: "keys"))
+    default: Noun(String(localized: "row"), plural: String(localized: "rows"))
     }
   }
 
   /// The noun for what holds items.
   public var collectionNoun: Noun {
     switch self {
-    case .mongodb: Noun("collection")
-    case .redis: Noun("key")
-    default: Noun("table")
+    case .mongodb: Noun(String(localized: "collection"), plural: String(localized: "collections"))
+    case .redis: Noun(String(localized: "key"), plural: String(localized: "keys"))
+    default: Noun(String(localized: "table"), plural: String(localized: "tables"))
     }
   }
 

@@ -201,12 +201,14 @@ struct SortMenu: View {
   let browser: BrowserModel
 
   private var label: String {
-    guard let sort = browser.request.sort.first else { return "Sort" }
+    guard let sort = browser.request.sort.first else { return String(localized: "Sort") }
     let category = browser.category(of: sort.field)
     let direction: String =
-      if category.isTemporal { sort.ascending ? "oldest first" : "newest first" } else if category.isNumeric {
-        sort.ascending ? "lowest first" : "highest first"
-      } else { sort.ascending ? "A to Z" : "Z to A" }
+      if category.isTemporal {
+        sort.ascending ? String(localized: "oldest first") : String(localized: "newest first")
+      } else if category.isNumeric {
+        sort.ascending ? String(localized: "lowest first") : String(localized: "highest first")
+      } else { sort.ascending ? String(localized: "A to Z") : String(localized: "Z to A") }
     return "\(sort.field), \(direction)"
   }
 
@@ -240,7 +242,8 @@ struct FieldsMenu: View {
 
   private var label: String {
     let shown = browser.fields.count - browser.request.hiddenFields.count
-    return browser.request.hiddenFields.isEmpty ? "Fields" : "\(shown) of \(browser.fields.count) fields"
+    return browser.request.hiddenFields.isEmpty
+      ? String(localized: "Fields") : String(localized: "\(shown) of \(browser.fields.count) fields")
   }
 
   var body: some View {

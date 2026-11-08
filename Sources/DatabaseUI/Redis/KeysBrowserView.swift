@@ -89,11 +89,11 @@ final class RedisKeyModel {
 
   func describe(_ mutation: RedisMutation) -> String {
     switch mutation {
-    case .delete(let key): "Deleted \(key)"
-    case .rename(let key, let to): "Renamed \(key) to \(to)"
-    case .expire(let key, let seconds?): "\(key) expires in \(formatTTL(milliseconds: Int64(seconds) * 1000).dropFirst(3))"
-    case .expire(let key, nil): "\(key) no longer expires"
-    default: "Changed \(mutation.key)"
+    case .delete(let key): String(localized: "Deleted \(key)")
+    case .rename(let key, let to): String(localized: "Renamed \(key) to \(to)")
+    case .expire(let key, let seconds?): String(localized: "\(key) expires in \(formatTTLDuration(seconds: Int64(seconds)))")
+    case .expire(let key, nil): String(localized: "\(key) no longer expires")
+    default: String(localized: "Changed \(mutation.key)")
     }
   }
 }
@@ -333,12 +333,12 @@ private struct RedisKeyList: View {
 
   private func holds(_ n: Int64, type: String) -> String {
     switch type {
-    case "STRING": "\(n.formatted()) chars"
-    case "HASH": "\(n.formatted()) field\(n == 1 ? "" : "s")"
-    case "LIST": "\(n.formatted()) item\(n == 1 ? "" : "s")"
-    case "STREAM": "\(n.formatted()) entr\(n == 1 ? "y" : "ies")"
-    case "JSON": "1 document"
-    default: "\(n.formatted()) member\(n == 1 ? "" : "s")"
+    case "STRING": String(localized: "\(n.formatted()) chars")
+    case "HASH": n == 1 ? String(localized: "1 field") : String(localized: "\(n.formatted()) fields")
+    case "LIST": n == 1 ? String(localized: "1 item") : String(localized: "\(n.formatted()) items")
+    case "STREAM": n == 1 ? String(localized: "1 entry") : String(localized: "\(n.formatted()) entries")
+    case "JSON": String(localized: "1 document")
+    default: n == 1 ? String(localized: "1 member") : String(localized: "\(n.formatted()) members")
     }
   }
 }

@@ -316,7 +316,7 @@ struct MultiSelectionInspector: View {
     let records = browser.selectedRecords
     KitInspector(width: nil) {
       InspectorHeader(
-        "\(browser.noun.count(records.count)) selected", meta: ["In \(browser.ref.name)"],
+        "\(browser.noun.count(records.count)) selected", meta: [String(localized: "In \(browser.ref.name)")],
         systemImage: "square.stack.3d.up", hue: browser.engine.hue)
       ActionBar {
         Button("Copy as JSON") {
@@ -446,7 +446,7 @@ struct NewItemSheet: View {
       }
     }
     guard errors.isEmpty else { return }
-    let title = "New \(browser.noun.singular)" + (values.first { $0.key.contains("name") }.map { " · \($0.value.displayText)" } ?? "")
+    let title = String(localized: "New \(browser.noun.singular)") + (values.first { $0.key.contains("name") }.map { " · \($0.value.displayText)" } ?? "")
     browser.stage(RecordEdit(ref: browser.ref, key: nil, kind: .insert(values), title: title))
     browser.showsReview = true
     dismiss()

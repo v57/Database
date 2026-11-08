@@ -164,14 +164,13 @@ final class BrowserModel {
 
   var pageLabel: String {
     guard let page else { return "" }
-    if page.records.isEmpty { return "No \(noun.plural)" }
+    if page.records.isEmpty { return String(localized: "No \(noun.plural)") }
     let first = request.offset + 1
     let last = request.offset + page.records.count
-    var text = "\(first.formatted())–\(last.formatted())"
-    if let total = exactTotal ?? page.total {
-      text += " of \(page.totalIsEstimate && exactTotal == nil ? "about " : "")\(total.formatted())"
-    }
-    return text
+    let range = "\(first.formatted())–\(last.formatted())"
+    guard let total = exactTotal ?? page.total else { return range }
+    return page.totalIsEstimate && exactTotal == nil
+      ? String(localized: "\(range) of about \(total.formatted())") : String(localized: "\(range) of \(total.formatted())")
   }
 
   // MARK: Filters, sort, fields

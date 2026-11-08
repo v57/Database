@@ -59,14 +59,14 @@ struct RedisValueView: View {
 
   private var longTypeName: String {
     switch model.value {
-    case .string: "String · \(model.total.formatted()) bytes"
-    case .hash: "Hash · \(model.total.formatted()) fields"
-    case .list: "List · \(model.total.formatted()) items"
-    case .set: "Set · \(model.total.formatted()) members"
-    case .zset: "Sorted set · \(model.total.formatted()) members"
-    case .stream: "Stream · \(model.total.formatted()) entries"
-    case .json: "JSON document"
-    case .none: "This key no longer exists"
+    case .string: String(localized: "String · \(model.total.formatted()) bytes")
+    case .hash: String(localized: "Hash · \(model.total.formatted()) fields")
+    case .list: String(localized: "List · \(model.total.formatted()) items")
+    case .set: String(localized: "Set · \(model.total.formatted()) members")
+    case .zset: String(localized: "Sorted set · \(model.total.formatted()) members")
+    case .stream: String(localized: "Stream · \(model.total.formatted()) entries")
+    case .json: String(localized: "JSON document")
+    case .none: String(localized: "This key no longer exists")
     case .other(let type): type
     }
   }

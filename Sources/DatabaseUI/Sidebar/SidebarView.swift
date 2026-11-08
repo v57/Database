@@ -332,15 +332,25 @@ extension TreeSearch {
   /// Says what the search couldn't see: a branch's children load when it's opened.
   fileprivate var unopenedNote: String? {
     guard let first = unopened.first else { return nil }
-    let noun =
-      switch first.kind {
-      case .database: ("database", "databases")
-      case .schema: ("schema", "schemas")
-      case .keyspace: ("keyspace", "keyspaces")
-      default: ("folder", "folders")
-      }
-    return unopened.count == 1
-      ? "1 \(noun.0) isn't open, so it isn't searched." : "\(unopened.count) \(noun.1) aren't open, so they aren't searched."
+    let count = unopened.count
+    return switch first.kind {
+    case .database:
+      count == 1
+        ? String(localized: "1 database isn't open, so it isn't searched.")
+        : String(localized: "\(count) databases aren't open, so they aren't searched.")
+    case .schema:
+      count == 1
+        ? String(localized: "1 schema isn't open, so it isn't searched.")
+        : String(localized: "\(count) schemas aren't open, so they aren't searched.")
+    case .keyspace:
+      count == 1
+        ? String(localized: "1 keyspace isn't open, so it isn't searched.")
+        : String(localized: "\(count) keyspaces aren't open, so they aren't searched.")
+    default:
+      count == 1
+        ? String(localized: "1 folder isn't open, so it isn't searched.")
+        : String(localized: "\(count) folders aren't open, so they aren't searched.")
+    }
   }
 }
 
@@ -364,8 +374,8 @@ struct TreeLineRow: View {
 
   private func emptyText(_ parent: TreeNode?) -> String {
     switch parent?.kind {
-    case .database, .keyspace, .schema: "No \(connection.profile.engine.collectionNoun.plural)"
-    default: "Nothing here yet"
+    case .database, .keyspace, .schema: String(localized: "No \(connection.profile.engine.collectionNoun.plural)")
+    default: String(localized: "Nothing here yet")
     }
   }
 }

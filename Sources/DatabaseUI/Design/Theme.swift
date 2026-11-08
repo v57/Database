@@ -68,14 +68,18 @@ func formatDuration(_ seconds: TimeInterval) -> String {
 
 /// "in 23 min", "Never", "Expired".
 func formatTTL(milliseconds ms: Int64) -> String {
-  if ms == -1 { return "Never" }
-  if ms < 0 { return "Expired" }
-  let seconds = ms / 1000
+  if ms == -1 { return String(localized: "Never") }
+  if ms < 0 { return String(localized: "Expired") }
+  return String(localized: "in \(formatTTLDuration(seconds: ms / 1000))")
+}
+
+/// "23 min", "1 day": how long a key has left.
+func formatTTLDuration(seconds: Int64) -> String {
   switch seconds {
-  case ..<60: return "in \(seconds) s"
-  case ..<3600: return "in \(seconds / 60) min"
-  case ..<86400: return "in \(seconds / 3600) hr"
-  default: return "in \(seconds / 86400) day\(seconds / 86400 == 1 ? "" : "s")"
+  case ..<60: String(localized: "\(seconds) s")
+  case ..<3600: String(localized: "\(seconds / 60) min")
+  case ..<86400: String(localized: "\(seconds / 3600) hr")
+  default: seconds / 86400 == 1 ? String(localized: "1 day") : String(localized: "\(seconds / 86400) days")
   }
 }
 

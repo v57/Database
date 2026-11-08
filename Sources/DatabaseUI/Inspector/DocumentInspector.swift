@@ -26,7 +26,8 @@ struct DocumentInspector: View {
   var body: some View {
     KitInspector(width: nil) {
       InspectorHeader(
-        browser.displayName(for: record).map { "\($0)" } ?? "Document", meta: ["Document in \(browser.ref.name)", "\(document.count) fields"],
+        browser.displayName(for: record).map { "\($0)" } ?? "Document",
+        meta: [String(localized: "Document in \(browser.ref.name)"), String(localized: "\(document.count) fields")],
         systemImage: browser.ref.symbol, hue: browser.engine.hue)
       if editing {
         editor
