@@ -18,6 +18,8 @@ public actor PostgresClient {
     /// Answers a server that asks for the password in cleartext or as MD5 on a connection with neither SSH nor TLS
     /// (security audit M9). Off: such a login is refused, as libpq's `require_auth=scram-sha-256` would.
     public var allowsInsecureLogin: Bool
+    /// Run-time settings sent with the login, such as `default_transaction_read_only`.
+    public var settings: [(String, String)] = []
 
     public init(
       host: String = "127.0.0.1", port: Int = 5432, user: String, password: String = "",
@@ -124,7 +126,7 @@ public actor PostgresClient {
     for (key, value) in [
       ("user", config.user), ("database", config.database), ("application_name", config.applicationName),
       ("client_encoding", "UTF8"), ("DateStyle", "ISO, YMD"),
-    ] {
+    ] + config.settings {
       body.writeCString(key)
       body.writeCString(value)
     }

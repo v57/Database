@@ -122,10 +122,18 @@ Touch and hold a connection (right-click on the Mac), or use the **…** on the 
 ## Read only and query tabs
 
 A Read only connection never changes anything from the browser, the inspector, indexes or the Redis tools. In a
-query tab, Redis, MongoDB, Cassandra and ScyllaDB refuse writes with "This connection is read only…", and an SQLite
-file opens read-only. For PostgreSQL, MySQL, MariaDB and SQL Server, a query tab runs the statement you write, so a
-write there still reaches the server. To be sure nothing changes on those servers, log in as a user that can only
-read.
+query tab, a statement that would change data is refused with "This connection is read only…":
+
+- **PostgreSQL**, **MySQL** and **MariaDB** connect in the server's own read-only mode, so the server refuses
+  writes and changes to tables. A statement that would turn that mode off (such as `SET SESSION TRANSACTION READ
+  WRITE`) is refused before it's sent.
+- **SQLite** and **DuckDB** files open read-only.
+- **SQL Server**, **MongoDB**, **Redis**, **Cassandra** and **ScyllaDB** have no read-only mode for one connection,
+  so Database reads what you run and lets through only what reads: on SQL Server, statements without `INSERT`,
+  `UPDATE`, `DELETE`, `CREATE`, `EXEC` and the like; on MongoDB, finds, aggregations without `$out` or `$merge`, and
+  commands that read; on Redis, commands the server doesn't mark as writes, and no scripts.
+
+Read only guards against mistakes. To be sure nothing changes, log in as a user that can only read.
 
 ## DuckDB on the Mac
 

@@ -39,6 +39,16 @@ extension SQLExecutor {
     try await gate.run { try await self.runUngated(sql, database: database) }
   }
 
+  /// Runs `before` (when given, its failure ignored: in an aborted transaction only ROLLBACK runs) and then `sql`, on
+  /// the same connection and without anything in between.
+  func run(_ sql: String, database: String?, before: String?) async throws -> [DBResult] {
+    guard let before else { return try await run(sql, database: database) }
+    return try await gate.run {
+      _ = try? await self.runUngated(before, database: database)
+      return try await self.runUngated(sql, database: database)
+    }
+  }
+
   /// BEGIN, each statement (checked), COMMIT — and ROLLBACK if anything fails.
   func transaction(
     _ statements: [String], dialect: SQLDialect, database: String?,

@@ -282,4 +282,35 @@ import WireKit
     let completions = await session.completions(context: context)
     #expect(completions.contains { $0.text == "orders" && $0.kind == .table })
   }
+
+  /// D-018: a Read only connection's query tab can read, but the server refuses its writes and DDL, and a statement
+  /// that would turn the read-only mode off is refused before it's sent.
+  @Test(arguments: [EngineKind.postgres, .mysql, .mariadb, .sqlserver])
+  func readOnlyQueryTabsRefuseWrites(engine: EngineKind) async throws {
+    let setup = try await Self.setUp(engine)
+    await setup.session.close()
+    var (profile, password) = Self.profile(engine)
+    profile.isReadOnly = true
+    let (session, _) = try await Connector.connect(profile, credentials: Credentials(password: password))
+    defer { Task { await session.close() } }
+    let context = QueryContext(database: setup.orders.database, schema: setup.orders.schema)
+    let table = engine == .postgres ? "dbpro_test.orders" : "orders"
+    let writes = [
+      "UPDATE \(table) SET total = 0", "DELETE FROM \(table)", "INSERT INTO \(table) (id) VALUES (99)",
+      "CREATE TABLE \(engine == .postgres ? "dbpro_test." : "")ro_new (id INTEGER)", "DROP TABLE \(table)",
+    ]
+    for sql in writes {
+      await #expect(throws: ReadOnlyError.self, "\(sql)") { _ = try await session.run(sql, context: context) }
+    }
+    if engine != .sqlserver {
+      let lift = engine == .postgres ? "SET default_transaction_read_only = off" : "SET SESSION TRANSACTION READ WRITE"
+      await #expect(throws: ReadOnlyError.self) { _ = try await session.run(lift, context: context) }
+    }
+    let runs = try await session.run("SELECT COUNT(*) AS n FROM \(table) WHERE total > 0", context: context)
+    guard case .table(_, let rows, _)? = runs.last?.outputs.first else {
+      Issue.record("expected a table")
+      return
+    }
+    #expect(rows.first?.first.map { "\($0)" }?.contains("4") == true)
+  }
 }

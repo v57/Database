@@ -502,6 +502,32 @@ final class RedisSession: DatabaseSession, @unchecked Sendable {
     "JSON.SET", "JSON.DEL", "JSON.ARRAPPEND", "JSON.NUMINCRBY", "SWAPDB", "CONFIG",
   ]
 
+  /// Commands a Read only connection refuses besides those the server flags as writes: scripts and functions (which
+  /// may write, and aren't flagged), and commands that change the server.
+  static let readOnlyRefused: Set<String> = [
+    "EVAL", "EVALSHA", "FCALL", "SCRIPT", "FUNCTION", "SHUTDOWN", "REPLICAOF", "SLAVEOF", "MIGRATE",
+    "DEBUG", "ACL", "MODULE", "SAVE", "BGSAVE", "BGREWRITEAOF", "FAILOVER", "CLUSTER",
+  ]
+  /// What the server said about each command's flags, by name.
+  private let commandWrites = Locked<[String: Bool]>([:])
+
+  /// Whether a command can change data, for a Read only connection (D-018): Redis has no read-only mode for a
+  /// connection, so it's the list above, `writeCommands`, and the server's own `COMMAND INFO` flags (`write`,
+  /// `may_replicate`), which cover commands either list misses. A server without COMMAND INFO leaves the lists.
+  func writes(_ name: String) async -> Bool {
+    if Self.writeCommands.contains(name) || Self.readOnlyRefused.contains(name) { return true }
+    if let known = commandWrites.get({ $0[name] }) { return known }
+    var flagged = false
+    if let reply = try? await client.command(["COMMAND", "INFO", name]),
+      let info = reply.array.first?.array, info.count > 2
+    {
+      let flags = Set(info[2].array.compactMap { $0.string?.lowercased() })
+      flagged = flags.contains("write") || flags.contains("may_replicate")
+    }
+    commandWrites.set { $0[name] = flagged }
+    return flagged
+  }
+
   func run(_ text: String, context: QueryContext) async throws -> [QueryRun] {
     if let database = context.database, let index = Int(database), await client.database != index {
       try await client.select(index)
@@ -512,7 +538,9 @@ final class RedisSession: DatabaseSession, @unchecked Sendable {
       if trimmed.isEmpty || trimmed.hasPrefix("#") || trimmed.hasPrefix("//") { continue }
       let args = try Self.arguments(trimmed)
       guard let name = args.first?.uppercased() else { continue }
-      if profile.isReadOnly && Self.writeCommands.contains(name) { throw ReadOnlyError() }
+      if profile.isReadOnly, await writes(name) {
+        throw ReadOnlyError("\(name) can change data, so it doesn’t run here.")
+      }
       let (reply, elapsed) = try await timed { try await client.command(args) }
       runs.append(QueryRun(outputs: [.text(reply.formatted())], elapsed: elapsed, statement: trimmed))
     }

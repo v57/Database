@@ -93,7 +93,10 @@ every connection the engine makes is a channel of it. An app that already has an
   together where the engine allows it and returns an `ApplyOutcome` with the edits that undo it. A read-only profile
   throws `ReadOnlyError`; a value that doesn't fit throws `InputError`.
 - `run(_:context:)`, `explain(_:context:)`, `completions(context:)`: the query editor. `run` returns `QueryRun`s
-  whose outputs are tables, documents, text or messages.
+  whose outputs are tables, documents, text or messages. On a read-only profile `run` throws `ReadOnlyError` (with
+  a `reason`) for a write: PostgreSQL logs in with `default_transaction_read_only`, MySQL and MariaDB run `SET SESSION
+  TRANSACTION READ ONLY`, SQLite and DuckDB files open read-only, and `ReadOnlyGuard` refuses text that would turn
+  that off; SQL Server, MongoDB and Redis, which have no such mode, get statement checks instead.
 
 Engine-specific capabilities are protocols a session may also conform to (check with `as?`):
 

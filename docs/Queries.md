@@ -54,6 +54,5 @@ with your unsaved tabs. Tap one to open it. Saving again keeps the same entry. T
 A query tab runs what you write, including statements that change data. On a Production connection there's no
 review step for a query tab: the review is for changes made in the browser.
 
-On a Read only connection, Redis, MongoDB, Cassandra and ScyllaDB refuse writes, and an SQLite file opens read-only.
-PostgreSQL, MySQL, MariaDB and SQL Server run the statement you write. See
+On a Read only connection, a statement that would change data is refused, on every engine. See
 [Read only and query tabs](Connections.md#read-only-and-query-tabs).

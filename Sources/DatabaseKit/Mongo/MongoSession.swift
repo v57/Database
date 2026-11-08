@@ -516,6 +516,7 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
     guard case .collection(let collection) = call.target else {
       switch call.method {
       case "runCommand", "adminCommand":
+        if profile.isReadOnly { try ReadOnlyGuard.checkMongoCommand(doc(0)) }
         let reply = try await client.command(doc(0), database: call.method == "adminCommand" ? "admin" : database)
         return [.documents([reply], note: nil)]
       case "getCollectionNames":
@@ -562,6 +563,7 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
     case "aggregate":
       let stages = (args.first?.arrayValue ?? []).compactMap(\.documentValue)
       let options = doc(1)
+      if profile.isReadOnly { try ReadOnlyGuard.checkMongoPipeline(stages) }
       if call.chain.contains(where: { $0.name == "explain" }) {
         return [.documents([try await client.explain(database: database, command: ["aggregate": .string(collection), "pipeline": .array(stages.map(BSON.document)), "cursor": .document([:])])], note: nil)]
       }

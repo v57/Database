@@ -91,10 +91,13 @@ public enum Connector {
     let password = credentials.password ?? ""
     switch profile.engine {
     case .postgres:
-      let config = PostgresClient.Config(
+      var config = PostgresClient.Config(
         host: host, port: port, user: profile.user, password: password,
         database: profile.database.isEmpty ? "postgres" : profile.database, tls: tls(profile), dialer: dialer,
         allowsInsecureLogin: profile.allowsInsecureLogin)
+      // Read only: every transaction on every connection (one per database) is read only, so the server refuses
+      // writes from a query tab too (D-018).
+      if profile.isReadOnly { config.settings = [("default_transaction_read_only", "on")] }
       let client = try await PostgresClient.connect(config)
       return SQLSession(
         profile: profile, dialect: PostgresDialect(), executor: PostgresExecutor(base: config, first: client),
@@ -110,6 +113,14 @@ public enum Connector {
               allowsInsecureLogin: profile.allowsInsecureLogin))
       // A server answering as MariaDB gets MariaDB's dialect, whatever was picked.
       let engine: EngineKind = await client.isMariaDB ? .mariadb : .mysql
+      if profile.isReadOnly {
+        do {
+          _ = try await client.query(ReadOnlyGuard.mySQLSession)
+        } catch {
+          await client.close()
+          throw error
+        }
+      }
       return SQLSession(
         profile: profile, dialect: MySQLDialect(engine: engine), executor: MySQLExecutor(client: client), tunnel: tunnel)
     case .sqlserver:

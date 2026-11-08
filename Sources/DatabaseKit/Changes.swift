@@ -53,11 +53,15 @@ public struct ApplyOutcome: Sendable {
   public var statements: [String]
 }
 
-/// Raised before writing to a read-only connection.
+/// Raised before writing to a read-only connection, or when the engine refused a write a query tab ran on one.
 public struct ReadOnlyError: Error, LocalizedError {
-  public init() {}
+  /// What was refused and why, for a query tab's statement; nil for an edit.
+  public var reason: String?
+  public init(_ reason: String? = nil) { self.reason = reason }
   public var errorDescription: String? {
-    "This connection is read only. Turn off Read Only in the connection's settings to make changes."
+    var text = "This connection is read only."
+    if let reason { text += " " + reason }
+    return text + " Turn off Read only in the connection's settings to make changes."
   }
 }
 

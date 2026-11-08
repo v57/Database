@@ -66,6 +66,7 @@ in without asking.
 ## Production and Read only
 
 **Production** makes every change in the browser go through a review, and Redis shows the exact commands before it
-runs them. **Read only** removes editing from the browser, the inspector, indexes and the Redis tools. In a query tab
-on PostgreSQL, MySQL, MariaDB or SQL Server, a statement you write still runs; use a database user that can only read
-when you need a guarantee. See [Connections](Connections.md#read-only-and-query-tabs).
+runs them. **Read only** removes editing from the browser, the inspector, indexes and the Redis tools, and refuses
+writes in query tabs: PostgreSQL, MySQL and MariaDB connect in the server's read-only mode, SQLite and DuckDB files
+open read-only, and on the other engines Database lets through only statements that read. Use a database user that
+can only read when you need a guarantee. See [Connections](Connections.md#read-only-and-query-tabs).

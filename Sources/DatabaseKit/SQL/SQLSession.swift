@@ -495,12 +495,31 @@ final class SQLSession: DatabaseSession, @unchecked Sendable {
 
   func run(_ text: String, context: QueryContext) async throws -> [QueryRun] {
     let database = context.database ?? (engine == .postgres ? nil : profile.database.isEmpty ? nil : profile.database)
-    let (results, elapsed) = try await timed { try await executor.run(text, database: database) }
+    let (results, elapsed) = try await timed { try await guardedRun(text, database: database) }
     let statements = SQLText.splitStatements(text)
     return results.enumerated().map { index, result in
       QueryRun(
         outputs: Self.outputs(result), elapsed: elapsed / Double(max(results.count, 1)),
         statement: index < statements.count ? statements[index] : text)
+    }
+  }
+
+  /// Runs a query tab's text. On a Read only connection, text that would turn the engine's read-only mode off (or, on
+  /// SQL Server, that writes) is refused first, the mode is set again just before, and the engine's refusal of a
+  /// write comes back as `ReadOnlyError` (D-018).
+  func guardedRun(_ text: String, database: String?) async throws -> [DBResult] {
+    guard profile.isReadOnly else { return try await executor.run(text, database: database) }
+    try ReadOnlyGuard.check(text, engine: engine)
+    let before: String? =
+      switch engine {
+      case .postgres: ReadOnlyGuard.postgresSession
+      case .mysql, .mariadb: ReadOnlyGuard.mySQLSession
+      default: nil
+      }
+    do {
+      return try await executor.run(text, database: database, before: before)
+    } catch {
+      throw ReadOnlyGuard.refusal(error) ?? error
     }
   }
 
@@ -521,9 +540,11 @@ final class SQLSession: DatabaseSession, @unchecked Sendable {
   func explain(_ text: String, context: QueryContext) async throws -> String {
     let database = context.database ?? (engine == .postgres ? nil : profile.database.isEmpty ? nil : profile.database)
     let statement = SQLText.splitStatements(text).last ?? text
+    // Before SQL Server's SHOWPLAN goes on, so a refused statement doesn't leave it on.
+    if profile.isReadOnly { try ReadOnlyGuard.check(statement, engine: engine) }
     var lines: [String] = []
     for sql in dialect.explain(statement) {
-      let results = try await executor.run(sql, database: database)
+      let results = try await guardedRun(sql, database: database)
       for result in results where result.hasRows {
         if engine == .mysql || engine == .mariadb, result.columns.count > 1 {
           lines.append(result.columns.map(\.name).joined(separator: "\t"))
