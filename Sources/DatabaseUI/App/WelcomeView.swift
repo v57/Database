@@ -29,7 +29,7 @@ struct WelcomeView: View {
       ) {
         window.showsNewConnection = true
       }
-      WelcomeAction("Open a File…", detail: "SQLite, DuckDB, Parquet or CSV", systemImage: "doc") {
+      WelcomeAction("Open a File…", detail: Self.fileKinds, systemImage: "doc") {
         openingFile = true
       }
     } recents: {
@@ -61,6 +61,11 @@ struct WelcomeView: View {
     var opened = false
     for url in urls { if let profile = app.addFile(url) { window.connect(profile.id); opened = true } }
     return opened
+  }
+
+  /// What Open a File… takes here: DuckDB (and the Parquet and CSV it reads) isn't offered on iPhone and iPad (D-012).
+  private static var fileKinds: LocalizedStringKey {
+    EngineKind.available.contains(.duckdb) ? "SQLite, DuckDB, Parquet or CSV" : "An SQLite database file"
   }
 
   private var fileTypes: [UTType] {
