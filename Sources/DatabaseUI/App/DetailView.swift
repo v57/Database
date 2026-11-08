@@ -56,8 +56,15 @@ struct ConnectionOverview: View {
             Text("Through SSH · host key \(fingerprint)").kitFont(.caption).textSelection(.enabled)
           }
         }
-        Text("Pick a \(connection.profile.engine.collectionNoun.singular) in the sidebar to see its \(connection.profile.engine.itemNoun.plural).")
-          .foregroundStyle(.kitSecondary)
+        // Redis's sidebar lists databases, each holding keys (D-011).
+        Group {
+          if connection.profile.engine == .redis {
+            Text("Pick a database in the sidebar to see its keys.")
+          } else {
+            Text("Pick a \(connection.profile.engine.collectionNoun.singular) in the sidebar to see its \(connection.profile.engine.itemNoun.plural).")
+          }
+        }
+        .foregroundStyle(.kitSecondary)
         Button("New Query", systemImage: "terminal") { window.newQuery() }
           .buttonStyle(.kit)
       case .failed(let message):
