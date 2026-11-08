@@ -162,6 +162,9 @@ struct ConnectionSheet: View {
       )
     }
     .onChange(of: link) { _, text in readLink(text) }
+    // A test of another server says nothing about this one (D-002).
+    .onChange(of: testedServer) { test = .idle }
+    .onChange(of: password) { test = .idle }
   }
 
   private func readLink(_ text: String) {
@@ -269,6 +272,7 @@ struct ConnectionSheet: View {
       Button("Forget Host Key") {
         app.forgetHostKey(of: host)
         profile.ssh.hostKeyFingerprint = nil
+        test = .idle
       }
       .kitMenuPreview("Drops the server’s saved key for every app. If its key has changed, the next connection asks you about the new one.")
     }
@@ -313,6 +317,14 @@ struct ConnectionSheet: View {
   }
 
   private func isSelected(_ host: VaultHost) -> Bool { selectedHost?.id == host.id }
+
+  /// What a test connects to: a change to any of it makes an earlier result stale.
+  private var testedServer: [String] {
+    [
+      profile.engine.rawValue, profile.host, "\(profile.port)", profile.user, profile.database, profile.filePath,
+      "\(profile.useTLS)", "\(profile.ssh.enabled)", profile.ssh.host, "\(profile.ssh.port)", profile.ssh.user,
+    ]
+  }
 
   /// Whether another saved connection tunnels through the host (deleting it would make that one connect directly).
   private func isInUse(_ host: VaultHost) -> Bool {
