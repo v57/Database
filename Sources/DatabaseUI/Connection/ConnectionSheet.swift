@@ -155,10 +155,8 @@ struct ConnectionSheet: View {
         status: recognized != nil ? .done : .idle,
         field: TextField("Connection link", text: $link, prompt: Text("postgres://user@host:5432/database"))
           .kitFont(.mono)
-          #if os(iOS)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-          #endif
+          // It can hold the password: no suggestions learnt from it (D-008).
+          .kitTextContent(.url)
       )
     }
     .onChange(of: link) { _, text in readLink(text) }
