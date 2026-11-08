@@ -69,9 +69,17 @@ public enum ConnectionLink {
       host = String(firstHost[firstHost.index(after: firstHost.startIndex)..<close])
       let after = firstHost[firstHost.index(after: close)...]
       if after.hasPrefix(":"), let p = Int(after.dropFirst()) { port = p }
-    } else if let colon = firstHost.lastIndex(of: ":"), let p = Int(firstHost[firstHost.index(after: colon)...]) {
-      host = String(firstHost[..<colon])
-      port = p
+    } else if let colon = firstHost.lastIndex(of: ":") {
+      // A link cut off before "@host" ("postgres://user:pa") leaves the user and password where the host goes: what
+      // follows the colon isn't a port, so the link isn't whole yet (D-013).
+      let after = firstHost[firstHost.index(after: colon)...]
+      if after.isEmpty {
+        host = String(firstHost[..<colon])
+      } else {
+        guard let p = Int(after), (1...65535).contains(p) else { return nil }
+        host = String(firstHost[..<colon])
+        port = p
+      }
     }
     if host.isEmpty { host = "127.0.0.1" }
 

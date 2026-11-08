@@ -343,6 +343,12 @@ import WireKit
     #expect(ConnectionLink.parse("jdbc:mysql://localhost/shop")?.profile.engine == .mysql)
     #expect(ConnectionLink.parse("cassandra://cassandra@node1:9042?keyspace=telemetry")?.profile.database == "telemetry")
     #expect(ConnectionLink.parse("hello") == nil)
+    // Cut off before "@host": the user and password aren't a host (D-013).
+    #expect(ConnectionLink.parse("postgres://user:pa") == nil)
+    #expect(ConnectionLink.parse("postgres://plainuser:plai") == nil)
+    #expect(ConnectionLink.parse("mysql://app:secret/shop") == nil)
+    #expect(ConnectionLink.parse("postgres://db.example.com:")?.profile.host == "db.example.com")
+    #expect(ConnectionLink.parse("redis://cache:6379")?.profile.port == 6379)
     let roundTrip = ConnectionLink.url(for: pg.profile)
     #expect(ConnectionLink.parse(roundTrip)?.profile.host == "db.shop.internal")
   }
