@@ -107,6 +107,7 @@ struct KeysBrowserView: View {
   /// Groups ("cart:") that are open.
   @State private var expanded: Set<String> = []
   @Environment(\.horizontalSizeClass) private var sizeClass
+  @Environment(\.kitIdiom) private var idiom
   @Environment(\.showToast) private var toast
 
   static let types: [(String, String?)] = [
@@ -134,15 +135,13 @@ struct KeysBrowserView: View {
       }
   }
 
-  @ViewBuilder private var split: some View {
-    if window.showsInspector && sizeClass != .compact {
-      ResizableSplit("keyInspectorWidth", pane: .trailing, width: KitMetrics.inspectorWidth, range: 280...560, mainMinWidth: 420) {
-        main
-      } pane: {
-        inspector
-      }
-    } else {
+  private var split: some View {
+    InspectorSplit("keyInspectorWidth", range: 280...560, isShown: window.showsInspector && sizeClass != .compact) {
       main
+    } pane: {
+      inspector
+    } over: {
+      if let model, model.key != nil { RedisValueView(model: model) }
     }
   }
 
@@ -178,12 +177,19 @@ struct KeysBrowserView: View {
       ForEach(browser.page?.notes ?? [], id: \.self) {
         Banner($0, systemImage: "info.circle", hue: .gray).padding([.horizontal, .bottom], KitMetrics.gutter)
       }
-      RedisKeyList(browser: browser, model: model, expanded: $expanded)
-        .padding(.horizontal, KitMetrics.gutter)
+      if sizeClass == .compact {
+        // A phone has no room for the grid's columns or the inspector: a list whose rows push the key (D-010).
+        PhoneKeyList(browser: browser, model: model)
+      } else {
+        RedisKeyList(browser: browser, model: model, expanded: $expanded)
+          .padding(.horizontal, KitMetrics.gutter)
+      }
       StatusBar {
-        Text("Keys are grouped by the “:” in their names")
+        if sizeClass != .compact { Text("Keys are grouped by the “:” in their names") }
         Text(browser.pageLabel)
-        if let elapsed = browser.page?.elapsed { Text("scanned in \(formatDuration(elapsed))").foregroundStyle(.kitTertiary) }
+        if sizeClass != .compact, let elapsed = browser.page?.elapsed {
+          Text("scanned in \(formatDuration(elapsed))").foregroundStyle(.kitTertiary)
+        }
         Spacer()
         Button("Previous Page", systemImage: "chevron.left") { Task { await browser.previousPage() } }
           .disabled(browser.request.offset == 0)
@@ -205,6 +211,13 @@ struct KeysBrowserView: View {
       Button("Refresh", systemImage: "arrow.clockwise") { refresh() }
       if browser.isEditable {
         Button("Add Key", systemImage: "plus") { creating = true }
+      }
+      // The Mac has View › Show Inspector; an iPad only this (D-014).
+      if idiom != .mac, sizeClass != .compact {
+        Button(window.showsInspector ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.right") {
+          withKitAnimation { window.showsInspector.toggle() }
+        }
+        .kitToolOn(window.showsInspector)
       }
     }
   }
@@ -319,7 +332,7 @@ private struct RedisKeyList: View {
       }),
       KitGridColumn("Holds", width: 130, content: { row in
         if let record = row.record, let n = record["holds"]?.dbValue?.intValue {
-          Text(holds(n, type: record["type"]?.displayText ?? ""))
+          Text(Self.holds(n, type: record["type"]?.displayText ?? ""))
         }
       }),
       KitGridColumn("Size", width: 100, content: { row in
@@ -331,7 +344,7 @@ private struct RedisKeyList: View {
     ]
   }
 
-  private func holds(_ n: Int64, type: String) -> String {
+  static func holds(_ n: Int64, type: String) -> String {
     switch type {
     case "STRING": String(localized: "\(n.formatted()) chars")
     case "HASH": n == 1 ? String(localized: "1 field") : String(localized: "\(n.formatted()) fields")
@@ -340,6 +353,62 @@ private struct RedisKeyList: View {
     case "JSON": String(localized: "1 document")
     default: n == 1 ? String(localized: "1 member") : String(localized: "\(n.formatted()) members")
     }
+  }
+}
+
+/// The keys as a phone list: each row its key, type, size and expiry, pushing the key's value (its inspector).
+private struct PhoneKeyList: View {
+  let browser: BrowserModel
+  let model: RedisKeyModel?
+  /// The key pushed; the stack pops it back to nil.
+  @State private var opened: Record.ID?
+
+  var body: some View {
+    KitList(selection: $opened) {
+      ForEach(browser.records) { record in
+        PhoneKeyRow(record: record)
+      }
+      if browser.page?.hasMore == true {
+        Button("Load More") { Task { await browser.nextPage() } }.buttonStyle(.kitPlain)
+      }
+    }
+    .refreshable { await browser.reload() }
+    // A deleted key leaves its page.
+    .onChange(of: model?.key) { _, key in if key == nil { opened = nil } }
+    .onChange(of: opened) { _, id in
+      guard let id, let key = browser.records.first(where: { $0.id == id })?["key"]?.displayText else { return }
+      model?.key = key
+    }
+    .navigationDestination(item: $opened) { _ in
+      if let model {
+        RedisValueView(model: model)
+          .navigationTitle(model.key ?? "")
+          #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+          #endif
+      }
+    }
+  }
+}
+
+/// A key as a list row: its name, and its type, what it holds, its size and expiry under it.
+private struct PhoneKeyRow: View {
+  let record: Record
+
+  var body: some View {
+    let key = record["key"]?.displayText ?? ""
+    let type = record["type"]?.displayText ?? ""
+    var details: [String] = []
+    if let n = record["holds"]?.dbValue?.intValue { details.append(RedisKeyList.holds(n, type: type)) }
+    if let n = record["size"]?.dbValue?.intValue { details.append(formatBytes(n)) }
+    if let ms = record["ttl"]?.dbValue?.intValue { details.append(formatTTL(milliseconds: ms)) }
+    return SidebarRow(
+      value: record.id, key, subtitle: details.isEmpty ? nil : details.joined(separator: " · "), systemImage: "key",
+      hue: Hue.forTypeName(type)
+    ) {
+      if !type.isEmpty { Chip(type: type) }
+    }
+    .pushes()
   }
 }
 
@@ -422,11 +491,9 @@ struct RedisCommandLine: View {
       }
       HStack(spacing: 6) {
         TextField("Command, e.g. ZREVRANGE leaderboard:weekly 0 9 WITHSCORES", text: $command)
-          .kitField(mono: true)
+          // A command: no capitals, corrections or spell check ("HGETALL" isn't a typo, D-008).
+          .kitField(mono: true, content: .verbatim)
           .onSubmit(run)
-          #if os(iOS)
-            .textInputAutocapitalization(.never)
-          #endif
         Button("Run", action: run).buttonStyle(.kitPrimary).controlSize(.small)
       }
     }
