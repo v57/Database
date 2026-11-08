@@ -318,9 +318,10 @@ private struct AddIndexCard: View {
               KitSegmented(selection: $keys[position].isDescending, options: [("Ascending", false), ("Descending", true)])
                 .fixedSize()
               if keys.count > 1 {
+                // The kit's icon button: a kit button style sets its own label style, so `.labelStyle(.iconOnly)`
+                // around `.kit` still showed the title.
                 Button("Remove Field", systemImage: "minus") { keys.remove(at: position) }
-                  .labelStyle(.iconOnly)
-                  .buttonStyle(.kit)
+                  .buttonStyle(.kitIcon)
               }
             }
           }
