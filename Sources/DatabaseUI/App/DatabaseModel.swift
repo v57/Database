@@ -204,11 +204,12 @@ public final class DatabaseModel {
   public func profile(_ id: UUID) -> ConnectionProfile? { profiles.first { $0.id == id } }
 
   /// Adds or replaces a profile in the shared store; passwords go to the shared Keychain group (or are
-  /// forgotten). An SSH server becomes (or updates) a shared host.
-  public func save(_ profile: ConnectionProfile, password: String?, sshPassword: String?) {
+  /// forgotten). An SSH server becomes (or updates) a shared host: `sshHostID`'s when it has the server's address,
+  /// port and user (two configurations can share them).
+  public func save(_ profile: ConnectionProfile, password: String?, sshPassword: String?, sshHostID: String? = nil) {
     var hostID: String?
     if profile.ssh.enabled, !profile.ssh.host.isEmpty, !profile.engine.isFileBased {
-      let host = SharedConnections.host(for: profile.ssh, among: vault.hosts)
+      let host = SharedConnections.host(for: profile.ssh, among: vault.hosts, preferred: sshHostID ?? self.hostID(for: profile.id))
       vault.save(host)
       hostID = host.id
       // A key the profile learned (Test Connection) is pinned only where nothing is: the vault's pin is the one every

@@ -59,17 +59,22 @@ enum SharedConnections {
     return record
   }
 
-  /// The shared host for a profile's SSH settings: the saved one with that address, port and user (its
-  /// sign-in method updated), or a new one.
-  static func host(for ssh: SSHSettings, among hosts: [VaultHost]) -> VaultHost {
+  /// The shared host for a profile's SSH settings: the saved one with that address, port and user (`preferred`, the
+  /// one picked, when two share them; its sign-in method updated), or a new one.
+  static func host(for ssh: SSHSettings, among hosts: [VaultHost], preferred: String? = nil) -> VaultHost {
     let auth: VaultHost.Auth = ssh.auth == .password ? .password : (ssh.keyID == nil ? .deviceKey : .importedKey)
+    let matching = hosts.filter { matches($0, ssh) }
     var host =
-      hosts.first {
-        $0.hostname.caseInsensitiveCompare(ssh.host) == .orderedSame && $0.port == ssh.port && $0.user == ssh.user
-      } ?? VaultHost(hostname: ssh.host, port: ssh.port, user: ssh.user, source: "databasepro")
+      matching.first { $0.id == preferred } ?? matching.first
+      ?? VaultHost(hostname: ssh.host, port: ssh.port, user: ssh.user, source: "databasepro")
     host.auth = auth
     host.keyID = ssh.keyID?.uuidString
     return host
+  }
+
+  /// Whether a saved host has the SSH settings' address, port and user.
+  static func matches(_ host: VaultHost, _ ssh: SSHSettings) -> Bool {
+    host.hostname.caseInsensitiveCompare(ssh.host) == .orderedSame && host.port == ssh.port && host.user == ssh.user
   }
 
   /// Records made by other apps may have ids that aren't UUIDs: those get a stable UUID from the id.

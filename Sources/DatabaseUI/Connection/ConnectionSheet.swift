@@ -24,6 +24,8 @@ struct ConnectionSheet: View {
   @State private var pickingFile = false
   @State private var editingHost: HostDraft?
   @State private var deletingHost: VaultHost?
+  /// The SSH configuration picked: two can share an address, port and user, and only the one picked is shown so.
+  @State private var hostID: String?
   /// The SSH configuration a new connection starts out going through.
   private let startHost: VaultHost?
 
@@ -96,7 +98,7 @@ struct ConnectionSheet: View {
       Button(original == nil ? "Connect" : "Save") {
         var saved = profile
         if saved.name.isEmpty { saved.name = saved.displayName }
-        app.save(saved, password: password, sshPassword: sshPassword)
+        app.save(saved, password: password, sshPassword: sshPassword, sshHostID: selectedHost?.id)
         onSave(saved)
         dismiss()
       }
@@ -106,6 +108,7 @@ struct ConnectionSheet: View {
     }
     .onAppear {
       loadSecrets()
+      hostID = original.flatMap { app.hostID(for: $0.id) }
       if let startHost { use(startHost) }
       #if DEBUG
         if let link = DebugDriver.pendingLink {
@@ -228,7 +231,7 @@ struct ConnectionSheet: View {
           .kitContextMenu { menu(for: host) }
         }
         // SSH settings no saved configuration matches (made before configurations were shared).
-        if profile.ssh.enabled, !app.vault.hosts.contains(where: isSelected) {
+        if profile.ssh.enabled, selectedHost == nil {
           ChoiceCard(
             profile.ssh.host.isEmpty ? "SSH server" : "\(profile.ssh.host)", subtitle: "Not saved", systemImage: "server.rack", hue: .teal,
             isOn: Binding(get: { true }, set: { _ in editingHost = HostDraft(host: unsavedHost, isNew: true) }))
@@ -241,7 +244,7 @@ struct ConnectionSheet: View {
           "New SSH", subtitle: "Configuration", systemImage: "plus", hue: .gray,
           isOn: Binding(get: { false }, set: { _ in editingHost = HostDraft(host: VaultHost(hostname: "", source: "databasepro"), isNew: true) }))
       }
-      if let host = app.vault.hosts.first(where: isSelected) {
+      if let host = selectedHost {
         // A touch has no right click: there it's touch and hold (Shell S-005).
         Group {
           if idiom.isTouch {
@@ -301,10 +304,15 @@ struct ConnectionSheet: View {
     return text
   }
 
-  private func isSelected(_ host: VaultHost) -> Bool {
-    profile.ssh.enabled && host.hostname.caseInsensitiveCompare(profile.ssh.host) == .orderedSame
-      && host.port == profile.ssh.port && host.user == profile.ssh.user
+  /// The saved configuration the connection goes through: the one picked, or else the first with its address, port
+  /// and user (D-004: matching on those alone showed two tiles picked).
+  private var selectedHost: VaultHost? {
+    guard profile.ssh.enabled else { return nil }
+    let matching = app.vault.hosts.filter { SharedConnections.matches($0, profile.ssh) }
+    return matching.first { $0.id == hostID } ?? matching.first
   }
+
+  private func isSelected(_ host: VaultHost) -> Bool { selectedHost?.id == host.id }
 
   /// Whether another saved connection tunnels through the host (deleting it would make that one connect directly).
   private func isInUse(_ host: VaultHost) -> Bool {
@@ -322,6 +330,7 @@ struct ConnectionSheet: View {
 
   /// Connects through a shared host.
   private func use(_ host: VaultHost) {
+    hostID = host.id
     profile.ssh.enabled = true
     profile.ssh.host = host.hostname
     profile.ssh.fallbackHosts = app.vault.personalVault.fallbackAddresses(of: host)
