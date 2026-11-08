@@ -217,18 +217,27 @@ struct ConnectionSheet: View {
   private var locationGrid: some View {
     VStack(alignment: .leading, spacing: 6) {
       FormHeading("Location")
-      LazyVGrid(columns: tileColumns, spacing: KitMetrics.gutter) {
+      // Wider tiles than the engines': a configuration's name and address beside its … button.
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: KitMetrics.gutter)], spacing: KitMetrics.gutter) {
         ChoiceCard(
           Self.thisDevice, subtitle: "Localhost", systemImage: Self.thisDeviceSymbol,
           isOn: Binding(get: { !profile.ssh.enabled }, set: { if $0 { profile.ssh.enabled = false; test = .idle } }))
         // Devices on the user's Hub (kept by the Vault app) come with the rest, reached at their Hub Network address.
         ForEach(app.vault.hosts) { host in
-          ChoiceCard(
-            host.name.isEmpty ? "\(host.hostname)" : "\(host.name)",
-            subtitle: host.isViaHub ? "Via Hub · \(address(of: host))" : "\(address(of: host))",
-            systemImage: host.isViaHub ? "point.3.connected.trianglepath.dotted" : "server.rack",
-            hue: host.isViaHub ? .purple : .teal,
-            isOn: Binding(get: { isSelected(host) }, set: { if $0 { use(host) } }))
+          ChoiceCard(isOn: Binding(get: { isSelected(host) }, set: { if $0 { use(host) } })) {
+            ChoiceCardLabel(
+              host.name.isEmpty ? host.hostname : host.name,
+              subtitle: host.isViaHub ? "Via Hub · \(address(of: host))" : address(of: host)
+            ) {
+              Tile(
+                systemImage: host.isViaHub ? "point.3.connected.trianglepath.dotted" : "server.rack",
+                hue: host.isViaHub ? .purple : .teal, size: 26)
+            }
+            Spacer(minLength: 0)
+            // The menu in sight, for a touch that doesn't know to hold (D-006).
+            KitMenuButton("\(host.displayName) actions", systemImage: "ellipsis", style: .button) { menu(for: host) }
+              .buttonStyle(.kitIcon)
+          }
           .kitContextMenu { menu(for: host) }
         }
         // SSH settings no saved configuration matches (made before configurations were shared).
@@ -246,10 +255,10 @@ struct ConnectionSheet: View {
           isOn: Binding(get: { false }, set: { _ in editingHost = HostDraft(host: VaultHost(hostname: "", source: "databasepro"), isNew: true) }))
       }
       if let host = selectedHost {
-        // A touch has no right click: there it's touch and hold (Shell S-005).
+        // A touch has no right click: there it's the tile's … button, or touch and hold (Shell S-005).
         Group {
           if idiom.isTouch {
-            Text("Connects through \(host.displayName) to \(profile.host.isEmpty ? "the database" : profile.host):\(profile.port.formatted(.number.grouping(.never))). Touch and hold a configuration to edit it.")
+            Text("Connects through \(host.displayName) to \(profile.host.isEmpty ? "the database" : profile.host):\(profile.port.formatted(.number.grouping(.never))). Tap a configuration’s … to edit it.")
           } else {
             Text("Connects through \(host.displayName) to \(profile.host.isEmpty ? "the database" : profile.host):\(profile.port.formatted(.number.grouping(.never))). Right-click a configuration to edit it.")
           }
