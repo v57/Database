@@ -1,0 +1,60 @@
+{
+  "originHash" : "7e565266d41bac833a3b4d9e8fd9d7a33eed09060d8f23e8a8b85b7313141e5b",
+  "pins" : [
+    {
+      "identity" : "code",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/v57/Code.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "6ee757cd0ff58ebdfd6ee88570d04cb5d368199a"
+      }
+    },
+    {
+      "identity" : "component",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/v57/Component.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "fe973665e7ca3ee24e0bfd02007bb82bda696160"
+      }
+    },
+    {
+      "identity" : "dev",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/v57/Dev.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "12536c25ee4aa8199a1513eb5f42fa55802c48a1"
+      }
+    },
+    {
+      "identity" : "ssh",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/v57/SSH.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "9a5060227a43eeee153cf9caf7e64ff8fba97224"
+      }
+    },
+    {
+      "identity" : "updatekit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/v57/UpdateKit.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "3a207d1fbbfb72235d9e934ee2370e9df044d5f1"
+      }
+    },
+    {
+      "identity" : "vault",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/v57/Vault.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "0f2e52197da7ac16e7e60c419542cbb2c94ebe7f"
+      }
+    }
+  ],
+  "version" : 3
+}
