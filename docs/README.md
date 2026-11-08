@@ -50,3 +50,22 @@ your connections, SSH servers and passwords with the other v57 apps through your
 Database contacts no server on its own. It connects to a database or SSH server when you open, test or refresh a
 connection, syncs your vault through iCloud when iCloud is on, and downloads DuckDB or an update only when you ask.
 See [Privacy and Security](Privacy-and-Security.md).
+
+## For developers
+
+Database's libraries are one Swift package (`https://github.com/v57/Database.git`, branch `main`). Add the products
+you need; the app itself is a separate package in `App/`.
+
+| Library | Purpose | Platforms | Import |
+|---|---|---|---|
+| [DatabaseKit](DatabaseKit.md) | Connections to all ten engines, sessions for browsing, editing and queries; re-exports WireKit, SSHTunnel, BSON and DuckDBKit | macOS, iOS; Linux and Windows build | `import DatabaseKit` |
+| [DatabaseUI](DatabaseUI.md) | Database's whole interface, for embedding in an app (Shell does) | macOS, iOS; Linux (GTK) and Windows (WinUI) through v57/SwiftUI | `import DatabaseUI` |
+| [WireKit](WireKit.md) | Byte streams, dialers and the value types the engines share | macOS, iOS, Linux, Windows | `import WireKit` |
+| [SQLiteKit](SQLiteKit.md) | A SQLite file with bound parameters, returning WireKit's results | macOS, iOS, Linux, Windows | `import SQLiteKit` |
+| [SSHTunnel](SSHTunnel.md) | Database connections over SSH channels, with no local port; re-exports SSHKit | macOS, iOS, Linux; Windows without jump hosts | `import SSHTunnel` |
+| [Libssh2](SSHTunnel.md) | libssh2 with Mbed TLS from the SSH repository, for apps that drive their own sessions (shares the SSHTunnel page) | macOS, iOS, Linux, Windows | `import CLibssh2` |
+
+The engine clients (`PostgresWire`, `MySQLWire`, `TDSWire`, `MongoWire`, `BSON`, `RedisWire`, `CQLWire`, `DuckDBKit`)
+are internal targets that DatabaseKit wraps; [Engines](Engines.md) describes them and how to run the tests against the
+Docker test servers in `docker-compose.yml`. SSH logins, keys, SFTP and commands are documented in the
+[SSH repository](https://github.com/v57/SSH/blob/main/docs/SSHKit.md).
