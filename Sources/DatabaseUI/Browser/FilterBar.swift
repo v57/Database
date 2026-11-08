@@ -53,10 +53,10 @@ struct FilterBar: View {
       }
       Spacer(minLength: 4)
       if browser.engine.family != .wideColumn && browser.engine != .redis {
-        SortMenu(browser: browser)
+        SortMenu(browser: browser, iconOnly: sizeClass == .compact)
       }
       if browser.engine != .redis {
-        FieldsMenu(browser: browser)
+        FieldsMenu(browser: browser, iconOnly: sizeClass == .compact)
       }
     }
     .padding(.horizontal, KitMetrics.gutter)
@@ -199,6 +199,8 @@ struct AddFilterView: View {
 
 struct SortMenu: View {
   let browser: BrowserModel
+  /// A phone's: the bar is the width of the screen, and the pills ran it past the right edge.
+  var iconOnly = false
 
   private var label: String {
     guard let sort = browser.request.sort.first else { return String(localized: "Sort") }
@@ -213,7 +215,16 @@ struct SortMenu: View {
   }
 
   var body: some View {
-    KitMenuButton(label, systemImage: "arrow.up.arrow.down") {
+    if iconOnly {
+      // The kit's icon button: KitButtonStyle sets the label style itself.
+      menu.buttonStyle(.kitIcon)
+    } else {
+      menu
+    }
+  }
+
+  private var menu: some View {
+    KitMenuButton(label, systemImage: "arrow.up.arrow.down", style: iconOnly ? .button : .pill) {
       ForEach(browser.fields) { field in
         KitSubmenu(field.name) {
           Button(field.category.isTemporal ? "Oldest First" : field.category.isNumeric ? "Lowest First" : "A to Z") {
@@ -239,6 +250,7 @@ struct SortMenu: View {
 
 struct FieldsMenu: View {
   let browser: BrowserModel
+  var iconOnly = false
 
   private var label: String {
     let shown = browser.fields.count - browser.request.hiddenFields.count
@@ -247,7 +259,16 @@ struct FieldsMenu: View {
   }
 
   var body: some View {
-    KitMenuButton(label, systemImage: "eye") {
+    if iconOnly {
+      // The kit's icon button: KitButtonStyle sets the label style itself.
+      menu.buttonStyle(.kitIcon)
+    } else {
+      menu
+    }
+  }
+
+  private var menu: some View {
+    KitMenuButton(label, systemImage: "eye", style: iconOnly ? .button : .pill) {
       ForEach(browser.fields) { field in
         Toggle(field.name, isOn: Binding(
           get: { !browser.request.hiddenFields.contains(field.name) },
