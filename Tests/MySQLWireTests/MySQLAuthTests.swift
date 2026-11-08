@@ -59,7 +59,7 @@ import WireKit
 
   @Test func refusesClearPasswordSwitchWithoutTunnel() async throws {
     let server = Self.server(plugin: "mysql_native_password", then: Self.clearSwitch)
-    await #expect(throws: WireError.insecureLogin("in cleartext")) {
+    await #expect(throws: WireError.insecureLogin(WireError.cleartextPassword)) {
       try await MySQLClient.connect(Self.config(server))
     }
     #expect(!Self.sentPassword(server))
@@ -67,7 +67,7 @@ import WireKit
 
   @Test func refusesClearPasswordGreetingWithoutTunnel() async throws {
     let server = Self.server(plugin: "mysql_clear_password")
-    await #expect(throws: WireError.insecureLogin("in cleartext")) {
+    await #expect(throws: WireError.insecureLogin(WireError.cleartextPassword)) {
       try await MySQLClient.connect(Self.config(server))
     }
     #expect(!Self.sentPassword(server))
@@ -75,9 +75,18 @@ import WireKit
 
   @Test func refusesServerKeyRequestWithoutTunnel() async throws {
     let server = Self.server(plugin: "caching_sha2_password", then: [0x01, 0x04])
-    await #expect(throws: WireError.insecureLogin("encrypted to a key it sent")) {
+    await #expect(throws: WireError.insecureLogin(WireError.serverKeyPassword)) {
       try await MySQLClient.connect(Self.config(server))
     }
+    #expect(!Self.sentPassword(server))
+  }
+
+  /// D-007: the refusal says what was asked (the full password, encrypted to a key the server sends), not cleartext.
+  @Test func serverKeyRefusalSaysWhatWasAsked() {
+    let message = WireError.insecureLogin(WireError.serverKeyPassword).errorDescription ?? ""
+    #expect(message.contains("the full password") || message.contains("password in full"))
+    #expect(message.contains("encrypted to a key the server sends"))
+    #expect(!message.contains("cleartext"))
   }
 
   @Test func sendsClearPasswordThroughATunnel() async throws {

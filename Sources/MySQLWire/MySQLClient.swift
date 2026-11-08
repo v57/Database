@@ -153,7 +153,7 @@ public actor MySQLClient {
     if config.database?.isEmpty == false { flags |= Self.connectWithDB }
     flags &= capabilities | Self.connectWithDB
 
-    if pluginName == "mysql_clear_password" { try checkInsecureLogin("in cleartext") }
+    if pluginName == "mysql_clear_password" { try checkInsecureLogin(WireError.cleartextPassword) }
     let authResponse = try Self.authResponse(plugin: pluginName, password: config.password, scramble: scramble)
     var w = ByteWriter()
     w.writeLE(flags)
@@ -188,7 +188,7 @@ public actor MySQLClient {
         var data = r.readRest()
         if data.last == 0 { data.removeLast() }
         scramble = data
-        if plugin == "mysql_clear_password" { try checkInsecureLogin("in cleartext") }
+        if plugin == "mysql_clear_password" { try checkInsecureLogin(WireError.cleartextPassword) }
         try await writePacket(try Self.authResponse(plugin: plugin, password: config.password, scramble: scramble))
       case 0x01:
         // caching_sha2_password: 3 = fast auth succeeded (OK follows), 4 = send the full password.
@@ -196,7 +196,7 @@ public actor MySQLClient {
         if plugin == "caching_sha2_password" && packet[1] == 0x03 { continue }
         if plugin == "caching_sha2_password" && packet[1] == 0x04 {
           // The full password, encrypted to a key the server (or anyone between) sends.
-          try checkInsecureLogin("encrypted to a key it sent")
+          try checkInsecureLogin(WireError.serverKeyPassword)
           try await writePacket([0x02])  // ask for the server's RSA key
           let keyPacket = try await readPacket()
           guard keyPacket.first == 0x01 else { throw Self.serverError(keyPacket) }

@@ -144,12 +144,12 @@ public actor PostgresClient {
         switch code {
         case 0: break  // AuthenticationOk
         case 3:
-          try checkInsecureLogin("in cleartext")
+          try checkInsecureLogin(WireError.cleartextPassword)
           var w = ByteWriter()
           w.writeCString(config.password)
           try await send(type: UInt8(ascii: "p"), w.bytes)
         case 5:
-          try checkInsecureLogin("as an MD5 hash")
+          try checkInsecureLogin(WireError.md5Password)
           let salt = try reader.readBytes(4)
           let inner = Digest.md5Hex(Array((config.password + config.user).utf8))
           let outer = "md5" + Digest.md5Hex(Array(inner.utf8) + salt)

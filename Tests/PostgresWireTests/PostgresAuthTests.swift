@@ -44,7 +44,7 @@ import WireKit
 
   @Test func refusesCleartextRequest() async throws {
     let server = Self.server(asking: 3)
-    await #expect(throws: WireError.insecureLogin("in cleartext")) {
+    await #expect(throws: WireError.insecureLogin(WireError.cleartextPassword)) {
       try await PostgresClient.connect(Self.config(server))
     }
     #expect(!Self.sentPassword(server))
@@ -52,7 +52,7 @@ import WireKit
 
   @Test func refusesMD5Request() async throws {
     let server = Self.server(asking: 5)
-    await #expect(throws: WireError.insecureLogin("as an MD5 hash")) {
+    await #expect(throws: WireError.insecureLogin(WireError.md5Password)) {
       try await PostgresClient.connect(Self.config(server))
     }
   }

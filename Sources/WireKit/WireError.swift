@@ -9,8 +9,9 @@ public enum WireError: Error, LocalizedError, Sendable, Equatable {
   case protocolViolation(String)
   case authenticationFailed(String)
   case unsupported(String)
-  /// The server asked for the password in a form anyone on the network could read or replay (cleartext, MD5, a key it
-  /// sent), on a connection with neither SSH nor TLS (security audit M9).
+  /// The server asked for the password in a form someone on the network could read or crack (cleartext, MD5, a key
+  /// it sent), on a connection with neither SSH nor TLS (security audit M9). The detail is one of `cleartextPassword`,
+  /// `md5Password`, `serverKeyPassword`.
   case insecureLogin(String)
 
   public var errorDescription: String? {
@@ -23,7 +24,17 @@ public enum WireError: Error, LocalizedError, Sendable, Equatable {
     case .authenticationFailed(let detail): "Sign-in failed: \(detail)"
     case .unsupported(let detail): "Not supported: \(detail)"
     case .insecureLogin(let detail):
-      "The server asked for the password \(detail), which anyone on the network could read. Database didn't send it: turn on SSH or encryption, or Allow Insecure Login in the connection's settings."
+      "The server asked for the password \(detail). Database didn't send it: turn on SSH or encryption, or Allow Insecure Login in the connection's settings."
     }
   }
+}
+
+extension WireError {
+  /// How a server asked for the password, for `insecureLogin`: the rest of "The server asked for the password …",
+  /// with what it risks.
+  public static let cleartextPassword = "in cleartext, which anyone on the network could read"
+  public static let md5Password = "as an MD5 hash, which anyone on the network could capture and crack"
+  /// MySQL's caching_sha2_password full authentication off TLS (D-007): not cleartext, but nothing vouches for the key.
+  public static let serverKeyPassword =
+    "in full, encrypted to a key the server sends. Nothing checks that key, so someone on the network could send their own and read the password"
 }
