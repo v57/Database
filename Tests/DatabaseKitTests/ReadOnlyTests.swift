@@ -1,4 +1,5 @@
 import BSON
+import DuckDBKit
 import Foundation
 import Testing
 import WireKit
@@ -136,5 +137,77 @@ import WireKit
     for command in ["SET d018:key 1", "SETRANGE d018:key 0 x", "PFADD d018:hll a", "EVAL \"return 1\" 0", "FLUSHDB"] {
       await #expect(throws: ReadOnlyError.self, "\(command)") { _ = try await session.run(command, context: context) }
     }
+  }
+
+  /// DuckDB's read-only mode guards only the database file; an in-memory DuckDB over files has none (D-020).
+  @Test func duckDBRefusesStatementsThatWriteFiles() {
+    for sql in [
+      "COPY sales TO '/tmp/out.csv'",
+      "copy (SELECT * FROM 'sales.csv') to 'out.parquet' (FORMAT parquet)",
+      "SELECT 1; EXPORT DATABASE '/tmp/dump'",
+      "COPY FROM DATABASE memory TO other",
+      "ATTACH 'new.duckdb' AS other",
+      "ATTACH 'new.duckdb' (READ_ONLY false)",
+      "INSTALL httpfs",
+      "FORCE INSTALL spatial",
+      "UPDATE EXTENSIONS",
+      "CREATE PERSISTENT SECRET s (TYPE s3)",
+      "SET profiling_output = '/tmp/profile.json'",
+      "SET \"log_query_path\" = '/tmp/q.log'",
+      "PRAGMA profiling_output='/tmp/p'",
+      "CALL enable_logging(storage = 'file')",
+      "SET enable_external_access = true",
+      "EXPLAIN ANALYZE COPY sales TO 'out.csv'",
+      "PREPARE dump AS COPY sales TO 'out.csv'",
+    ] {
+      #expect(ReadOnlyGuard.duckDBFileWrite(sql) != nil, "\(sql)")
+      #expect(throws: ReadOnlyError.self) { try ReadOnlyGuard.check(sql, engine: .duckdb) }
+    }
+    for sql in [
+      "SELECT * FROM read_csv('sales.csv')",
+      "FROM 'sales.parquet' WHERE region = 'copy to'",
+      "SELECT \"copy\", \"export\" FROM sales -- COPY sales TO 'x'",
+      "ATTACH 'other.duckdb' AS other (READ_ONLY)",
+      "CREATE TABLE scratch AS SELECT * FROM 'sales.csv'",
+      "SET threads = 4",
+      "EXPLAIN SELECT 1",
+      "SELECT * FROM duckdb_settings()",
+    ] {
+      #expect(ReadOnlyGuard.duckDBFileWrite(sql) == nil, "\(sql)")
+    }
+  }
+
+  /// The D-020 case on DuckDB itself: Read only on an in-memory DuckDB over a CSV file reads it and writes no file.
+  @Test(.enabled(if: DuckDBLibrary.isInstalled, "DuckDB isn't installed in \(DuckDBLibrary.directory.path)"))
+  func duckDBOverFilesWritesNoFiles() async throws {
+    let csv = SQLSessionTests.tempFile("sales.csv")
+    try "id,region\n1,Europe\n2,Africa\n".write(toFile: csv, atomically: true, encoding: .utf8)
+    let folder = (csv as NSString).deletingLastPathComponent
+    defer { try? FileManager.default.removeItem(atPath: folder) }
+    let out = (folder as NSString).appendingPathComponent("out.csv")
+    let dump = (folder as NSString).appendingPathComponent("dump")
+    let (session, _) = try await Connector.connect(
+      ConnectionProfile(engine: .duckdb, filePath: csv, isReadOnly: true), credentials: Credentials())
+    defer { Task { await session.close() } }
+    let runs = try await session.run("SELECT count(*) FROM read_csv('\(csv)')", context: QueryContext())
+    guard case .table(_, let rows, _)? = runs.first?.outputs.first else {
+      Issue.record("no table")
+      return
+    }
+    #expect(rows.first?.first == .db(.int(2)))
+    for sql in [
+      "COPY (SELECT * FROM read_csv('\(csv)')) TO '\(out)'",
+      "EXPORT DATABASE '\(dump)'",
+      "ATTACH '\((folder as NSString).appendingPathComponent("new.duckdb"))' AS other",
+    ] {
+      await #expect(throws: ReadOnlyError.self, "\(sql)") { _ = try await session.run(sql, context: QueryContext()) }
+    }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: folder) == ["sales.csv"])
+    // Without Read only, DuckDB writes it: the check is what stops it.
+    let (writable, _) = try await Connector.connect(
+      ConnectionProfile(engine: .duckdb, filePath: csv), credentials: Credentials())
+    defer { Task { await writable.close() } }
+    _ = try await writable.run("COPY (SELECT * FROM read_csv('\(csv)')) TO '\(out)'", context: QueryContext())
+    #expect(FileManager.default.fileExists(atPath: out))
   }
 }

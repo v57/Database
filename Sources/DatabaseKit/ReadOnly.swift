@@ -9,7 +9,9 @@ import WireKit
 /// `SET SESSION TRANSACTION READ ONLY`, SQLite and DuckDB files open read-only. These checks keep a query tab from
 /// turning that mode off, and stand in for it on SQL Server, MongoDB and Redis, which have no such mode for one
 /// connection: there they read the statement, which a determined user can get around (a login that can only read is the
-/// guarantee).
+/// guarantee). DuckDB's read-only mode guards only the database file, and an in-memory DuckDB over CSV, Parquet or JSON
+/// files has none, so statements that write files (`COPY … TO`, `EXPORT DATABASE`, a writable `ATTACH`, `INSTALL`) are
+/// refused by the same kind of check (D-020).
 enum ReadOnlyGuard {
   /// Run before each query tab's text on PostgreSQL, in case something turned the mode off.
   static let postgresSession = "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY"
@@ -27,6 +29,10 @@ enum ReadOnlyGuard {
       if let word = sqlServerWrite(sql) {
         throw ReadOnlyError(
           "SQL Server runs only statements that read here, and this one has \(word).")
+      }
+    case .duckdb:
+      if let statement = duckDBFileWrite(sql) {
+        throw ReadOnlyError("“\(excerpt(statement))” writes files, which Read only doesn’t allow.")
       }
     default:
       break
@@ -65,6 +71,52 @@ enum ReadOnlyGuard {
       if flat.contains("READ WRITE") || flat.contains("SET_CONFIG") { return statement }
       if flat.contains("READ_ONLY") && !["SELECT", "WITH"].contains(first) { return statement }
       if ["RESET", "DISCARD"].contains(first) && words.contains("ALL") { return statement }
+    }
+    return nil
+  }
+
+  // MARK: - DuckDB
+
+  /// Settings and calls that make DuckDB write a file of the user's choosing (a profile, a query log, a log file) or
+  /// move where it keeps extensions, secrets and spilled data.
+  static let duckDBFileSettings: Set<String> = [
+    "PROFILING_OUTPUT", "LOG_QUERY_PATH", "ENABLE_LOGGING", "LOGGING_STORAGE", "HTTP_LOGGING_OUTPUT", "TEMP_DIRECTORY",
+    "EXTENSION_DIRECTORY", "SECRET_DIRECTORY", "HOME_DIRECTORY", "ENABLE_EXTERNAL_ACCESS", "ALLOWED_PATHS",
+    "ALLOWED_DIRECTORIES", "DISABLED_FILESYSTEMS",
+  ]
+
+  /// The first statement that would write a file on DuckDB, which a read-only database file doesn't stop and an
+  /// in-memory database over files doesn't have: `COPY` (to a file, or between databases), `EXPORT DATABASE`, an
+  /// `ATTACH` without `READ_ONLY` (it creates and writes the file), `INSTALL`/`FORCE INSTALL`/`UPDATE EXTENSIONS`,
+  /// a persistent secret, and the settings in `duckDBFileSettings`. Reading files (`read_csv`, `FROM 'x.parquet'`)
+  /// passes.
+  static func duckDBFileWrite(_ sql: String) -> String? {
+    for statement in SQLText.splitStatements(sql) {
+      var words = codeWords(statement)[...]
+      // EXPLAIN ANALYZE runs the statement, and PREPARE keeps it for EXECUTE.
+      while let lead = words.first, ["EXPLAIN", "ANALYZE"].contains(lead) { words = words.dropFirst() }
+      if words.first == "PREPARE", let at = words.firstIndex(of: "AS") { words = words[(at + 1)...] }
+      guard let first = words.first else { continue }
+      switch first {
+      case "COPY", "EXPORT", "INSTALL":
+        return statement
+      case "FORCE" where words.dropFirst().first == "INSTALL":
+        return statement
+      case "UPDATE" where words.dropFirst().first == "EXTENSIONS" && !words.contains("SET"):
+        return statement
+      case "ATTACH":
+        if !words.contains("READ_ONLY") || words.contains("FALSE") { return statement }
+      case "CREATE" where words.contains("PERSISTENT") && words.contains("SECRET"):
+        return statement
+      default:
+        break
+      }
+      if words.contains(where: { duckDBFileSettings.contains($0) }) { return statement }
+      // A setting's name may be quoted, which codeWords skips: read the raw text of SET, PRAGMA and CALL.
+      if ["SET", "PRAGMA", "CALL"].contains(first) {
+        let raw = statement.uppercased()
+        if duckDBFileSettings.contains(where: { raw.contains($0) }) { return statement }
+      }
     }
     return nil
   }
