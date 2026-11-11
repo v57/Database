@@ -102,7 +102,7 @@ private struct MainWindow: View {
     }
   }
 
-  /// Settings ▸ Accounts (the Settings window on the Mac and Linux; iPhone and iPad have none).
+  /// Settings ▸ Accounts (the Settings window on the Mac and Linux; iPhone and iPad open Settings from the sidebar).
   private var manage: (@MainActor @Sendable () -> Void)? {
     #if os(macOS) || os(Linux)
       return { [openSettings] in

@@ -4,11 +4,15 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VaultUI
 
-/// Settings: how much the browser loads, the DuckDB download, SSH keys, and the v57 accounts.
+/// Settings: how much the browser loads, the DuckDB download, SSH keys, and the v57 accounts. The Settings window on
+/// the Mac and Linux; on iPhone and iPad the app shows it in the detail, with Done (`close`) in its toolbar (D-021).
 public struct SettingsView: View {
   @KitStorage("settings.pane") private var pane = "General"
+  private let close: (() -> Void)?
 
-  public init() {}
+  public init(close: (() -> Void)? = nil) {
+    self.close = close
+  }
 
   public var body: some View {
     KitSettings(selection: $pane, window: Self.window) {
@@ -26,7 +30,14 @@ public struct SettingsView: View {
         SettingsPane("Remote", systemImage: "network", hue: .teal, section: "v57") { VaultRemoteSettings() }
       #endif
     }
-    .frame(width: 640, height: 460)
+    #if os(macOS) || os(Linux) || os(Windows)
+      .frame(width: 640, height: 460)
+    #else
+      .kitPane(.content)
+      .kitToolbar("Settings", meta: ["Database"], systemImage: "gearshape", hue: .gray) {
+        if let close { Button("Done", action: close).buttonStyle(.kitPrimary) }
+      }
+    #endif
   }
 
   /// The standard Settings window on the Mac: the kit's sidebar and the pane's title run up under the window's buttons
@@ -59,9 +70,12 @@ struct GeneralSettings: View {
         KitPicker("Items per page", selection: $pageSize, options: [25, 50, 100, 200, 500].map { ("\($0)", $0) })
       }
     }
-    FormCard("DuckDB") {
-      DuckDBInstallRow(showsRemove: true)
-        .padding(10)
+    // DuckDB is a download for the Mac only: on iPhone and iPad the card would only say it isn't available.
+    if DuckDBLibrary.isSupported {
+      FormCard("DuckDB") {
+        DuckDBInstallRow(showsRemove: true)
+          .padding(10)
+      }
     }
   }
 }

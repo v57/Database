@@ -64,24 +64,64 @@ private struct WindowContent: View {
   @State private var compactColumn = NavigationSplitViewColumn.sidebar
   /// What a dropped folder holds that the vault doesn't have: its databases, and its projects for the other apps.
   @State private var importOffer: VaultImportOffer?
+  #if os(iOS)
+    /// Settings, which iPhone and iPad have no window for (D-021): in the detail until Done or something is picked,
+    /// pushed over the sidebar on iPhone, alone on iPad (its own pane list beside the sidebar doesn't fit portrait).
+    @State private var showsSettings = false
+    @State private var columnsBeforeSettings = NavigationSplitViewVisibility.all
+  #endif
 
   var body: some View {
     NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
-      SidebarView(window: window, columnVisibility: $columnVisibility)
+      sidebar
         .toolbar(removing: .sidebarToggle)
         .kitSidebarColumn()
     } detail: {
       #if os(iOS)
-        // The detail's own stack: on iPhone an item pushes its screen (a split view's detail column has none).
-        NavigationStack {
-          DetailView(window: window)
-            .kitSidebarToggle(columnVisibility: $columnVisibility)
+        if showsSettings {
+          NavigationStack {
+            SettingsView {
+              showsSettings = false
+              compactColumn = .sidebar
+            }
+          }
+        } else {
+          // The detail's own stack: on iPhone an item pushes its screen (a split view's detail column has none).
+          NavigationStack {
+            DetailView(window: window)
+              .kitSidebarToggle(columnVisibility: $columnVisibility)
+          }
         }
       #else
         DetailView(window: window)
           .kitSidebarToggle(columnVisibility: $columnVisibility)
       #endif
     }
+    #if os(iOS)
+      .onChange(of: showsSettings) { _, shows in
+        if shows {
+          columnsBeforeSettings = columnVisibility
+          columnVisibility = .detailOnly
+          compactColumn = .detail
+        } else {
+          columnVisibility = columnsBeforeSettings
+        }
+      }
+      // iPhone: back from Settings to the sidebar; anywhere: a connection, table or query picked.
+      .onChange(of: compactColumn) { _, column in
+        if column == .sidebar { showsSettings = false }
+      }
+      .onChange(of: window.route) { showsSettings = false }
+      #if DEBUG
+        // `--settings`: Settings at launch, as the Mac opens its window (screenshots, checks).
+        .task {
+          guard LaunchOptions.flag("--settings") else { return }
+          showsSettings = true
+          columnVisibility = .detailOnly
+          compactColumn = .detail
+        }
+      #endif
+    #endif
     .focusedSceneValue(\.databaseWindow, window)
     .databaseSheets(window)
     .modifier(CompactColumnFollower(window: window, column: $compactColumn))
@@ -103,6 +143,16 @@ private struct WindowContent: View {
         Task { importOffer = await VaultImportOffer.scan(folders, store: app.vault.store) }
       }
       .kitSheet(item: $importOffer) { offer in VaultImportSheet(offer, vault: app.vault, app: "Database") }
+    #endif
+  }
+}
+
+extension WindowContent {
+  private var sidebar: SidebarView {
+    #if os(iOS)
+      SidebarView(window: window, columnVisibility: $columnVisibility) { showsSettings = true }
+    #else
+      SidebarView(window: window, columnVisibility: $columnVisibility)
     #endif
   }
 }

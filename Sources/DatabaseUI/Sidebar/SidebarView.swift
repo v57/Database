@@ -11,10 +11,15 @@ public struct SidebarView: View {
   @Environment(DatabaseModel.self) private var app
   @Environment(\.kitIdiom) private var idiom
   @State private var deleting: ConnectionProfile?
+  /// Opens Settings from the sidebar's bottom bar: iPhone and iPad, which have no Settings window (D-021).
+  private let settings: (() -> Void)?
 
-  public init(window: WindowModel, columnVisibility: Binding<NavigationSplitViewVisibility>) {
+  public init(
+    window: WindowModel, columnVisibility: Binding<NavigationSplitViewVisibility>, settings: (() -> Void)? = nil
+  ) {
     self.window = window
     _columnVisibility = columnVisibility
+    self.settings = settings
   }
 
   private var query: String { window.sidebarQuery }
@@ -39,7 +44,7 @@ public struct SidebarView: View {
     let current = current
     let others = profiles.filter { $0.id != current?.id }
     // The Mac's toggle hides the sidebar through the window's split view; iPad and iPhone need the binding.
-    SidebarFrame(window: window, columnVisibility: idiom.isTouch ? $columnVisibility : nil) {
+    SidebarFrame(window: window, columnVisibility: idiom.isTouch ? $columnVisibility : nil, settings: settings) {
       VaultAccountPicker(meta: app.profiles.count == 1 ? "1 connection" : "\(app.profiles.count) connections")
       // A long tree keeps the open connection's title in view; Connections waits at the bottom while it's below.
       if let current {
@@ -104,19 +109,24 @@ public struct SidebarView: View {
 private struct SidebarFrame<Content: View>: View {
   @Bindable var window: WindowModel
   let columnVisibility: Binding<NavigationSplitViewVisibility>?
+  let settings: (() -> Void)?
   let content: Content
 
   init(
-    window: WindowModel, columnVisibility: Binding<NavigationSplitViewVisibility>?, @ViewBuilder content: () -> Content
+    window: WindowModel, columnVisibility: Binding<NavigationSplitViewVisibility>?, settings: (() -> Void)?,
+    @ViewBuilder content: () -> Content
   ) {
     self.window = window
     self.columnVisibility = columnVisibility
+    self.settings = settings
     self.content = content()
   }
 
   var body: some View {
     KitSidebar(selection: $window.selection, searchText: $window.searchText, columnVisibility: columnVisibility) {
       content
+    } bottomBar: {
+      if let settings { Button("Settings", systemImage: "gearshape", action: settings) }
     }
   }
 }
