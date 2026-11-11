@@ -65,10 +65,11 @@ private struct WindowContent: View {
   /// What a dropped folder holds that the vault doesn't have: its databases, and its projects for the other apps.
   @State private var importOffer: VaultImportOffer?
   #if os(iOS)
-    /// Settings, which iPhone and iPad have no window for (D-021): in the detail until Done or something is picked,
-    /// pushed over the sidebar on iPhone, alone on iPad (its own pane list beside the sidebar doesn't fit portrait).
+    /// Settings, which iPhone and iPad have no window for (D-021): until Done or something is picked, alone in the
+    /// detail on iPad (its own pane list beside the sidebar doesn't fit portrait), over the split view on iPhone.
     @State private var showsSettings = false
     @State private var columnsBeforeSettings = NavigationSplitViewVisibility.all
+    @Environment(\.kitIdiom) private var idiom
   #endif
 
   var body: some View {
@@ -78,7 +79,7 @@ private struct WindowContent: View {
         .kitSidebarColumn()
     } detail: {
       #if os(iOS)
-        if showsSettings {
+        if showsSettings && idiom != .phone {
           NavigationStack {
             SettingsView {
               showsSettings = false
@@ -98,7 +99,19 @@ private struct WindowContent: View {
       #endif
     }
     #if os(iOS)
+      // iPhone: Settings slides in over the split view with a stack of its own. Pushed in the collapsed split view's
+      // detail, a pane's Back made the split view report the sidebar column, which closed Settings underneath it, so
+      // Done then changed nothing and did nothing (D-024).
+      .overlay {
+        if showsSettings && idiom == .phone {
+          NavigationStack {
+            SettingsView { withAnimation(.kit) { showsSettings = false } }
+          }
+          .transition(.move(edge: .trailing))
+        }
+      }
       .onChange(of: showsSettings) { _, shows in
+        guard idiom != .phone else { return }
         if shows {
           columnsBeforeSettings = columnVisibility
           columnVisibility = .detailOnly
@@ -109,7 +122,7 @@ private struct WindowContent: View {
       }
       // iPhone: back from Settings to the sidebar; anywhere: a connection, table or query picked.
       .onChange(of: compactColumn) { _, column in
-        if column == .sidebar { showsSettings = false }
+        if column == .sidebar && idiom != .phone { showsSettings = false }
       }
       .onChange(of: window.route) { showsSettings = false }
       #if DEBUG
@@ -117,6 +130,7 @@ private struct WindowContent: View {
         .task {
           guard LaunchOptions.flag("--settings") else { return }
           showsSettings = true
+          guard idiom != .phone else { return }
           columnVisibility = .detailOnly
           compactColumn = .detail
         }
@@ -150,7 +164,7 @@ private struct WindowContent: View {
 extension WindowContent {
   private var sidebar: SidebarView {
     #if os(iOS)
-      SidebarView(window: window, columnVisibility: $columnVisibility) { showsSettings = true }
+      SidebarView(window: window, columnVisibility: $columnVisibility) { withAnimation(.kit) { showsSettings = true } }
     #else
       SidebarView(window: window, columnVisibility: $columnVisibility)
     #endif
