@@ -343,6 +343,10 @@ import WireKit
     #expect(ConnectionLink.parse("jdbc:mysql://localhost/shop")?.profile.engine == .mysql)
     #expect(ConnectionLink.parse("cassandra://cassandra@node1:9042?keyspace=telemetry")?.profile.database == "telemetry")
     #expect(ConnectionLink.parse("hello") == nil)
+    // D-022: a file engine without a file yet is named after the engine, not "/" (iOS) or "." (the Mac)
+    #expect(ConnectionProfile(engine: .sqlite).displayName == "SQLite")
+    #expect(ConnectionProfile(engine: .duckdb).subtitle == "DuckDB")
+    #expect(ConnectionProfile(engine: .sqlite, filePath: "/data/notes.sqlite").displayName == "notes")
     // Cut off before "@host": the user and password aren't a host (D-013).
     #expect(ConnectionLink.parse("postgres://user:pa") == nil)
     #expect(ConnectionLink.parse("postgres://plainuser:plai") == nil)

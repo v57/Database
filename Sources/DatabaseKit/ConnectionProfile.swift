@@ -122,13 +122,19 @@ public struct ConnectionProfile: Codable, Hashable, Identifiable, Sendable {
   /// Name shown in the sidebar.
   public var displayName: String {
     if !name.isEmpty { return name }
-    if engine.isFileBased { return URL(fileURLWithPath: filePath).deletingPathExtension().lastPathComponent }
+    // No file chosen yet: the engine, as for a server without a host ("/" on iOS, where the path resolved to the root)
+    if engine.isFileBased {
+      return filePath.isEmpty ? engine.displayName : URL(fileURLWithPath: filePath).deletingPathExtension().lastPathComponent
+    }
     return host.isEmpty ? engine.displayName : host
   }
 
   /// "PostgreSQL · db.shop.internal" style subtitle.
   public var subtitle: String {
-    if engine.isFileBased { return "\(engine.displayName) · \(URL(fileURLWithPath: filePath).lastPathComponent)" }
+    if engine.isFileBased {
+      return filePath.isEmpty
+        ? engine.displayName : "\(engine.displayName) · \(URL(fileURLWithPath: filePath).lastPathComponent)"
+    }
     var place = host
     if port != engine.defaultPort { place += ":\(port)" }
     if ssh.enabled { place += " via SSH" }
