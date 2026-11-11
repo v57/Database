@@ -107,6 +107,9 @@ private struct WindowContent: View {
           NavigationStack {
             SettingsView { withAnimation(.kit) { showsSettings = false } }
           }
+          // VoiceOver and UI tests stay in Settings: the split view under it kept its elements in the tree (K-003)
+          .accessibilityElement(children: .contain)
+          .accessibilityAddTraits(.isModal)
           .transition(.move(edge: .trailing))
         }
       }
