@@ -123,7 +123,9 @@ private struct SidebarFrame<Content: View>: View {
   }
 
   var body: some View {
-    KitSidebar(selection: $window.selection, searchText: $window.searchText, columnVisibility: columnVisibility) {
+    // A row tapped again opens its screen again: on iPhone, after Back, the row is still the selection (D-025).
+    let selection = Binding<SidebarItem?>(get: { window.selection }, set: { window.open($0) })
+    KitSidebar(selection: selection, searchText: $window.searchText, columnVisibility: columnVisibility) {
       content
     } bottomBar: {
       if let settings { Button("Settings", systemImage: "gearshape", action: settings) }

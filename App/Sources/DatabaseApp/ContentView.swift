@@ -171,7 +171,8 @@ extension WindowContent {
   }
 }
 
-/// Shows the page on a phone once something is open, the sidebar on Welcome. A modifier of its own: read in the
+/// Shows the page on a phone once something is open, the sidebar on Welcome, and the page again for a row tapped again
+/// (D-025: after Back the row is still the selection, so the route doesn't change). A modifier of its own: read in the
 /// window's body, the route (a new one on every table, query tab or connection picked) built the split view again,
 /// the sidebar with it.
 private struct CompactColumnFollower: ViewModifier {
@@ -179,8 +180,12 @@ private struct CompactColumnFollower: ViewModifier {
   @Binding var column: NavigationSplitViewColumn
 
   func body(content: Content) -> some View {
-    content.onChange(of: window.route) { _, route in
-      if case .welcome = route { column = .sidebar } else { column = .detail }
-    }
+    content
+      .onChange(of: window.route) { _, route in follow(route) }
+      .onChange(of: window.openCount) { _, _ in follow(window.route) }
+  }
+
+  private func follow(_ route: WindowModel.Route) {
+    if case .welcome = route { column = .sidebar } else { column = .detail }
   }
 }

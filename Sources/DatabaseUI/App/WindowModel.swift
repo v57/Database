@@ -42,6 +42,17 @@ public final class WindowModel {
       if selection != oldValue { onSelect?(selection) }
     }
   }
+  /// Counts `open` calls: on iPhone a row tapped again shows its screen again, though the selection (still the row,
+  /// after Back) doesn't change (D-025).
+  public private(set) var openCount = 0
+
+  /// A sidebar row picked: selects it and counts the open, so the phone shows its screen even when it was selected
+  /// already (D-025).
+  public func open(_ item: SidebarItem?) {
+    selection = item
+    if item != nil { openCount += 1 }
+  }
+
   /// Called when the selection changes, by a row or from inside (a new query tab, a foreign key's table), for apps
   /// whose own sidebar shows the tree (Shell).
   @ObservationIgnored public var onSelect: ((SidebarItem?) -> Void)?
