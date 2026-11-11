@@ -421,14 +421,18 @@ struct InspectorSplit<Main: View, Pane: View, Over: View>: View {
 }
 
 /// Delete in the Edit menu for the selected items, while there are some to delete.
-/// Follows Settings ▸ General ▸ Items per page while the browser is open (D-019), in its own view so the pane doesn't
-/// read the setting.
+/// Follows Settings ▸ General ▸ Items per page (D-019), in its own view so the pane doesn't read the setting: while the
+/// browser shows, and when it shows again. On iPhone the browser isn't on screen while Settings is, so a change made
+/// there reached no `onChange`, and the table opened before kept its old size until a relaunch; the size is now
+/// checked each time the browser appears too (a cached model reloads only when it differs).
 private struct PageSizeSetting: ViewModifier {
   let browser: BrowserModel
   @KitStorage(BrowserModel.pageSizeKey) private var pageSize = 50
 
   func body(content: Content) -> some View {
-    content.onChange(of: pageSize) { _, size in Task { await browser.changePageSize(to: size) } }
+    content.task(id: pageSize) {
+      await browser.changePageSize(to: BrowserModel.pageSize(for: browser.connection.profile.engine))
+    }
   }
 }
 
