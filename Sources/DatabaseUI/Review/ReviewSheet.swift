@@ -16,7 +16,7 @@ struct ReviewSheet: View {
 
   var body: some View {
     KitSheet(
-      title: browser.pending.count == 1 ? "Review 1 Change" : "Review \(browser.pending.count) Changes", meta: meta,
+      title: "Review \(browser.pending.count) Changes", meta: meta,
       width: 600,
       icon: { browser.connection.liveTile(size: 32) }
     ) {

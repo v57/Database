@@ -222,7 +222,7 @@ private struct QueryTabResults: View {
       default: nil
       }
     }
-    if let last = rows.last { return last == 1 ? String(localized: "1 row") : String(localized: "\(last) rows") }
+    if let last = rows.last { return String(localized: "\(last) rows") }
     return String(localized: "Done")
   }
 

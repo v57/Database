@@ -79,7 +79,7 @@ func formatTTLDuration(seconds: Int64) -> String {
   case ..<60: String(localized: "\(seconds) s")
   case ..<3600: String(localized: "\(seconds / 60) min")
   case ..<86400: String(localized: "\(seconds / 3600) hr")
-  default: seconds / 86400 == 1 ? String(localized: "1 day") : String(localized: "\(seconds / 86400) days")
+  default: String(localized: "\(seconds / 86400) days")
   }
 }
 

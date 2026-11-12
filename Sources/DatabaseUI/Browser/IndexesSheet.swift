@@ -190,10 +190,9 @@ struct IndexesSheet: View {
 
   private var summary: String {
     if !model.pending.isEmpty {
-      return model.pending.count == 1
-        ? String(localized: "1 change to apply") : String(localized: "\(model.pending.count) changes to apply")
+      return String(localized: "\(model.pending.count) changes to apply")
     }
-    return model.indexes.count == 1 ? String(localized: "1 index") : String(localized: "\(model.indexes.count) indexes")
+    return String(localized: "\(model.indexes.count) indexes")
   }
 
   @ViewBuilder private var indexList: some View {

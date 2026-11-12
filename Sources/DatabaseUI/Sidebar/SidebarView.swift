@@ -354,21 +354,13 @@ extension TreeSearch {
     let count = unopened.count
     return switch first.kind {
     case .database:
-      count == 1
-        ? String(localized: "1 database isn't open, so it isn't searched.")
-        : String(localized: "\(count) databases aren't open, so they aren't searched.")
+      String(localized: "\(count) databases aren't open, so they aren't searched.")
     case .schema:
-      count == 1
-        ? String(localized: "1 schema isn't open, so it isn't searched.")
-        : String(localized: "\(count) schemas aren't open, so they aren't searched.")
+      String(localized: "\(count) schemas aren't open, so they aren't searched.")
     case .keyspace:
-      count == 1
-        ? String(localized: "1 keyspace isn't open, so it isn't searched.")
-        : String(localized: "\(count) keyspaces aren't open, so they aren't searched.")
+      String(localized: "\(count) keyspaces aren't open, so they aren't searched.")
     default:
-      count == 1
-        ? String(localized: "1 folder isn't open, so it isn't searched.")
-        : String(localized: "\(count) folders aren't open, so they aren't searched.")
+      String(localized: "\(count) folders aren't open, so they aren't searched.")
     }
   }
 }
