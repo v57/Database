@@ -468,13 +468,7 @@ struct QueryRows: View {
       .kitRowIndent(level)
       if isExpanded || !query.isEmpty {
         ForEach(saved) { query in
-          SidebarRow(value: tag(.savedQuery(connection.id, query.id)), query.title, systemImage: "terminal")
-            .disclosureSlot()
-            .kitRowIndent(level + 1)
-          .kitContextMenu {
-            Button("Delete", systemImage: "trash", role: .destructive) { app.deleteQuery(query.id) }
-              .kitMenuPreview("Deletes the saved query “\(query.title)”.")
-          }
+          SavedQueryRow(connection: connection, query: query, level: level + 1)
         }
         ForEach(tabs) { tab in
           SidebarRow(value: tag(.queryTab(connection.id, tab.id)), tab.title, systemImage: "doc.text")
@@ -483,6 +477,26 @@ struct QueryRows: View {
         }
       }
     }
+  }
+}
+
+/// A saved query's row, with Delete in its menu. A view of its own: inline in QueryRows, the row's type crashed the
+/// Windows toolchain's debug-info mangler (its Asserts build: "Remangling failed", Shell 0.1.0's archive).
+private struct SavedQueryRow: View {
+  let connection: LiveConnection
+  let query: SavedQuery
+  let level: Int
+  @Environment(DatabaseModel.self) private var app
+  @Environment(\.databaseSidebarTag) private var tag
+
+  var body: some View {
+    SidebarRow(value: tag(.savedQuery(connection.id, query.id)), query.title, systemImage: "terminal")
+      .disclosureSlot()
+      .kitRowIndent(level)
+      .kitContextMenu {
+        Button("Delete", systemImage: "trash", role: .destructive) { app.deleteQuery(query.id) }
+          .kitMenuPreview("Deletes the saved query “\(query.title)”.")
+      }
   }
 }
 
