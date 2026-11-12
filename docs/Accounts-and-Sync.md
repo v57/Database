@@ -20,8 +20,9 @@ edit or delete on one device follows on your others.
 
 The **Use iCloud** switch is one switch for every v57 app on the device:
 
-- On the Mac, it's in Database's **Settings ▸ Privacy**.
-- On iPhone and iPad, Database has no Settings screen. Use another v57 app's Settings, such as
+- It's in Database's **Settings ▸ Privacy**: on the Mac, **Database ▸ Settings…**; on iPhone and iPad, **Settings**
+  at the foot of the sidebar.
+- Every other v57 app's Settings has the same switch, such as
   [Vault](https://github.com/v57/Vault/blob/main/docs/README.md)'s **Settings ▸ Privacy**.
 
 Turning it off stops syncing for every v57 app on the device. What's already in iCloud stays, and your other devices

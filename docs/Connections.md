@@ -127,7 +127,10 @@ query tab, a statement that would change data is refused with "This connection i
 - **PostgreSQL**, **MySQL** and **MariaDB** connect in the server's own read-only mode, so the server refuses
   writes and changes to tables. A statement that would turn that mode off (such as `SET SESSION TRANSACTION READ
   WRITE`) is refused before it's sent.
-- **SQLite** and **DuckDB** files open read-only.
+- **SQLite** and **DuckDB** files open read-only. On a DuckDB connection, statements that write files or install
+  extensions are refused too: `COPY … TO`, `EXPORT DATABASE`, an `ATTACH` without `READ_ONLY`, `INSTALL` and the
+  settings that write files. This also covers a DuckDB connection over Parquet, CSV or JSON files, which has no
+  read-only mode of its own.
 - **SQL Server**, **MongoDB**, **Redis**, **Cassandra** and **ScyllaDB** have no read-only mode for one connection,
   so Database reads what you run and lets through only what reads: on SQL Server, statements without `INSERT`,
   `UPDATE`, `DELETE`, `CREATE`, `EXEC` and the like; on MongoDB, finds, aggregations without `$out` or `$merge`, and

@@ -1,8 +1,10 @@
 # Settings
 
-On the Mac, choose **Database ▸ Settings…** (⌘,). Linux has the same Settings window. iPhone and iPad have no Settings
-screen: you make and import SSH keys in the SSH configuration sheet (see [SSH](SSH.md)), and the iCloud switch is in
-another v57 app's Settings.
+On the Mac, choose **Database ▸ Settings…** (⌘,). Linux has the same Settings window.
+
+On iPhone and iPad, tap **Settings** at the foot of the sidebar. The panes show in place of the page on iPad, and over
+the sidebar on iPhone; **Done** closes them. iPhone and iPad have the General, SSH Keys, Privacy and Accounts panes, and
+**Devices** in place of the Mac's Remote. The DuckDB row is on the Mac only.
 
 ## General
 
@@ -27,7 +29,7 @@ Keys are stored in your keychain.
 
 ## Privacy
 
-**Use iCloud** turns iCloud sync on or off for every v57 app on this Mac. See
+**Use iCloud** turns iCloud sync on or off for every v57 app on this device. See
 [Accounts and Sync](Accounts-and-Sync.md#icloud).
 
 ## Accounts
@@ -36,7 +38,12 @@ Your vault's accounts: **New Account…**, and **Edit…** or **Delete…** for 
 hosts, passwords and settings on every device; Personal is always there. See [Accounts and Sync](Accounts-and-Sync.md#accounts) and
 [Vault](https://github.com/v57/Vault/blob/main/docs/README.md).
 
-## Remote
+## Devices (iPhone and iPad)
+
+Your devices that run a v57 app, with **Remove…** for one you no longer use: the same pane as
+[Vault](https://github.com/v57/Vault/blob/main/docs/README.md)'s **Settings ▸ Devices**.
+
+## Remote (Mac)
 
 Which of your devices may sign in to this Mac over SSH, for example to reach the databases on this Mac from your
 iPhone. It needs Remote Login, which you turn on in System Settings ▸ General ▸ Sharing. Turn on each device under

@@ -2,18 +2,23 @@
 
 ## What Database sends over the network
 
-Database contacts no server on its own. It has no analytics or tracking. It sends something only in these cases:
+Database contacts no server on its own, apart from iCloud sync while iCloud is on. It has no analytics or tracking. It
+sends something only in these cases:
 
 - **Your databases.** When you open, test, refresh or query a connection, Database connects to that database server,
-  or to the SSH server it goes through. Nothing connects at launch.
-- **iCloud.** With iCloud on, your vault (connections, SSH configurations, server keys) syncs through iCloud, and
-  saved passwords through iCloud Keychain. This goes to Apple, not to v57.
+  or to the SSH server it goes through. Nothing connects at launch. Database names itself "Database" to the server;
+  a SQL Server also gets this device's host name and the app's process number.
+- **iCloud.** With iCloud on, your vault (connections, SSH configurations, server keys) syncs through iCloud when
+  Database opens, when you come back to it and after a change, sealed before it leaves the device, and saved passwords
+  sync through iCloud Keychain. This goes to Apple, not to v57.
 - **Hub.** A location marked **Via Hub** reaches your device through your own Hub.
 - **DuckDB (Mac).** Database downloads DuckDB from GitHub only when you choose **Download** or **Update**, and checks
   the file before installing it.
 - **Updates (Mac and Linux).** Database asks GitHub for a new version only when you choose **Check for Updates…**, or
   once a day after you turn on **Check for Updates Automatically**. On iPhone and iPad, the App Store handles
   updates.
+
+**Open the Sample Database** makes its file on the device; nothing is downloaded.
 
 On iPhone and iPad, the first connection to a device on your local network shows the system's Local Network
 question.

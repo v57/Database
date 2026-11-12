@@ -21,6 +21,8 @@ With nothing open, the page shows the welcome:
 - **New Connection…** opens the sheet to add a connection.
 - **Open a File…** opens a database file. On the Mac that's an SQLite, DuckDB, Parquet or CSV file. On iPhone and iPad
   it's an SQLite file.
+- **Open the Sample Database** makes a small shop database on this device and opens it. See
+  [Try the sample database](#try-the-sample-database).
 - Once you've opened connections, the list is titled **Recent**, newest first. Tap one to connect. A Production
   connection carries a red tag.
 
@@ -34,6 +36,18 @@ With nothing open, the page shows the welcome:
 5. Choose **Connect**. Database saves the connection and opens it.
 
 See [Connections](Connections.md) for every field in the sheet.
+
+## Try the sample database
+
+To try Database without a server or a file of your own, choose **Open the Sample Database** on the welcome. On iPhone,
+where the sidebar comes first, it's also in the Connections card while you have no connections.
+
+Database writes an SQLite file into its own folder on this device and opens it as a connection named **Sample Shop**:
+tables `customers`, `products`, `orders`, `order_items` and `refunds`, and a `monthly_revenue` view. The rows are
+made up, and the same every time. Nothing is downloaded.
+
+It's an ordinary connection: browse it, edit it with a review, and query it. **Delete Connection** removes it. It syncs
+to your other devices like any connection, and opening it there makes the file again on that device.
 
 ## Open a database file
 

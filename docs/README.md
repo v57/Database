@@ -11,8 +11,8 @@ your connections, SSH servers and passwords with the other v57 apps through your
   and in-app updates.
 - **iPhone and iPad:** the same connections, browser, editing, queries, pipelines and Redis tools. Differences:
   - DuckDB isn't offered, so **Open a File…** opens SQLite files only.
-  - There's no Settings screen. You make and import SSH keys in the SSH configuration sheet. The iCloud switch is in
-    another v57 app's Settings, such as [Vault](https://github.com/v57/Vault/blob/main/docs/README.md)'s.
+  - **Settings** is a button at the foot of the sidebar, with the General, SSH Keys, Privacy, Accounts and Devices
+    panes. The DuckDB row and the Remote pane are on the Mac only.
   - On iPhone, tables show as a list and an item opens on its own page. On iPad, tables show as a grid with an
     inspector beside it.
   - With a hardware keyboard on iPad, the menu commands and their shortcuts work as on the Mac.
@@ -31,7 +31,7 @@ your connections, SSH servers and passwords with the other v57 apps through your
 - [Pipelines](Pipelines.md): building MongoDB aggregation pipelines step by step, also on SQL tables.
 - [Redis](Redis.md): the key browser, value editors, expiry and the command line.
 - [Accounts and Sync](Accounts-and-Sync.md): iCloud, vault accounts and what other v57 apps see.
-- [Settings](Settings.md): the Mac's Settings window.
+- [Settings](Settings.md): the Settings window on the Mac, and Settings on iPhone and iPad.
 - [Privacy and Security](Privacy-and-Security.md): what Database sends over the network, passwords, server keys and
   insecure logins.
 - [Keyboard Shortcuts](Keyboard-Shortcuts.md)
