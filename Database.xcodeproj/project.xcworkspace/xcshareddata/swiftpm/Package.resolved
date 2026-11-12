@@ -2,12 +2,21 @@
   "originHash" : "7e565266d41bac833a3b4d9e8fd9d7a33eed09060d8f23e8a8b85b7313141e5b",
   "pins" : [
     {
+      "identity" : "channelswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/v57/ChannelSwift.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "cbc8f108e6d0de1e7cf866a4a9dff099e1868f37"
+      }
+    },
+    {
       "identity" : "code",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/v57/Code.git",
       "state" : {
         "branch" : "main",
-        "revision" : "6ee757cd0ff58ebdfd6ee88570d04cb5d368199a"
+        "revision" : "9190c84084c2a508ca2f827fa5039627ffbd6976"
       }
     },
     {
@@ -16,7 +25,7 @@
       "location" : "https://github.com/v57/Component.git",
       "state" : {
         "branch" : "main",
-        "revision" : "fe973665e7ca3ee24e0bfd02007bb82bda696160"
+        "revision" : "8d3427fad4c5f5592da0423c718c638ed1d2d2c7"
       }
     },
     {
@@ -25,7 +34,25 @@
       "location" : "https://github.com/v57/Dev.git",
       "state" : {
         "branch" : "main",
-        "revision" : "12536c25ee4aa8199a1513eb5f42fa55802c48a1"
+        "revision" : "ac38cad51b1381df2336b26b2179f074c590d3d3"
+      }
+    },
+    {
+      "identity" : "hubservice",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/v57/HubService.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "4cb8f0aa9e9554c509e8320830cd15cca57c604a"
+      }
+    },
+    {
+      "identity" : "platform",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/v57/Platform.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "00113a68bf6713ea23a688a69c4e3cfaa31c6586"
       }
     },
     {
@@ -34,7 +61,7 @@
       "location" : "https://github.com/v57/SSH.git",
       "state" : {
         "branch" : "main",
-        "revision" : "9a5060227a43eeee153cf9caf7e64ff8fba97224"
+        "revision" : "3a0e44b9197d8a1bb028e039a72815d68f213c02"
       }
     },
     {
@@ -43,7 +70,7 @@
       "location" : "https://github.com/v57/UpdateKit.git",
       "state" : {
         "branch" : "main",
-        "revision" : "3a207d1fbbfb72235d9e934ee2370e9df044d5f1"
+        "revision" : "13ae36142ba3f01fbbc089c0025b1e6a3659cc09"
       }
     },
     {
@@ -52,7 +79,7 @@
       "location" : "https://github.com/v57/Vault.git",
       "state" : {
         "branch" : "main",
-        "revision" : "0f2e52197da7ac16e7e60c419542cbb2c94ebe7f"
+        "revision" : "616dc2972a205a911ac7c727f614ee0591c42989"
       }
     }
   ],
