@@ -168,4 +168,9 @@ public final class WindowModel {
   public func connect(_ id: UUID) {
     selection = .connection(id)
   }
+
+  /// Opens the sample shop, made on this device the first time (Welcome ▸ Open the Sample Database).
+  public func openSample() {
+    Task { connect(await app.openSample().id) }
+  }
 }

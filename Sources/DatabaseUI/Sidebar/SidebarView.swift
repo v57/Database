@@ -61,6 +61,10 @@ public struct SidebarView: View {
           Button("Add a Connection", systemImage: "plus") { window.showsNewConnection = true }
             .buttonStyle(.kitPlain)
             .padding(.vertical, 4)
+          // On iPhone the sidebar is the first screen, so the sample is offered here too.
+          Button("Open the Sample Database", systemImage: "cart") { window.openSample() }
+            .buttonStyle(.kitPlain)
+            .padding(.bottom, 4)
         } else if profiles.isEmpty {
           Text("No connections match “\(query)”.")
             .kitFont(.caption)

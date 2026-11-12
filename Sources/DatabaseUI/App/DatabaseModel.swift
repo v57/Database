@@ -339,7 +339,13 @@ public final class DatabaseModel {
   func open(_ profile: ConnectionProfile, credentials: Credentials, tunnelClosed: @escaping @MainActor (String?) -> Void)
     async throws -> OpenedSession
   {
-    let profile = withVaultHostKey(profile)
+    var profile = withVaultHostKey(profile)
+    // The sample made on another device, or before an update moved this app's folder: made again here.
+    if profile.engine == .sqlite, SampleDatabase.isSample(profile.filePath),
+      !FileManager.default.fileExists(atPath: profile.filePath)
+    {
+      profile = await openSample()
+    }
     if let opener { return try await opener(profile, credentials, tunnelClosed) }
     let (session, report) = try await Connector.connect(profile, credentials: credentials)
     session.onTunnelClosed { reason in Task { @MainActor in tunnelClosed(reason) } }
@@ -388,6 +394,33 @@ public final class DatabaseModel {
   func deleteQuery(_ id: UUID) {
     savedQueries.removeAll { $0.id == id }
     persist()
+  }
+
+  /// The sample shop's connection (Welcome ▸ Open the Sample Database): its SQLite file is written into this app's
+  /// own folder the first time and whenever it's missing, so Database can be tried with no server or file of one's
+  /// own. The connection is an ordinary one: Delete Connection removes it (the file stays until the app is deleted).
+  /// A file that couldn't be written shows as the connection's error when it opens.
+  public func openSample() async -> ConnectionProfile {
+    let url = sampleURL
+    if !FileManager.default.fileExists(atPath: url.path) { try? await SampleDatabase.write(to: url) }
+    // The vault keeps one sample connection; one saved on another device (or before an update moved the app's
+    // folder) is pointed at this device's file.
+    if var existing = profiles.first(where: { $0.engine == .sqlite && SampleDatabase.isSample($0.filePath) }) {
+      if existing.filePath != url.path {
+        existing.filePath = url.path
+        save(existing, password: nil, sshPassword: nil)
+      }
+      return existing
+    }
+    let profile = ConnectionProfile(name: SampleDatabase.connectionName, engine: .sqlite, filePath: url.path, color: .green)
+    save(profile, password: nil, sshPassword: nil)
+    return profile
+  }
+
+  /// Where this device keeps the sample shop.
+  private var sampleURL: URL {
+    (folder ?? URL.applicationSupportDirectory.appendingPathComponent("dev.v57.db", isDirectory: true))
+      .appendingPathComponent("Samples", isDirectory: true).appendingPathComponent(SampleDatabase.fileName)
   }
 
   /// Opens a database file dropped on the app or picked in the Finder.

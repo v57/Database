@@ -3,8 +3,8 @@ import DatabaseKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The main screen while no connection is selected: the kit's welcome, with New Connection, Open File and the recent
-/// connections. Files dropped on it open as connections.
+/// The main screen while no connection is selected: the kit's welcome, with New Connection, Open File, the sample shop
+/// and the recent connections. Files dropped on it open as connections.
 struct WelcomeView: View {
   @Bindable var window: WindowModel
   @Environment(DatabaseModel.self) private var app
@@ -31,6 +31,12 @@ struct WelcomeView: View {
       }
       WelcomeAction("Open a File…", detail: Self.fileKinds, systemImage: "doc") {
         openingFile = true
+      }
+      WelcomeAction(
+        "Open the Sample Database", detail: "A small shop made on this device: customers, products and orders",
+        systemImage: "cart"
+      ) {
+        window.openSample()
       }
     } recents: {
       ForEach(recent) { profile in
