@@ -255,7 +255,7 @@ struct FieldsMenu: View {
   private var label: String {
     let shown = browser.fields.count - browser.request.hiddenFields.count
     return browser.request.hiddenFields.isEmpty
-      ? String(localized: "Fields") : String(localized: "\(shown) of \(browser.fields.count) fields")
+      ? String(localized: "Fields") : String(localized: "\(shown.formatted()) of \(browser.fields.count) fields")
   }
 
   var body: some View {

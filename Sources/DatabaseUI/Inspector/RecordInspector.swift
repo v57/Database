@@ -50,7 +50,7 @@ struct RecordInspector: View {
   @ViewBuilder private var related: some View {
     let incoming = relations.filter { $0.direction == .incoming }
     if !incoming.isEmpty {
-      KitSection("Related", meta: "\(incoming.count) \(incoming.count == 1 ? "table" : "tables")", systemImage: "link", hue: .teal) {
+      KitSection("Related", meta: String(localized: "\(incoming.count) tables"), systemImage: "link", hue: .teal) {
         ForEach(incoming) { relation in
           Button {
             openRelated(relation)
@@ -58,7 +58,7 @@ struct RecordInspector: View {
             InspectorRow(relation.table.name) {
               HStack(spacing: 4) {
                 if let count = relatedCounts[relation.id] {
-                  Text(count == 0 ? "None" : "\(count) \(count == 1 ? "row" : "rows")")
+                  Text(count == 0 ? "None" : "\(count) rows")
                 }
                 Image(systemName: "chevron.right").imageScale(.small).foregroundStyle(.kitTertiary)
               }

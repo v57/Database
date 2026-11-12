@@ -289,7 +289,7 @@ private struct StepGroupBlock: View {
       }
       .padding(.leading, -4)
       .frame(minHeight: 34)
-      .accessibilityLabel("\(group), \(kinds.count) \(kinds.count == 1 ? "step" : "steps")")
+      .accessibilityLabel("\(group), \(kinds.count) steps")
       ForEach(kinds) { kind in
         StepLibraryRow(kind: kind) { onAdd(kind) }
       }

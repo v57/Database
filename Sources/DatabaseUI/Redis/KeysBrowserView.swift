@@ -424,7 +424,7 @@ private struct RedisKeyGrid: View {
       .rowContextMenu { ids in
         let keys = ids.filter { $0.hasPrefix("key:") }.sorted().map { String($0.dropFirst(4)) }
         if !keys.isEmpty {
-          Button("Copy Key Name\(keys.count == 1 ? "" : "s")") { KitPasteboard.copy(keys.joined(separator: "\n")) }
+          Button(keys.count == 1 ? String(localized: "Copy Key Name") : String(localized: "Copy Key Names")) { KitPasteboard.copy(keys.joined(separator: "\n")) }
           if browser.isEditable {
             Button("Delete \(keys.count == 1 ? "Key" : "\(keys.count) Keys")", systemImage: "trash", role: .destructive) {
               Task { await model?.perform(keys.map { .delete(key: $0) }) }

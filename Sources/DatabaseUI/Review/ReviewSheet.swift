@@ -54,7 +54,7 @@ struct ReviewSheet: View {
       .disabled(browser.pending.isEmpty)
       Button("Keep Editing") { dismiss() }
         .keyboardShortcut(.cancelAction)
-      Button("Save \(browser.pending.count) Change\(browser.pending.count == 1 ? "" : "s")") {
+      Button("Save \(browser.pending.count) Changes") {
         Task {
           saving = true
           if await browser.save() { dismiss() }
