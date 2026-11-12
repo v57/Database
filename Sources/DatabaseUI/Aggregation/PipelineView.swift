@@ -397,7 +397,7 @@ struct OutputPanel: View {
     var parts: [String] = []
     if let count = pipeline.previewCount {
       parts.append(
-        pipeline.isSQL ? String(localized: "\(count.formatted()) rows") : String(localized: "\(count.formatted()) documents"))
+        pipeline.isSQL ? String(localized: "\(count) rows") : String(localized: "\(count) documents"))
     }
     parts.append(String(localized: "first 20 shown"))
     if let elapsed = pipeline.previewElapsed { parts.append(formatDuration(elapsed)) }
@@ -505,7 +505,7 @@ struct StepInspector: View {
         fieldsHere
         KitSection(
           "Output of step \(index + 1)",
-          meta: [String(localized: "\(pipeline.previewCount?.formatted() ?? "…") documents")] + (pipeline.previewElapsed.map { [formatDuration($0)] } ?? []),
+          meta: [pipeline.previewCount.map { String(localized: "\($0) documents") } ?? "…"] + (pipeline.previewElapsed.map { [formatDuration($0)] } ?? []),
           systemImage: "doc.on.doc", hue: browser.engine.hue
         ) {
           if let error = pipeline.previewError {

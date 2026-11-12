@@ -96,18 +96,18 @@ public enum EngineKind: String, Codable, CaseIterable, Identifiable, Sendable {
   /// The noun for one item in the main list.
   public var itemNoun: Noun {
     switch self {
-    case .mongodb: Noun(String(localized: "document"), plural: String(localized: "documents"))
-    case .redis: Noun(String(localized: "key"), plural: String(localized: "keys"))
-    default: Noun(String(localized: "row"), plural: String(localized: "rows"))
+    case .mongodb: Noun(String(localized: "document"), plural: String(localized: "documents"), counted: .documents)
+    case .redis: Noun(String(localized: "key"), plural: String(localized: "keys"), counted: .keys)
+    default: Noun(String(localized: "row"), plural: String(localized: "rows"), counted: .rows)
     }
   }
 
   /// The noun for what holds items.
   public var collectionNoun: Noun {
     switch self {
-    case .mongodb: Noun(String(localized: "collection"), plural: String(localized: "collections"))
-    case .redis: Noun(String(localized: "key"), plural: String(localized: "keys"))
-    default: Noun(String(localized: "table"), plural: String(localized: "tables"))
+    case .mongodb: Noun(String(localized: "collection"), plural: String(localized: "collections"), counted: .collections)
+    case .redis: Noun(String(localized: "key"), plural: String(localized: "keys"), counted: .keys)
+    default: Noun(String(localized: "table"), plural: String(localized: "tables"), counted: .tables)
     }
   }
 
@@ -183,14 +183,27 @@ public enum EngineKind: String, Codable, CaseIterable, Identifiable, Sendable {
 public struct Noun: Sendable, Hashable {
   public let singular: String
   public let plural: String
+  /// Which count key `count(_:)` reads: a count is one key per noun ("%lld rows"), so each language picks its own
+  /// plural form for the number.
+  public let counted: Counted
 
-  public init(_ singular: String, plural: String? = nil) {
+  public enum Counted: Sendable, Hashable { case rows, documents, keys, tables, collections }
+
+  public init(_ singular: String, plural: String, counted: Counted) {
     self.singular = singular
-    self.plural = plural ?? singular + "s"
+    self.plural = plural
+    self.counted = counted
   }
 
+  /// "1 row", "12 rows".
   public func count(_ n: Int) -> String {
-    "\(n.formatted()) \(n == 1 ? singular : plural)"
+    switch counted {
+    case .rows: String(localized: "\(n) rows")
+    case .documents: String(localized: "\(n) documents")
+    case .keys: String(localized: "\(n) keys")
+    case .tables: String(localized: "\(n) tables")
+    case .collections: String(localized: "\(n) collections")
+    }
   }
 
   public var capitalized: String { singular.prefix(1).uppercased() + singular.dropFirst() }

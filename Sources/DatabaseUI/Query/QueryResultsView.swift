@@ -104,10 +104,10 @@ private struct ResultGrid: View {
     KitGrid(gridRows, columns: columns, selection: $selection)
     .rowContextMenu { ids in
       let picked = ids.sorted().compactMap { rows.indices.contains($0) ? rows[$0] : nil }
-      Button("Copy \(picked.count == 1 ? "Row" : "\(picked.count) Rows") as CSV") {
+      Button(picked.count == 1 ? "Copy Row as CSV" : "Copy \(picked.count) Rows as CSV") {
         KitPasteboard.copy(Export.csv(fields: fields, rows: picked))
       }
-      Button("Copy \(picked.count == 1 ? "Row" : "\(picked.count) Rows") as JSON") {
+      Button(picked.count == 1 ? "Copy Row as JSON" : "Copy \(picked.count) Rows as JSON") {
         KitPasteboard.copy(Export.json(fields: fields, rows: picked))
       }
     }

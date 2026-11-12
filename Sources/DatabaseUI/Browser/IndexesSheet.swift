@@ -101,8 +101,8 @@ final class IndexesModel {
     pending.removeFirst(applied)
     if applied > 0 {
       undoStatements = undo
-      undoSummary = applied == 1 ? "1 index change" : "\(applied) index changes"
-      browser.toast = "Applied \(undoSummary) to \(ref.name)"
+      undoSummary = String(localized: "\(applied) index changes")
+      browser.toast = String(localized: "Applied \(undoSummary) to \(ref.name)")
     }
     let failure = errorMessage
     await load()
@@ -115,7 +115,7 @@ final class IndexesModel {
     defer { isApplying = false }
     do {
       for statement in undoStatements { try await session.runIndexStatement(statement, on: ref) }
-      browser.toast = "Undid \(undoSummary)"
+      browser.toast = String(localized: "Undid \(undoSummary)")
       undoStatements = []
       await load()
     } catch {
@@ -231,7 +231,7 @@ struct IndexesSheet: View {
     if !model.pending.isEmpty {
       KitSection(
         browser.engine.family == .sql ? "SQL that will run" : "\(browser.engine.queryLanguage) that will run",
-        meta: model.pending.count == 1 ? "1 statement" : "\(model.pending.count) statements",
+        meta: String(localized: "\(model.pending.count) statements"),
         systemImage: "chevron.left.forwardslash.chevron.right", hue: .gray
       ) {
         HighlightedCode(

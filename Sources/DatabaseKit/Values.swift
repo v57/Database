@@ -79,8 +79,8 @@ public enum CellValue: Hashable, Sendable {
   static func shortText(_ b: BSON) -> String {
     switch b {
     case .string(let s): return s.count > 300 ? String(s.prefix(300)) + "…" : s.replacingOccurrences(of: "\n", with: " ")
-    case .document(let d): return d.isEmpty ? "{}" : "{ \(d.count) field\(d.count == 1 ? "" : "s") }"
-    case .array(let a): return a.isEmpty ? "[]" : "[\(a.count) item\(a.count == 1 ? "" : "s")]"
+    case .document(let d): return d.isEmpty ? "{}" : "{ " + String(localized: "\(d.count) fields") + " }"
+    case .array(let a): return a.isEmpty ? "[]" : "[" + String(localized: "\(a.count) items") + "]"
     case .objectId(let id): return id.hex
     case .datetime(let ms): return CellValue.dateFormatter.string(from: Date(timeIntervalSince1970: Double(ms) / 1000))
     case .double(let d): return d == d.rounded() && abs(d) < 1e15 ? String(format: "%.1f", d) : String(d)

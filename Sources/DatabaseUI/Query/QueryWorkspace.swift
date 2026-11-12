@@ -44,8 +44,8 @@ final class QueryTab: Identifiable {
       for output in run.outputs {
         switch output {
         case .message(let text): lines.append(text)
-        case .table(_, let rows, _): lines.append("\(rows.count) row\(rows.count == 1 ? "" : "s")")
-        case .documents(let docs, _): lines.append("\(docs.count) document\(docs.count == 1 ? "" : "s")")
+        case .table(_, let rows, _): lines.append(String(localized: "\(rows.count) rows"))
+        case .documents(let docs, _): lines.append(String(localized: "\(docs.count) documents"))
         case .text: break
         }
       }

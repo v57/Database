@@ -89,7 +89,7 @@ struct ReviewSheet: View {
     if !lines.isEmpty {
       KitSection(
         browser.engine.family == .sql ? "SQL that will run" : "\(browser.engine.queryLanguage) that will run",
-        meta: lines.count == 1 ? "1 statement" : "\(lines.count) statements",
+        meta: String(localized: "\(lines.count) statements"),
         systemImage: "chevron.left.forwardslash.chevron.right", hue: .gray, isExpanded: $showsStatements
       ) {
         HighlightedCode(

@@ -45,7 +45,7 @@ public struct SidebarView: View {
     let others = profiles.filter { $0.id != current?.id }
     // The Mac's toggle hides the sidebar through the window's split view; iPad and iPhone need the binding.
     SidebarFrame(window: window, columnVisibility: idiom.isTouch ? $columnVisibility : nil, settings: settings) {
-      VaultAccountPicker(meta: app.profiles.count == 1 ? "1 connection" : "\(app.profiles.count) connections")
+      VaultAccountPicker(meta: String(localized: "\(app.profiles.count) connections"))
       // A long tree keeps the open connection's title in view; Connections waits at the bottom while it's below.
       if let current {
         CurrentConnectionSection(connection: current, window: window) { deleting = current.profile }

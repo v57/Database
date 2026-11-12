@@ -529,7 +529,7 @@ final class SQLSession: DatabaseSession, @unchecked Sendable {
       let fields = result.columns.map { FieldInfo(name: $0.name, typeName: $0.typeName) }
       outputs.append(.table(fields: fields, rows: result.rows.map { $0.map(CellValue.db) }, note: nil))
     } else if let n = result.affectedRows {
-      outputs.append(.message("\(n.formatted()) row\(n == 1 ? "" : "s") affected"))
+      outputs.append(.message(String(localized: "\(n) rows affected")))
     } else {
       outputs.append(.message(result.commandTag ?? "Done"))
     }

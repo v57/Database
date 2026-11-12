@@ -349,8 +349,8 @@ final class BrowserModel {
       let outcome = try await session.apply(edits)
       let count = edits.count
       pending.removeAll()
-      lastSaved = (outcome.undo, "\(count) change\(count == 1 ? "" : "s")")
-      toast = "Saved \(count) change\(count == 1 ? "" : "s") to \(ref.name)"
+      lastSaved = (outcome.undo, String(localized: "\(count) changes"))
+      toast = String(localized: "Saved \(count) changes to \(ref.name)")
       await load()
       return true
     } catch {
@@ -366,7 +366,7 @@ final class BrowserModel {
     do {
       _ = try await session.apply(saved.undo)
       lastSaved = nil
-      toast = "Undid \(saved.summary)"
+      toast = String(localized: "Undid \(saved.summary)")
       await load()
     } catch {
       errorMessage = "Couldn't undo: \(FriendlyError.message(error))"

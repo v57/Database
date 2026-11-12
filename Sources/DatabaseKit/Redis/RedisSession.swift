@@ -165,7 +165,8 @@ final class RedisSession: DatabaseSession, @unchecked Sendable {
       let ref = ObjectRef(database: String(index), name: "Database \(index)", kind: .redisDatabase)
       let count = keyspace[index] ?? 0
       return TreeNode(
-        id: ref.id, title: "Database \(index)", detail: "\(SQLSession.compactCount(count)) key\(count == 1 ? "" : "s")",
+        id: ref.id, title: "Database \(index)", detail: count < 10_000
+          ? String(localized: "\(count) keys") : String(localized: "\(SQLSession.compactCount(count)) keys"),
         kind: .redisDatabase, database: String(index), ref: ref)
     }
   }
@@ -234,7 +235,9 @@ final class RedisSession: DatabaseSession, @unchecked Sendable {
     var query = "SCAN 0 MATCH \(Self.pattern(for: request.search)) COUNT 500"
     if let type = Self.redisType(forFilter: request.keyType) { query += " TYPE \(type)" }
     var notes: [String] = []
-    if !complete { notes.append("Showing the first \(keys.count.formatted()) matching keys. Narrow the search to see others.") }
+    if !complete {
+      notes.append(String(localized: "Showing the first \(keys.count) matching keys. Narrow the search to see others."))
+    }
     return BrowsePage(
       fields: Self.keyFields, records: records, total: keys.count, totalIsEstimate: !complete,
       hasMore: request.offset + request.limit < keys.count, query: query, elapsed: elapsed, notes: notes)

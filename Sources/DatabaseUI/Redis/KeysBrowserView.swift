@@ -63,7 +63,7 @@ final class RedisKeyModel {
         let undo = try await session.mutate(mutation, in: browser.ref)
         undos.append((undo, describe(mutation)))
       }
-      browser.toast = mutations.count == 1 ? describe(mutations[0]) : "Made \(mutations.count) changes"
+      browser.toast = mutations.count == 1 ? describe(mutations[0]) : String(localized: "Made \(mutations.count) changes")
       if case .rename(_, let to)? = mutations.last { key = to }
       if case .delete? = mutations.last { key = nil }
       await browser.load()
@@ -346,12 +346,12 @@ private struct RedisKeyList: View {
 
   static func holds(_ n: Int64, type: String) -> String {
     switch type {
-    case "STRING": String(localized: "\(n.formatted()) chars")
-    case "HASH": n == 1 ? String(localized: "1 field") : String(localized: "\(n.formatted()) fields")
-    case "LIST": n == 1 ? String(localized: "1 item") : String(localized: "\(n.formatted()) items")
-    case "STREAM": n == 1 ? String(localized: "1 entry") : String(localized: "\(n.formatted()) entries")
+    case "STRING": String(localized: "\(n) chars")
+    case "HASH": String(localized: "\(n) fields")
+    case "LIST": String(localized: "\(n) items")
+    case "STREAM": String(localized: "\(n) entries")
     case "JSON": String(localized: "1 document")
-    default: n == 1 ? String(localized: "1 member") : String(localized: "\(n.formatted()) members")
+    default: String(localized: "\(n) members")
     }
   }
 }
@@ -426,7 +426,7 @@ private struct RedisKeyGrid: View {
         if !keys.isEmpty {
           Button(keys.count == 1 ? String(localized: "Copy Key Name") : String(localized: "Copy Key Names")) { KitPasteboard.copy(keys.joined(separator: "\n")) }
           if browser.isEditable {
-            Button("Delete \(keys.count == 1 ? "Key" : "\(keys.count) Keys")", systemImage: "trash", role: .destructive) {
+            Button(keys.count == 1 ? "Delete Key" : "Delete \(keys.count) Keys", systemImage: "trash", role: .destructive) {
               Task { await model?.perform(keys.map { .delete(key: $0) }) }
             }
             .kitMenuPreview(keys.count == 1 ? "Deletes \(keys[0]) from Redis." : "Deletes these \(keys.count) keys from Redis.")

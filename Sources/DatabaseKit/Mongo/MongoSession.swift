@@ -443,7 +443,8 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
         // MongoDB without a replica set has no multi-document transactions: say what did happen.
         if done > 0 {
           throw InputError(
-            "\(error.localizedDescription) The first \(done) change\(done == 1 ? " was" : "s were") saved; you can undo \(done == 1 ? "it" : "them").")
+            error.localizedDescription + " "
+              + String(localized: "The first \(done) changes were saved; you can undo them."))
         }
         throw error
       }
@@ -559,7 +560,7 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
       let documents = try await client.find(
         database: database, collection: collection, filter: doc(0), sort: sort, projection: projection, skip: skip,
         limit: max(limit, 1))
-      return [.documents(documents, note: "\(documents.count) document\(documents.count == 1 ? "" : "s")")]
+      return [.documents(documents, note: String(localized: "\(documents.count) documents"))]
     case "aggregate":
       let stages = (args.first?.arrayValue ?? []).compactMap(\.documentValue)
       let options = doc(1)
@@ -570,7 +571,7 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
       let documents = try await client.aggregate(
         database: database, collection: collection, pipeline: stages, limit: 1000,
         allowDiskUse: options["allowDiskUse"]?.boolValue ?? false)
-      return [.documents(documents, note: "\(documents.count) document\(documents.count == 1 ? "" : "s")")]
+      return [.documents(documents, note: String(localized: "\(documents.count) documents"))]
     case "countDocuments", "count":
       return [.message(String(try await client.count(database: database, collection: collection, filter: doc(0))))]
     case "estimatedDocumentCount":
@@ -582,11 +583,13 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
       return [.documents((reply["values"]?.arrayValue ?? []).map { ["value": $0] }, note: nil)]
     case "insertOne":
       try writable()
-      return [.message("Inserted \(try await client.insert(database: database, collection: collection, documents: [doc(0)])) document")]
+      let inserted = try await client.insert(database: database, collection: collection, documents: [doc(0)])
+      return [.message(String(localized: "Inserted \(inserted) documents"))]
     case "insertMany":
       try writable()
       let documents = (args.first?.arrayValue ?? []).compactMap(\.documentValue)
-      return [.message("Inserted \(try await client.insert(database: database, collection: collection, documents: documents)) documents")]
+      let inserted = try await client.insert(database: database, collection: collection, documents: documents)
+      return [.message(String(localized: "Inserted \(inserted) documents"))]
     case "updateOne", "updateMany", "replaceOne":
       try writable()
       let (matched, modified) = try await client.update(
@@ -597,7 +600,7 @@ final class MongoSession: DatabaseSession, @unchecked Sendable {
       try writable()
       let n = try await client.delete(
         database: database, collection: collection, filter: doc(0), many: call.method == "deleteMany")
-      return [.message("Deleted \(n) document\(n == 1 ? "" : "s")")]
+      return [.message(String(localized: "Deleted \(n) documents"))]
     case "getIndexes":
       return [.documents(try await client.listIndexes(database: database, collection: collection), note: nil)]
     case "createIndex":
