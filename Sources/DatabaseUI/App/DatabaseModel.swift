@@ -27,7 +27,17 @@ struct SavedQuery: Codable, Hashable, Identifiable {
 public final class DatabaseModel {
   public private(set) var profiles: [ConnectionProfile] = []
   private(set) var savedQueries: [SavedQuery] = []
-  public private(set) var live: [UUID: LiveConnection] = [:]
+  /// The connections made so far, open or not. One is made on first use, often by a view's body (a sidebar row), so
+  /// making one changes nothing observed during that update: with a few hundred connections the sidebar is a lazy
+  /// stack that builds rows while it places them, and SwiftUI aborts on a change to observed state there. Readers
+  /// learn about new connections on the next turn of the run loop; a removed one tells them at once.
+  public var live: [UUID: LiveConnection] {
+    _ = liveChanges
+    return liveConnections
+  }
+  @ObservationIgnored private var liveConnections: [UUID: LiveConnection] = [:]
+  private var liveChanges = 0
+  @ObservationIgnored private var liveChangePending = false
   let secrets: SecretStore
   let keys: SSHKeyStore
   /// The shared store of the window's account: connections and SSH hosts.
@@ -310,15 +320,24 @@ public final class DatabaseModel {
   // MARK: Live connections
 
   public func connection(for id: UUID) -> LiveConnection {
-    if let existing = live[id] { return existing }
+    if let existing = liveConnections[id] { return existing }
     let connection = LiveConnection(profile: profile(id) ?? ConnectionProfile(engine: .postgres), app: self)
-    live[id] = connection
+    liveConnections[id] = connection
+    if !liveChangePending {
+      liveChangePending = true
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        liveChangePending = false
+        liveChanges += 1
+      }
+    }
     return connection
   }
 
   public func disconnect(_ id: UUID) async {
-    guard let connection = live[id] else { return }
-    live[id] = nil
+    guard let connection = liveConnections[id] else { return }
+    liveConnections[id] = nil
+    liveChanges += 1
     await connection.close()
     onDisconnect?(id)
   }
