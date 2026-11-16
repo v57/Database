@@ -6,16 +6,17 @@ Shell syntax for MongoDB, Redis commands, or CQL for Cassandra and ScyllaDB.
 ## Open a query tab
 
 Choose **New Query** on the connection's overview, in the connection menu, with the tab strip's **+**, or with
-**File ▸ New Query** (⌘T). The tab starts as **Untitled** with a starting query for the table you have selected, such
-as `db.<collection>.find({}).limit(20)` for MongoDB or `INFO keyspace` for Redis.
+**File ▸ New Query** (⌘T on the Mac). The tab starts as **Untitled** and runs in the database you have selected. A SQL
+tab starts empty; MongoDB starts with `db.<collection>.find({}).limit(20)` for the collection you have selected, Redis
+with `INFO keyspace`, and Cassandra and ScyllaDB with `SELECT * FROM system.local;`.
 
 Several tabs show in a strip. Switch between them, or close one with its ×. A saved query's tab shows a dot once
 you've changed it.
 
 ## Write and run
 
-The editor colors the query as you type, in light and dark. It doesn't autocorrect or use smart quotes. On the Mac it
-also suggests completions as you type.
+On the Mac, iPhone and iPad the editor colors the query as you type, in light and dark, and doesn't autocorrect or use
+smart quotes. On the Mac it also suggests completions as you type. On Linux and Windows the editor is plain text.
 
 1. Check **Runs in** above the editor: the database, keyspace or Redis database the query runs in. Pick another one
    from its menu.
@@ -29,7 +30,7 @@ Switch the results between:
 - **Messages**: a line per statement, and errors in red. A failed query opens here.
 - **Plan**: the server's plan, after **Explain**.
 
-On the Mac and iPad, select result rows and touch and hold them (right-click on the Mac) to **Copy Row as CSV** or
+Select result rows and right-click them (touch and hold on iPhone and iPad) to **Copy Row as CSV** or
 **Copy Row as JSON** (or several rows at once).
 
 ## Explain and Format
@@ -41,8 +42,8 @@ On the Mac and iPad, select result rows and touch and hold them (right-click on 
 ## Save a query
 
 Choose **Save…** and give it a title. Saved queries show under **Queries** in the sidebar, under their connection,
-with your unsaved tabs. Tap one to open it. Saving again keeps the same entry. To delete one, touch and hold it
-(right-click on the Mac) and choose **Delete**.
+with your unsaved tabs. Tap one to open it. Saving again keeps the same entry. To delete one, right-click it
+(touch and hold on iPhone and iPad) and choose **Delete**.
 
 ## Export results
 

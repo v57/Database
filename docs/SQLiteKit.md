@@ -1,12 +1,24 @@
 # SQLiteKit
 
-SQLiteKit opens a SQLite database file and runs SQL on it, returning [WireKit](WireKit.md)'s `DBResult` and
-`DBValue`, the same types Database's network engines return. It is a small actor over the system's SQLite: open a
-file, run statements with bound parameters, read the rows.
+SQLiteKit opens a SQLite database file and runs SQL on it, returning WireKit's `DBResult` and `DBValue`.
+
+## Purpose
+
+SQLiteKit is a small actor over the system's SQLite: open a file, run statements with bound parameters, read the rows.
+The rows come back as [WireKit](WireKit.md)'s `DBResult` and `DBValue`, the same types Database's network engines
+return.
 
 It is not an ORM or a migration tool, and it has no connection pool. Database's app reaches SQLite files through
 [DatabaseKit](DatabaseKit.md) (engine `.sqlite`); use SQLiteKit directly when an app keeps a SQLite file of its own
 (Dev's imported translation database does).
+
+## Platforms
+
+<!-- platforms: macos ios linux windows -->
+
+- **macOS, iOS:** the system's SQLite (`import SQLite3`).
+- **Linux, Windows:** builds against v57/SwiftUI's `SQLite3` module (see `Package.swift`'s Windows and Linux tail).
+- **Android:** not yet.
 
 ## Getting started
 
@@ -54,12 +66,6 @@ Values come back as `.null`, `.int`, `.double`, `.bytes` or `.text`. When bindin
 value other than null, numbers and bytes is bound as its text. For a statement without result columns,
 `affectedRows` is the number of changed rows.
 
-## Platform notes
-
-- **macOS, iOS:** the system's SQLite (`import SQLite3`).
-- **Linux, Windows:** builds against v57/SwiftUI's `SQLite3` module (see `Package.swift`'s Windows and Linux tail).
-- **Android:** not yet.
-
 ## Testing
 
 ```bash
@@ -67,3 +73,8 @@ swift test --filter SQLiteKitTests
 ```
 
 The tests use temporary files and need no servers.
+
+## Related
+
+- [WireKit](WireKit.md): the `DBValue` and `DBResult` types it returns.
+- [DatabaseKit](DatabaseKit.md): SQLite as one of Database's engines (`.sqlite`), with browsing, editing and undo.

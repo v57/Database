@@ -7,7 +7,8 @@ your other devices see them too.
 ## Add a connection
 
 Choose **New Connection…** on the welcome, the **+** on the Connections card in the sidebar, or
-**File ▸ New Connection…** (⌘N). The sheet has these parts, top to bottom.
+**File ▸ New Connection…** (⌘N on the Mac). The sheet has these parts, top to bottom. For SQLite and DuckDB files it
+has no Location, Password or Encryption.
 
 ### Connection link
 
@@ -49,9 +50,9 @@ See [SSH](SSH.md) for SSH servers, keys and their menus.
 
 ### Server
 
-For a server engine you see the server in one line, with **Edit** to change it. The fields are **Host**, **Port**,
-**Database** (**Index** for Redis, **Keyspace** for Cassandra and ScyllaDB) and **User**. MongoDB adds
-**Auth database**.
+For a server engine the fields are **Host**, **Port**, **Database** (**Index** for Redis, **Keyspace** for Cassandra
+and ScyllaDB) and **User**. MongoDB adds **Auth database**. Once the host and port are filled in, for example from a
+link, the server shows in one line, with **Edit** to change it.
 
 For SQLite (and DuckDB on the Mac) you pick a **File** with **Choose…** instead. The connection's name starts as the
 file's name.
@@ -93,17 +94,19 @@ The bottom of the sheet shows what's missing, in orange, such as an empty host o
 **Connect** wait until it's complete.
 
 - **Test** tries the connection without saving it. It shows "Connected to … in …", or the reason it failed. Through
-  SSH it also says that the server's SSH key was saved.
+  an SSH server whose key wasn't saved yet, it also says the key was saved. Once you change what was tested, the
+  result goes away.
 - **Connect** saves the connection and opens it.
 
 ## Edit a connection
 
-Touch and hold a connection in the sidebar (on the Mac, right-click it) and choose **Edit Connection…**. Change what
-you need and choose **Save**. If the connection is open, it reconnects with the new settings and keeps its query tabs.
+Right-click a connection in the sidebar (touch and hold it on iPhone and iPad) and choose **Edit Connection…**. Change
+what you need and choose **Save**. If the connection is open, it reconnects with the new settings and keeps its query
+tabs.
 
 ## The connection menu
 
-Touch and hold a connection (right-click on the Mac), or use the **…** on the open connection's card:
+Right-click a connection (touch and hold it on iPhone and iPad), or use the **…** on the open connection's card:
 
 - **Connect** when it's closed.
 - **New Query**, **Refresh** and **Disconnect** when it's open. Disconnect closes the connection; it stays saved.

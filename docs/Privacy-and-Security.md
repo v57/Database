@@ -6,11 +6,11 @@ Database contacts no server on its own, apart from iCloud sync while iCloud is o
 sends something only in these cases:
 
 - **Your databases.** When you open, test, refresh or query a connection, Database connects to that database server,
-  or to the SSH server it goes through. Nothing connects at launch. Database names itself "Database" to the server;
-  a SQL Server also gets this device's host name and the app's process number.
-- **iCloud.** With iCloud on, your vault (connections, SSH configurations, server keys) syncs through iCloud when
-  Database opens, when you come back to it and after a change, sealed before it leaves the device, and saved passwords
-  sync through iCloud Keychain. This goes to Apple, not to v57.
+  or to the SSH server it goes through. Nothing connects at launch. PostgreSQL, SQL Server and MongoDB servers are
+  told the client is "Database"; a SQL Server also gets this device's host name and the app's process number.
+- **iCloud (Apple devices).** With iCloud on, your vault (connections, SSH configurations, server keys) syncs through
+  iCloud when Database opens, when you come back to it and after a change, sealed before it leaves the device, and
+  saved passwords sync through iCloud Keychain. This goes to Apple, not to v57.
 - **Hub.** A location marked **Via Hub** reaches your device through your own Hub.
 - **DuckDB (Mac).** Database downloads DuckDB from GitHub only when you choose **Download** or **Update**, and checks
   the file before installing it.
@@ -29,8 +29,9 @@ question.
   through iCloud Keychain when iCloud is on.
 - **Copy Link** copies a connection without its password.
 - Deleting a connection deletes its saved password. Deleting an SSH configuration deletes its saved password too.
-- On Linux and Windows, secrets are kept in the system's password store, where your other programs can read them, as
-  with other password stores there.
+- On Linux and Windows, secrets are kept in the system's password store (the Secret Service login keyring on Linux,
+  the Credential Manager on Windows), where your other programs can ask for them, as with other password stores
+  there. They don't sync.
 
 ## Insecure logins
 
@@ -58,15 +59,17 @@ SSH, or turn on TLS where the engine has it.
 - If a saved server's key changes, Database refuses to log in and sends no password or key. Only clear the old key
   once you know why it changed: **Forget Host Key** on the SSH tile in the connection sheet, or **Forget Key** on the
   host in Vault. The next connection asks you about the new key.
-- A fallback address needs its own trusted key; it isn't trusted because the main address is.
+- Database asks about a key only when the server's own address answers. A fallback address that answers first, before
+  you've trusted the key, gets nothing; once you have, fallback addresses must show the same key.
 
 See [SSH](SSH.md#the-servers-key).
 
 ## This device's key
 
-**This device’s key** lives in the device's Secure Enclave and can't be copied off it. A key made since
-November 4, 2026 asks you to confirm with Face ID, Touch ID or your password before it signs in. An older key signs
-in without asking.
+On the Mac, iPhone and iPad, **This device’s key** lives in the device's Secure Enclave and can't be copied off it.
+A key made since November 4, 2026 asks you to confirm with Face ID, Touch ID, or your passcode or password before it
+signs in, on a device that has a passcode or password. An older key signs in without asking. On Linux and Windows the
+key is sealed to your user account on that computer, and is in memory while it signs.
 
 ## Production and Read only
 

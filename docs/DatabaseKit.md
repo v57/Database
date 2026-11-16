@@ -1,10 +1,14 @@
 # DatabaseKit
 
-DatabaseKit is the engine-neutral layer Database's app talks to. One `ConnectionProfile` describes a connection to
-any of the ten engines (PostgreSQL, MySQL, MariaDB, SQL Server, SQLite, DuckDB, MongoDB, Redis, Cassandra, ScyllaDB);
-`Connector` opens it, through an SSH server when the profile says so, and returns a `DatabaseSession`. The session
-lists the tree of databases, schemas and tables, browses items with filters and sorting, turns edits into statements
-for review and applies them with undo, and runs queries.
+DatabaseKit is the engine-neutral layer Database's app talks to: one connection model and one session API for ten
+engines.
+
+## Purpose
+
+One `ConnectionProfile` describes a connection to any of the ten engines (PostgreSQL, MySQL, MariaDB, SQL Server,
+SQLite, DuckDB, MongoDB, Redis, Cassandra, ScyllaDB); `Connector` opens it, through an SSH server when the profile says
+so, and returns a `DatabaseSession`. The session lists the tree of databases, schemas and tables, browses items with
+filters and sorting, turns edits into statements for review and applies them with undo, and runs queries.
 
 All engines are pure Swift on [WireKit](WireKit.md), except DuckDB, which is a library the user downloads (macOS
 only). The engine clients themselves are internal targets, described in [Engines](Engines.md).
@@ -14,6 +18,21 @@ store passwords either; you pass them in `Credentials` for each connection attem
 
 DatabaseKit re-exports `WireKit`, `SSHTunnel` (and with it SSHKit), `BSON` and `DuckDBKit`, so one
 `import DatabaseKit` brings the value types the sessions return.
+
+## Platforms
+
+<!-- platforms: macos ios linux windows -->
+
+- **macOS:** every engine, including DuckDB once downloaded.
+- **iOS, iPadOS:** every engine but DuckDB (iOS can't load downloaded code; `EngineKind.available` leaves it out).
+- **Linux, Windows:** the engines build on v57/SwiftUI's stand-ins (CryptoKit, Network, SQLite3, os) with RSA from
+  swift-crypto's `_CryptoExtras`; Database's app runs on both. DuckDB isn't offered there (`EngineKind.available`
+  leaves it out), and `KeychainStore` reads nothing there.
+
+Direct TLS (`useTLS`) works with PostgreSQL, MongoDB, Redis, Cassandra and ScyllaDB (`supportsDirectTLS`). MySQL and
+MariaDB start encryption after the connection opens, which these clients don't do: with `useTLS` on, `Connector`
+refuses to connect and asks for SSH instead. The SQL Server client sends its login unencrypted, which servers with
+Force Encryption on refuse; reach those through SSH.
 
 ## Getting started
 
@@ -67,7 +86,7 @@ every connection the engine makes is a channel of it. An app that already has an
 
 - `EngineKind`: the ten engines, with `family` (`sql`, `document`, `keyValue`, `wideColumn`), `displayName`,
   `defaultPort`, `defaultUser`, `isFileBased`, `schemes`, `fileExtensions`, `supportsDirectTLS`,
-  `supportsIndexes`, and `EngineKind.available` (the engines this device can open: not DuckDB on iOS).
+  `supportsIndexes`, and `EngineKind.available` (the engines this device can open: DuckDB on macOS only).
 - `ConnectionProfile`: a saved connection without its passwords: engine, host, port, user, database, file path,
   `options`, `useTLS`, `allowUntrustedCertificate`, `isReadOnly`, `isProduction`, `color`, `ssh` (`SSHSettings`).
   `problems` lists what is missing in plain words; `allowsInsecureLogin` (off by default) lets a login send a
@@ -131,19 +150,11 @@ Engine-specific capabilities are protocols a session may also conform to (check 
   until `install()` is called. The release comes from this repository's GitHub releases.
 - `DuckDBFile`: a `.duckdb` file, or an in-memory database for reading Parquet, CSV and JSON files.
 
-## Platform notes
+### The sample database
 
-- **macOS:** every engine, including DuckDB once downloaded.
-- **iOS, iPadOS:** every engine but DuckDB (iOS can't load downloaded code; `EngineKind.available` leaves it out).
-- **Linux, Windows:** the engines build on v57/SwiftUI's stand-ins (CryptoKit, Network, SQLite3, os) with RSA from
-  swift-crypto's `_CryptoExtras`; Database's app runs on both. DuckDB isn't offered there. `KeychainStore` reads
-  nothing there.
-- **Android:** not yet.
-
-Direct TLS (`useTLS`) works with PostgreSQL, MongoDB, Redis, Cassandra and ScyllaDB (`supportsDirectTLS`). MySQL and
-MariaDB start encryption after the connection opens, which these clients don't do: with `useTLS` on, `Connector`
-refuses to connect and asks for SSH instead. The SQL Server client sends its login unencrypted, which servers with
-Force Encryption on refuse; reach those through SSH.
+- `SampleDatabase.write(to:)` writes a small shop (customers, products, orders, order items, refunds and a monthly
+  revenue view) to an SQLite file, the same rows every time; `connectionName`, `fileName` and `isSample(_:)` name and
+  recognize it. Database's **Open the Sample Database** uses it.
 
 ## Testing
 
@@ -156,7 +167,16 @@ Scripts/test-servers.sh
 swift test --filter DatabaseKitTests
 ```
 
-The tree outline and search tests in it need no servers.
+The tree outline and search tests in it need no servers. The Redis read-only test runs only with `REDIS_TEST_PORT`
+set, and the SSH fallback-address test only with `SSH_FALLBACK_TEST_PORT` (any sshd on `127.0.0.1`).
 
 For tests of your own, `MemorySecretStore` keeps secrets in memory, and an SQLite profile
 (`ConnectionProfile(engine: .sqlite, filePath:)`) gives a real session with no server.
+
+## Related
+
+- [WireKit](WireKit.md): the streams, dialers and `DBValue`/`DBResult` the sessions are built on.
+- [SSHTunnel](SSHTunnel.md): the tunnel `Connector` opens for a profile with SSH on.
+- [SQLiteKit](SQLiteKit.md): the SQLite engine, also usable on its own.
+- [Engines](Engines.md): the wire clients each session wraps, and the test servers.
+- [DatabaseUI](DatabaseUI.md): the interface on top, with saved connections and secrets.

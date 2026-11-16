@@ -31,9 +31,10 @@ Choose **Add**. The new tile is selected in the connection sheet.
 
 With **Sign in with** set to **Key**, pick the key in **Key**:
 
-- **This device’s key** lives in this device's Secure Enclave. It can't be copied off the device. Database, Shell and
-  the other v57 apps on this device use the same key, so one line in the server's `authorized_keys` serves them all.
-  If the key asks for you, a login with it asks for Face ID, Touch ID or your passcode first.
+- **This device’s key** belongs to this device. On the Mac, iPhone and iPad it lives in the Secure Enclave and can't
+  be copied off the device; on Linux and Windows it's sealed to your user account on that computer. Database, Shell
+  and the other v57 apps on this device use the same key, so one line in the server's `authorized_keys` serves them
+  all. If the key asks for you, a login with it asks for Face ID, Touch ID, or your passcode or password first.
 - **Add Key ▸ Create New Key** makes a new key named "Database on" and this device's name, and selects it.
 - **Add Key ▸ Import Private Key…** imports an OpenSSH private key file. If the key has a passphrase, Database asks
   for it in **Enter the Key's Passphrase** and keeps the key without it.
@@ -50,7 +51,7 @@ your other devices when iCloud is on.
 
 ## Edit, copy or delete an SSH configuration
 
-In the connection sheet, use the SSH tile's **…** button, or touch and hold it (right-click on the Mac):
+In the connection sheet, use the SSH tile's **…** button, or right-click it (touch and hold it on iPhone and iPad):
 
 - **Edit…** opens **Edit SSH Configuration**. Every connection through it uses the change. Once you've trusted the
   server, the sheet shows its **Remembered host key**.
@@ -70,7 +71,7 @@ address on your local network. Database tries the addresses in order when one do
 away. An address can't have spaces, and the same one can't be listed twice.
 
 For your own devices, **Automatic** rows list addresses Database knows on its own: the device's Bonjour name on the
-same network, or its Hub Network address. You don't edit these.
+same network, its Hub Network address, or another address it published. You don't edit these.
 
 ## The server's key
 
@@ -86,7 +87,9 @@ If a server's key later changes, Database refuses to log in and sends no passwor
 changed. If the change is expected, use **Forget Host Key** on the tile, or **Forget Key** on the host in Vault, then
 connect again to be asked about the new key.
 
-A fallback address isn't trusted on the main address's word: it needs its own saved key.
+Database asks about a key only when the server's own address answers. If only a fallback address answers before
+you've trusted the server's key, the login stops and nothing is sent. Connect once while the main address answers;
+after that the fallback addresses work too, as long as they show the same key.
 
 ## Via Hub
 

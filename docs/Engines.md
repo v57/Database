@@ -26,6 +26,13 @@ Every network client is an actor with the same shape: a `Config` (host, port, us
 own, or a channel of an SSH login (see [SSHTunnel](SSHTunnel.md)). Results come back as WireKit's `DBResult` (BSON
 documents for MongoDB, RESP values for Redis).
 
+## Platforms
+
+<!-- platforms: macos ios linux windows -->
+
+Every network client builds on macOS, iOS, Linux and Windows. `DuckDBKit` loads DuckDB on macOS only; elsewhere
+`DuckDBLibrary.isSupported` is false.
+
 ## Adding to an engine
 
 - Protocol code goes in the engine's target; the engine-neutral behaviour (tree, browse, edits, undo, completions)
@@ -82,14 +89,22 @@ swift test --filter DatabaseKitTests      # the sessions, on every engine
 swift test --filter SSHTunnelTests        # through the sshd bastion
 ```
 
-These need no servers: `WireKitTests`, `BSONTests`, `SQLiteKitTests`. A test whose server isn't running fails to
-connect rather than being skipped.
+These need no servers: `WireKitTests`, `BSONTests`, `SQLiteKitTests`. An engine client's test whose server isn't
+running fails to connect rather than being skipped.
 
 Servers on other ports: the tests read `PG_HOST`, `PG_PORT`, `MYSQL_PORT`, `MARIADB_PORT`, `MSSQL_PORT`, `MONGO_PORT`,
 `REDIS_PORT`, `CASSANDRA_PORT` and `SCYLLA_PORT` (the clients' tests), and `POSTGRES_TEST_PORT`, `MYSQL_TEST_PORT` and
-`MONGO_TEST_PORT` (DatabaseKit's). The SSH variables are on the [SSHTunnel](SSHTunnel.md#testing) page.
+`MONGO_TEST_PORT` (DatabaseKit's). DatabaseKit's Redis read-only test runs only with `REDIS_TEST_PORT` set. The SSH
+variables are on the [SSHTunnel](SSHTunnel.md#testing) page.
 
 ### DuckDB
 
 `DuckDBKitTests` run only when the DuckDB library is installed. Point the tests at a folder holding it with
 `DATABASE_DUCKDB_DIR`. The installer's tests read a local zip instead of downloading, and run on macOS only.
+
+## Related
+
+- [DatabaseKit](DatabaseKit.md): the sessions that wrap these clients, and the only way apps reach them.
+- [WireKit](WireKit.md): the streams, dialers and values the clients share.
+- [SQLiteKit](SQLiteKit.md): the SQLite engine, a product of its own.
+- [SSHTunnel](SSHTunnel.md): the dialer that carries a client over SSH.

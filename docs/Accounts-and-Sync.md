@@ -22,11 +22,15 @@ The **Use iCloud** switch is one switch for every v57 app on the device:
 
 - It's in Database's **Settings ▸ Privacy**: on the Mac, **Database ▸ Settings…**; on iPhone and iPad, **Settings**
   at the foot of the sidebar.
+- Turning it off asks first.
 - Every other v57 app's Settings has the same switch, such as
   [Vault](https://github.com/v57/Vault/blob/main/docs/README.md)'s **Settings ▸ Privacy**.
 
 Turning it off stops syncing for every v57 app on the device. What's already in iCloud stays, and your other devices
 keep it.
+
+iCloud is only on Apple devices. On Linux, **Settings ▸ Privacy** says so, and on Linux and Windows your vault stays
+on the computer.
 
 ## Accounts
 
@@ -36,11 +40,13 @@ Your vault can hold more than one account, for example one for work. You make ac
 With more than one account, the sidebar starts with the account picker. Pick an account to see its connections. Each
 window keeps its own account, also after you quit and reopen Database.
 
-On the Mac, the picker also has **Manage Accounts…** (opens **Settings ▸ Accounts**) and **Open in a New Window**.
+The picker also has **Manage Accounts…**: on the Mac and Linux it opens **Settings ▸ Accounts**; on iPhone, iPad and
+Windows it shows your accounts in a sheet. On the Mac and Linux it also has **Open in a New Window**. ⌃⌘1 to ⌃⌘9
+switch the window to your first nine accounts.
 
 ## Other v57 apps
 
-- [Shell](https://github.com/v57/Shell/blob/main/Docs/README.md) lists your database connections in its sidebar and
+- [Shell](https://github.com/v57/Shell/blob/main/docs/README.md) lists your database connections in its sidebar and
   opens them with the same browser, queries and tools as Database. An SSH host you add in Shell is a location in
   Database's connection sheet.
 - [Vault](https://github.com/v57/Vault/blob/main/docs/README.md) shows the connections, SSH hosts and the server keys

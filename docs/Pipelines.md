@@ -28,7 +28,7 @@ Choose **Add Step**. It lists the common steps, each with a line on what it does
 | **Join** | Bring in documents from another collection |
 | **Unwind** | One document per array item |
 
-**More Steps** has the rest, such as **Skip**, **Count**, **Buckets**, **Auto Buckets**, **Count by Value**,
+On MongoDB, **More Steps** has the rest, such as **Skip**, **Count**, **Buckets**, **Auto Buckets**, **Count by Value**,
 **Random Sample**, **Follow Links**, **Append Collection**, **Branches**, **Window Fields**, **Fill Gaps**,
 **Fill Missing**, **Nearest First**, **Remove Fields**, **Replace Document**, **Save to Collection** and
 **Merge Into**.
@@ -46,7 +46,7 @@ off step is drawn dashed.
 
 On MongoDB, turn on **All Steps** for the full builder:
 
-- a library of every step, in groups you can search; tap one to add it after the selected step, or drag it in;
+- a library of every step, in groups you can search; choose one to add it after the selected step;
 - a step inspector that shows the fields reaching the step and how often they're filled, and its output;
 - **Pipeline settings**: **Big sorts use disk**, **Time limit**, **Text comparison language**, **Ignore case** and
   **Tag in server logs**.
@@ -69,9 +69,11 @@ The output panel's **Code** view shows the pipeline as JavaScript for MongoDB, o
 
 **Save to Collection** replaces a collection with the results. **Merge Into** merges the results into a collection.
 Both start off: "Off while you try
-things out. Turn it on to write the results." Turn the step on and choose **Run** to write.
+things out. Turn it on to write the results." Turn the step on and choose **Run** to write. On a Read only connection,
+running a pipeline with either step on is refused.
 
 ## Pipelines on SQL tables
 
-On a SQL table, Aggregate offers the steps a SELECT can do: **Filter**, **Group**, **Sort**, **Limit**, **Skip**,
-**Pick Fields** and **Count**. The pipeline becomes one SELECT, shown under **Code**, and the output is a table.
+On a SQL table, **Add Step** offers the steps a SELECT can do: **Filter**, **Group**, **Sort**, **Limit** and
+**Pick Fields**. There's no **More Steps** and no **All Steps**. The pipeline becomes one SELECT, shown under **Code**,
+and the output is a table.

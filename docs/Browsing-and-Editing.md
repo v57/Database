@@ -5,8 +5,8 @@ writing a query. Changes you make wait in a list until you review and save them.
 
 ## How items show
 
-- **On the Mac and iPad**, a table shows as a grid with a column per field. Key fields carry a key glyph, numbers are
-  right-aligned, and NULL shows quietly. Click or tap a column's header to sort by it.
+- **On the Mac, iPad, Linux and Windows**, a table shows as a grid with a column per field. Key fields carry a key
+  glyph, numbers are right-aligned, and NULL shows quietly. Click or tap a column's header to sort by it.
 - **On iPhone**, a table shows as a list, one row per item. Pull down to refresh, and choose **Load More** at the
   bottom. Tap an item to open it on its own page.
 
@@ -23,7 +23,8 @@ and the rest.
 ## Search
 
 Type in **Search** (it names the table) to find items. Results come after a short pause, and Return searches at once.
-The search scope menu searches **Any column** (**Any field** for MongoDB) or one field you pick.
+The search scope menu searches **Any column** (**Any field** for MongoDB) or one field you pick. Cassandra and ScyllaDB
+have no search; use filters there.
 
 ## Filters
 
@@ -50,7 +51,7 @@ Redis, Cassandra and ScyllaDB don't have Sort. Redis doesn't have Fields.
 
 The status bar shows which items you're looking at and how long the page took. **Previous Page** and **Next Page**
 move through them. A page holds 50 items, or 100 keys in Redis, until you pick another size in **Settings ▸ General ▸
-Items per page** (Mac and Linux).
+Items per page**.
 
 The status bar also notes **Production**, **Read only**, or **View: read only** for a database view, which can't be
 changed. **Refresh** loads the items again from the first page.
@@ -59,9 +60,9 @@ changed. **Refresh** loads the items again from the first page.
 
 Select an item to see all its fields.
 
-- On the Mac and iPad the inspector sits beside the grid. Where there isn't room, it floats over the grid. On the Mac,
-  toggle it with **Data ▸ Show Inspector** (⌥⌘I). On iPad, use **Show Inspector** or **Hide Inspector** in the
-  toolbar, or ⌥⌘I with a keyboard.
+- On the Mac, iPad, Linux and Windows the inspector sits beside the grid. Where there isn't room, it floats over the
+  grid. On the Mac, Linux and Windows, toggle it with **Data ▸ Show Inspector** (⌥⌘I on the Mac). On iPad, use **Show
+  Inspector** or **Hide Inspector** in the toolbar, or ⌥⌘I with a keyboard.
 - On iPhone, the item's own page is its inspector.
 
 The inspector shows each field with its value. Keys are marked **Key**, and Cassandra's **Partition key** and
@@ -76,7 +77,7 @@ A MongoDB document shows as an outline of typed fields. Open sub-documents and a
 
 ## Select several items
 
-On the Mac and iPad, select several rows (Shift-click or ⌘-click). The inspector offers **Copy as JSON** and Delete
+In the grid, select several rows (Shift-click or ⌘-click on the Mac). The inspector offers **Copy as JSON** and Delete
 for all of them. The row menu (right-click, or touch and hold on iPad) has **Copy as JSON**, **Copy as INSERT**,
 **Filter by Value** and Delete.
 
@@ -87,8 +88,8 @@ for all of them. The row menu (right-click, or touch and hold on iPad) has **Cop
    long text. **Empty** stores NULL. Key fields can't be changed.
 3. Choose **Done**. The item is marked as edited and the change joins the list of changes.
 
-On the Mac and iPad you can also edit a cell in the grid: double-click or double-tap it (or press Return with a
-keyboard) and type. The cell turns orange while its change waits.
+You can also edit a cell in the grid: double-click or double-tap it (or press Return with a
+keyboard) and type. The row is marked in orange while its change waits.
 
 A table without a primary key can't be changed here, and the inspector says so.
 
@@ -105,7 +106,7 @@ document in MongoDB Shell syntax; Database adds an `_id` if it has none. Choose 
 ## Delete items
 
 Choose Delete in the inspector, the row menu or the item's page. Database asks, then **Add to Changes** marks the
-items as deleted. Nothing is deleted until you save.
+items as deleted and opens the review. Nothing is deleted until you save.
 
 ## Review and save
 

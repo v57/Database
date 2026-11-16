@@ -1,16 +1,32 @@
 # SSHTunnel and Libssh2
 
-`SSHTunnel` carries database connections over one SSH login: what `ssh -L` does, without the local port. Every
-connection an engine makes is a `direct-tcpip` channel of that login, and the client talks to it inside this process.
-Nothing listens on the device, so other apps and users can't reach the database through the tunnel.
+`SSHTunnel` carries database connections over one SSH login: what `ssh -L` does, without the local port.
+
+## Purpose
+
+Every connection an engine makes is a `direct-tcpip` channel of one SSH login, and the client talks to it inside this
+process. Nothing listens on the device, so other apps and users can't reach the database through the tunnel.
 
 The library re-exports **SSHKit** from the [SSH repository](https://github.com/v57/SSH): `SSHServer`, `SSHKey`,
-`SSHHostTrust`, `SSHLogin`, `SSHJump`, `SFTPClient`, `SSHCommand` and the socket layer. An app that imports
-`SSHTunnel` gets all of them. They are documented in SSH's [SSHKit page](https://github.com/v57/SSH/blob/main/docs/SSHKit.md);
-this page covers only the tunnel.
+`SSHHostTrust`, `SSHLogin`, `SSHJump`, `SFTPClient`, `SSHCommand` and the socket layer. An app that imports `SSHTunnel`
+gets all of them. They are documented in SSH's [SSHKit page](https://github.com/v57/SSH/blob/main/docs/SSHKit.md); this
+page covers only the tunnel.
 
-`Libssh2` is a second product: libssh2 with Mbed TLS (the C module `CLibssh2`), re-exported from the SSH repository, for
-apps that drive their own libssh2 sessions. Shell links it for its terminals so the app has one copy of libssh2.
+`Libssh2` is a second product: libssh2 (the C module `CLibssh2`), re-exported from the SSH repository, for apps that
+drive their own libssh2 sessions. Shell links it for its terminals so the app has one copy of libssh2.
+
+## Platforms
+
+<!-- platforms: macos ios linux windows=partial -->
+
+- **macOS, iOS:** the prebuilt libssh2 + Mbed TLS framework from the SSH repository.
+- **Linux:** libssh2 builds from source on the system's OpenSSL (`libssl-dev`).
+- **Windows:** libssh2 builds from source on WinCNG with ECDSA, and the tunnel polls Winsock sockets. TLS through a
+  tunnel runs SChannel over the channel. Jump hosts aren't supported on Windows yet.
+- **Android:** not yet.
+
+On macOS and iOS libssh2 uses Mbed TLS, so it can't verify an Ed25519 host key: the SSH server needs an ECDSA or RSA
+host key. Ed25519 client keys work.
 
 ## Getting started
 
@@ -77,17 +93,6 @@ sends a keepalive every few seconds and reports a dropped connection through `on
 The host key check is the `SSHServer`'s `trust`: a pinned fingerprint, a question to the user, or refusal of unknown
 keys. There is no default that accepts any key.
 
-## Platform notes
-
-- **macOS, iOS:** the prebuilt libssh2 + Mbed TLS framework from the SSH repository.
-- **Linux:** builds, with libssh2 built from source.
-- **Windows:** libssh2 builds from source on WinCNG with ECDSA, and the tunnel polls Winsock sockets. TLS through a
-  tunnel runs SChannel over the channel. Jump hosts aren't supported on Windows yet.
-- **Android:** not yet.
-
-libssh2 here uses Mbed TLS, so it can't verify an Ed25519 host key: the SSH server needs an ECDSA or RSA host key.
-Ed25519 client keys work.
-
 ## Testing
 
 The tunnel tests need an SSH server that reaches Redis and PostgreSQL. The repository's `docker-compose.yml` has one
@@ -108,3 +113,10 @@ SSH_TEST_PORT=2200 SSH_TEST_USER=user SSH_TEST_SERVICES=local swift test --filte
 One test forwards through this Mac: it needs Remote Login on and the test key's public half in
 `~/.ssh/authorized_keys`, and is skipped otherwise. Key handling, SFTP, commands and jump hosts are tested in the SSH
 repository (`SSHKitTests`).
+
+## Related
+
+- [SSHKit](https://github.com/v57/SSH/blob/main/docs/SSHKit.md): logins, keys, host key trust, jump hosts, SFTP and
+  commands, which SSHTunnel re-exports.
+- [WireKit](WireKit.md): the `WireDialer` and `WireChannel` the tunnel hands to the engines.
+- [DatabaseKit](DatabaseKit.md): `Connector` opens a tunnel for a profile with SSH on.

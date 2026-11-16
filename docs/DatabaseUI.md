@@ -1,9 +1,13 @@
 # DatabaseUI
 
-DatabaseUI is Database's whole interface as a library: the connection list and tree, the table, collection and Redis
-key browsers, the inspector, editing with review and undo, query tabs, aggregation pipelines, the connection and SSH
-sheets, the Settings panes and the Data menu. Database's app is a thin scene around it, and Shell shows the same
-interface for the database connections in its sidebar.
+DatabaseUI is Database's whole interface as a library, for an app that shows databases: Database's own app is a thin
+scene around it, and Shell shows the same interface for the database connections in its sidebar.
+
+## Purpose
+
+DatabaseUI holds the connection list and tree, the table, collection and Redis key browsers, the inspector, editing
+with review and undo, query tabs, aggregation pipelines, the connection and SSH sheets, the Settings panes and the
+Data menu.
 
 It runs on [DatabaseKit](DatabaseKit.md), draws with ComponentKit (the [Component](https://github.com/v57/Component)
 repository), highlights queries with Code's `CodeHighlighting`, and keeps its saved connections in the shared vault
@@ -13,6 +17,23 @@ hosting it in an app.
 
 It is not a set of separate widgets for building another database interface. Embed it whole, and change its behaviour
 through the hooks below.
+
+## Platforms
+
+<!-- platforms: macos ios linux windows -->
+
+- **macOS:** everything, including DuckDB files, the Settings window with its Remote pane, and query completions.
+- **iOS, iPadOS:** the same interface without DuckDB. `SettingsView(close:)` shows the panes in the app's own window
+  (Database's app opens it from the sidebar's **Settings** button, passed to `SidebarView` as `settings:`), with
+  **Devices** in place of **Remote**. On iPhone, tables show as a list and an item opens on its own page; on iPad the
+  inspector floats over the grid where it doesn't fit beside it.
+- **Linux:** builds and runs on v57/SwiftUI's GTK backend; Database's app has the Settings window there, with
+  **Devices** in place of **Remote**. The query editor is a plain text editor, without highlighting or completions.
+- **Windows:** builds and runs on v57/SwiftUI's WinUI backend, with the same plain query editor. Database's app shows
+  no Settings there.
+- **Android:** not yet.
+
+There is no iCloud sync off Apple platforms; the vault stays on the device.
 
 ## Getting started
 
@@ -106,8 +127,9 @@ known yet.
 
 ### Views and scenes
 
-- `SidebarView(window:columnVisibility:)`: the whole sidebar (account picker, the open connection, every saved
-  connection).
+- `SidebarView(window:columnVisibility:settings:)`: the whole sidebar (account picker, the open connection, every saved
+  connection). `settings`, when given, adds a **Settings** button at its foot, for a platform without a Settings
+  window.
 - `ConnectionContents(connection:window:level:)`: one connection's tree and queries, for an app that lists
   connections in its own sidebar.
 - `ConnectionMenu(connection:window:onDelete:extra:)`: a connection's actions, with room for the app's own.
@@ -115,7 +137,8 @@ known yet.
 - `View.databaseSheets(_:)`: the New and Edit Connection sheets.
 - `DatabaseCommands(includesFileItems:)`: New Connection and New Query, Undo Last Save, and the Data menu, acting on
   the focused window (`FocusedValues.databaseWindow`).
-- `SettingsView()`: the Settings panes (Mac and Linux).
+- `SettingsView(close:)`: the Settings panes: in a `Settings` scene on the Mac and Linux, or in the app's window on
+  iPhone and iPad, where `close` puts a **Done** button in its toolbar.
 
 ### Hooks for host apps
 
@@ -139,17 +162,6 @@ in a scratch folder instead of the vault and the Keychain, and `DebugDriver.run(
 describe (`--select "Shop/shop/public/orders"`, `--new-query "SELECT 1" --run`, and others listed in
 `Sources/DatabaseUI/App/DebugDriver.swift`), for screenshots and manual checks.
 
-## Platform notes
-
-- **macOS:** everything, including DuckDB files and the Settings window.
-- **iOS, iPadOS:** the same interface without DuckDB and without a Settings screen. On iPhone, tables show as a list
-  and an item opens on its own page; on iPad the inspector floats over the grid where it doesn't fit beside it.
-- **Linux:** builds and runs on v57/SwiftUI's GTK backend, with the Settings window. Less tested than the Mac.
-- **Windows:** builds and runs on v57/SwiftUI's WinUI backend; no Settings window. Less tested than the Mac.
-- **Android:** not yet.
-
-There is no iCloud sync off Apple platforms; the vault stays on the device.
-
 ## Testing
 
 DatabaseUI has no test target. The engine-neutral behaviour under it is tested in DatabaseKit (see
@@ -162,3 +174,11 @@ cd App && V57_LOCAL=1 swift build --product Database   # Linux
 ```
 
 Shell embeds this library, so build Shell after changing the hooks above.
+
+## Related
+
+- [DatabaseKit](DatabaseKit.md): the connections and sessions under the interface.
+- [SSHTunnel](SSHTunnel.md): the tunnels a connection through SSH uses, unless the app's `opener` brings its own.
+- [User guide](README.md): what the interface does, page by page.
+- [Vault](https://github.com/v57/Vault/blob/main/docs/README.md): where the saved connections, SSH hosts and
+  passwords live.

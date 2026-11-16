@@ -19,16 +19,17 @@ when iCloud is on.
 With nothing open, the page shows the welcome:
 
 - **New Connection…** opens the sheet to add a connection.
-- **Open a File…** opens a database file. On the Mac that's an SQLite, DuckDB, Parquet or CSV file. On iPhone and iPad
-  it's an SQLite file.
+- **Open a File…** opens a database file. On the Mac that's an SQLite, DuckDB, Parquet or CSV file. On iPhone, iPad,
+  Linux and Windows it's an SQLite file.
 - **Open the Sample Database** makes a small shop database on this device and opens it. See
   [Try the sample database](#try-the-sample-database).
-- Once you've opened connections, the list is titled **Recent**, newest first. Tap one to connect. A Production
-  connection carries a red tag.
+- The list under them shows up to eight connections, titled **Recent** once you've opened one, newest first. Choose
+  one to connect. A Production connection carries a red tag.
 
 ## Add your first connection
 
-1. Choose **New Connection…** on the welcome, the **+** on the Connections card, or **File ▸ New Connection…** (⌘N).
+1. Choose **New Connection…** on the welcome, the **+** on the Connections card, or **File ▸ New Connection…** (⌘N on
+   the Mac).
 2. Paste a connection link from your host, such as `postgres://user:password@host:5432/dbname`. Database recognizes
    the engine, fills in the server and takes the password. Or pick an engine and fill in the details yourself.
 3. Pick a **Location**: this device, or an SSH server to go through. See [SSH](SSH.md).
@@ -39,8 +40,8 @@ See [Connections](Connections.md) for every field in the sheet.
 
 ## Try the sample database
 
-To try Database without a server or a file of your own, choose **Open the Sample Database** on the welcome. On iPhone,
-where the sidebar comes first, it's also in the Connections card while you have no connections.
+To try Database without a server or a file of your own, choose **Open the Sample Database** on the welcome. While you
+have no connections, it's also in the sidebar's Connections card, which is what iPhone shows first.
 
 Database writes an SQLite file into its own folder on this device and opens it as a connection named **Sample Shop**:
 tables `customers`, `products`, `orders`, `order_items` and `refunds`, and a `monthly_revenue` view. The rows are
@@ -49,14 +50,36 @@ made up, and the same every time. Nothing is downloaded.
 It's an ordinary connection: browse it, edit it with a review, and query it. **Delete Connection** removes it. It syncs
 to your other devices like any connection, and opening it there makes the file again on that device.
 
-## Open a database file
+## On the Mac
 
-- Use **Open a File…** on the welcome.
-- On iPhone and iPad, open an SQLite file from the Files app with Database (share it, or touch and hold it and choose
-  Database). Database adds a connection named after the file and opens it. Opening the same file again reuses that
-  connection.
-- On the Mac, drop a database file on the window. Drop a folder to have Database offer the database files in it.
+### Open a database file
+
+Use **Open a File…** on the welcome. Database adds a connection named after the file and opens it. Opening the same
+file again reuses that connection.
+
+<!-- only: mac -->
+
+- Drop a database file on the window. Drop a folder to have Database offer the databases in it.
+- Besides SQLite files, the Mac opens DuckDB, Parquet, CSV, TSV and JSON files once DuckDB is installed. See
+  [DuckDB on the Mac](Connections.md#duckdb-on-the-mac).
+
+<!-- /only -->
+
+<!-- only: linux windows -->
+
+On Linux and Windows, **Open a File…** opens SQLite files.
+
+<!-- /only -->
+
+## On iPhone and iPad
+
+### Open a database file
+
+- Use **Open a File…** on the welcome, and pick an SQLite file.
+- Open an SQLite file from the Files app with Database (share it, or touch and hold it and choose Database).
 - On iPad you can also drag an SQLite file onto the welcome.
+
+Database adds a connection named after the file and opens it. Opening the same file again reuses that connection.
 
 ## Look around a connection
 
@@ -81,6 +104,10 @@ If a connection fails, its page says why in plain words, with **Try Again** and 
 | Redis | Keys & values | Redis commands |
 | Cassandra, ScyllaDB | Wide column | CQL |
 
+<!-- only: mac -->
+
 On the Mac, DuckDB is a download you choose: Database offers it when you pick DuckDB in the New Connection sheet, and
 in **Settings ▸ General**. With it, Database also opens Parquet, CSV, TSV and JSON files directly. See
 [Connections](Connections.md#duckdb-on-the-mac).
+
+<!-- /only -->

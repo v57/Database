@@ -1,6 +1,11 @@
 # WireKit
 
-WireKit is the transport layer under Database's engines. It holds the byte streams a wire client talks over, the
+WireKit is the transport layer under Database's engines: byte streams, dialers, and the value types every engine
+returns.
+
+## Purpose
+
+It holds the byte streams a wire client talks over, the
 dialer that decides how a client reaches its server (a TCP connection of its own, or a stream something else opens,
 such as an SSH channel), the value types every engine returns (`DBValue`, `DBResult`), and the buffers, hashes and
 SCRAM login the protocols share.
@@ -8,6 +13,18 @@ SCRAM login the protocols share.
 Use it when you bring your own transport (Shell feeds its own SSH channels to Database's engines through a
 `WireDialer`), or when you want `DBValue` and `DBResult` from [SQLiteKit](SQLiteKit.md) or an engine. It is not a
 database client by itself: the engines are in [DatabaseKit](DatabaseKit.md).
+
+## Platforms
+
+<!-- platforms: macos ios linux windows -->
+
+- **macOS, iOS:** TCP and TLS through Network.framework. TLS over a stream it didn't open (an SSH channel) goes
+  through a one-shot Unix socket in a private temporary folder that accepts one connection, only from this process,
+  and is deleted once that arrives: no port, nothing another app or user can reach.
+- **Linux, Windows:** builds on v57/SwiftUI's stand-ins for CryptoKit and Network. TLS over a stream runs the
+  stand-in's TLS session over the stream itself (OpenSSL on Linux, SChannel on Windows).
+- **Other systems:** a dialer asked for TLS over a stream throws `WireError.unsupported`.
+- **Android:** not yet.
 
 ## Getting started
 
@@ -72,16 +89,6 @@ connection.close()
 - `Digest`: SHA-1, SHA-256, MD5, HMAC, PBKDF2, random bytes. `SCRAMClient`: SCRAM-SHA-1 and SCRAM-SHA-256 logins.
 - `AsyncMutex`: runs async closures one at a time.
 
-## Platform notes
-
-- **macOS, iOS:** TCP and TLS through Network.framework. TLS over a stream it didn't open (an SSH channel) goes
-  through a one-shot Unix socket in a private temporary folder that accepts one connection, only from this process,
-  and is deleted once that arrives: no port, nothing another app or user can reach.
-- **Linux, Windows:** builds on v57/SwiftUI's stand-ins for CryptoKit and Network. TLS over a stream runs the
-  stand-in's TLS session over the stream itself (OpenSSL on Linux, SChannel on Windows).
-- **Other systems:** a dialer asked for TLS over a stream throws `WireError.unsupported`.
-- **Android:** not yet.
-
 ## Testing
 
 ```bash
@@ -89,3 +96,10 @@ swift test --filter WireKitTests
 ```
 
 These tests need no servers. The TLS test needs `openssl` on the `PATH` and is skipped without it.
+
+## Related
+
+- [SSHTunnel](SSHTunnel.md): `SSHChannelStreams` and the tunnel's `dialer`, built on `WireChannel`.
+- [SQLiteKit](SQLiteKit.md): returns WireKit's `DBResult` and `DBValue`.
+- [DatabaseKit](DatabaseKit.md): the engines and sessions on top.
+- [Engines](Engines.md): the wire clients that talk over WireKit's streams.
