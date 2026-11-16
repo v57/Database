@@ -47,7 +47,7 @@ your connections, SSH servers and passwords with the other v57 apps through your
 
 - [Vault](https://github.com/v57/Vault/blob/main/docs/README.md) holds your database connections, SSH servers,
   passwords and server keys. A connection or SSH server you add in Database shows in Vault, and the other way round.
-- [Shell](https://github.com/v57/Shell/blob/main/docs/README.md) lists the same connections in its sidebar and opens
+- [Shell](https://github.com/v57/Shell/blob/main/Docs/README.md) lists the same connections in its sidebar and opens
   them with Database's interface.
 - [Hub](https://github.com/v57/hub-app/blob/main/docs/README.md): your Hub devices show as **Via Hub** locations when
   you connect.

@@ -55,7 +55,7 @@ Database for Windows has no Settings window.
 
 <!-- /only -->
 
-In [Shell](https://github.com/v57/Shell/blob/main/docs/README.md), which shows Database's interface for its
+In [Shell](https://github.com/v57/Shell/blob/main/Docs/README.md), which shows Database's interface for its
 connections, New Query is ⌥⌘T and Refresh is ⌥⌘R, in the Data menu.
 
 ## On iPhone and iPad

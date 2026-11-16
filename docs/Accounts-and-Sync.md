@@ -46,7 +46,7 @@ switch the window to your first nine accounts.
 
 ## Other v57 apps
 
-- [Shell](https://github.com/v57/Shell/blob/main/docs/README.md) lists your database connections in its sidebar and
+- [Shell](https://github.com/v57/Shell/blob/main/Docs/README.md) lists your database connections in its sidebar and
   opens them with the same browser, queries and tools as Database. An SSH host you add in Shell is a location in
   Database's connection sheet.
 - [Vault](https://github.com/v57/Vault/blob/main/docs/README.md) shows the connections, SSH hosts and the server keys
