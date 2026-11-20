@@ -76,14 +76,16 @@ struct ResultRow: Identifiable {
 struct ResultTable: View {
   let fields: [FieldInfo]
   let rows: [[CellValue]]
+  @Environment(\.kitIdiom) private var idiom
 
   var body: some View {
+    let widths = Self.fittedWidths(fields: fields, rows: rows, idiom: idiom)
     ResultGrid(
       fields: fields, rows: rows,
       gridRows: rows.enumerated().map { ResultRow(id: $0.offset, cells: $0.element) },
       columns: fields.enumerated().map { index, field in
         KitGridColumn<ResultRow>(
-          field.name, id: "\(index)", width: field.category.isNumeric ? 100 : 160,
+          field.name, id: "\(index)", width: widths[index],
           alignment: field.category.isNumeric ? .trailing : .leading, mono: field.isMono
         ) { row in
           let value = index < row.cells.count ? row.cells[index] : .null
@@ -93,12 +95,38 @@ struct ResultTable: View {
   }
 }
 
+extension ResultTable {
+  /// Each column as wide as its title or its longest value in the first 200 rows, from the number of characters,
+  /// 48 to 320 points. Fixed widths (100 for a number, 160 for text) left an id far from its row's start and cut a
+  /// product's name, worst on iPhone's larger type.
+  static func fittedWidths(fields: [FieldInfo], rows: [[CellValue]], idiom: KitIdiom) -> [CGFloat] {
+    let sample = rows.prefix(200)
+    return fields.indices.map { index in
+      let field = fields[index]
+      var characters = field.name.count
+      for row in sample where index < row.count {
+        let value = row[index]
+        characters = max(characters, value.isNull ? 4 : value.displayText.prefix(60).count)
+      }
+      let touch = idiom == .phone || idiom == .pad
+      let character: CGFloat = field.isMono ? (touch ? 10 : 7.8) : (touch ? 9 : 7)
+      return min(max(CGFloat(characters) * character + (touch ? 28 : 20), 48), 320)
+    }
+  }
+}
+
 private struct ResultGrid: View {
   let fields: [FieldInfo]
   let rows: [[CellValue]]
   let gridRows: [ResultRow]
   let columns: [KitGridColumn<ResultRow>]
   @State private var selection: Set<Int> = []
+  @State private var shownRow: ShownRow?
+  @Environment(\.kitIdiom) private var idiom
+
+  struct ShownRow: Identifiable {
+    let id: Int
+  }
 
   var body: some View {
     KitGrid(gridRows, columns: columns, selection: $selection)
@@ -111,8 +139,52 @@ private struct ResultGrid: View {
         KitPasteboard.copy(Export.json(fields: fields, rows: picked))
       }
     }
+    // On iPhone a tapped row opens in a sheet: its values are cut to their columns, and the row is wider than the
+    // screen.
+    .onChange(of: selection) { _, picked in
+      if idiom == .phone, picked.count == 1, let id = picked.first { shownRow = ShownRow(id: id) }
+    }
+    .kitSheet(item: $shownRow, onDismiss: { selection = [] }) { shown in
+      if rows.indices.contains(shown.id) {
+        ResultRowSheet(fields: fields, row: rows[shown.id], number: shown.id + 1)
+      }
+    }
     .padding(.horizontal, KitMetrics.gutter)
     .padding(.bottom, KitMetrics.gutter)
+  }
+}
+
+/// A result row's values, one under another, whole (iPhone: a tap on a row).
+private struct ResultRowSheet: View {
+  let fields: [FieldInfo]
+  let row: [CellValue]
+  let number: Int
+  @Environment(\.kitDismiss) private var dismiss
+
+  var body: some View {
+    KitSheet(title: "Row \(number)", meta: "\(fields.count) fields", systemImage: "tablecells") {
+      VStack(alignment: .leading, spacing: 14) {
+        ForEach(Array(fields.enumerated()), id: \.offset) { index, field in
+          let value = index < row.count ? row[index] : .null
+          VStack(alignment: .leading, spacing: 3) {
+            Text(field.name).kitFont(.caption).foregroundStyle(.kitSecondary)
+            if value.isNull {
+              Text(verbatim: "NULL").kitFont(.mono).foregroundStyle(.kitTertiary)
+            } else {
+              Text(value.displayText)
+                .kitFont(field.isMono ? .mono : .body)
+                .textSelection(.enabled)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
+      .padding(12)
+      .kitSurface(.card)
+    } footer: {
+      Button("Copy as JSON") { KitPasteboard.copy(Export.json(fields: fields, rows: [row])) }
+      Button("Done") { dismiss() }.buttonStyle(.kitPrimary).keyboardShortcut(.defaultAction)
+    }
   }
 }
 

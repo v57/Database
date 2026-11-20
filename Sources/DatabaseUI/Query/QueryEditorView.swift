@@ -25,10 +25,10 @@ struct QueryEditorView: View {
       }
     }
     .kitPane(.content)
-    .modifier(QueryToolbar(workspace: workspace, onSave: save))
+    .modifier(QueryToolbar(workspace: workspace, onSave: save, onNew: { window.newQuery() }))
     .kitPrompt(
       "Save Query", isPresented: $saving, text: $savingTitle, message: "Saved queries show under Queries in the sidebar.",
-      systemImage: "square.and.arrow.down", confirm: "Save"
+      systemImage: "bookmark", confirm: "Save"
     ) { title in
       if let tab = workspace.selected { workspace.save(tab, title: title, in: app) }
     }
@@ -47,15 +47,19 @@ struct QueryEditorView: View {
 }
 
 /// The query tabs over the editor. A view of its own, so a title or an edited dot changing (the first keystroke in a
-/// saved query) redraws the strip, not the editor and results under it.
+/// saved query) redraws the strip, not the editor and results under it. On iPhone a single query shows no strip (a row
+/// holding a lone + took the editor's room): New Query is in the toolbar there.
 private struct QueryTabStrip: View {
   @Bindable var workspace: QueryWorkspace
   let window: WindowModel
+  @Environment(\.kitIdiom) private var idiom
 
   var body: some View {
-    KitTabStrip(
-      tabs: workspace.tabs.map { KitTab(id: $0.id, title: $0.title, isEdited: $0.isDirty && $0.savedID != nil) },
-      selection: $workspace.selectedID, onClose: { workspace.close($0) }, onAdd: { window.newQuery() })
+    if idiom != .phone || workspace.tabs.count > 1 {
+      KitTabStrip(
+        tabs: workspace.tabs.map { KitTab(id: $0.id, title: $0.displayTitle, isEdited: $0.isDirty && $0.savedID != nil) },
+        selection: $workspace.selectedID, onClose: { workspace.close($0) }, onAdd: { window.newQuery() })
+    }
   }
 }
 
@@ -64,18 +68,30 @@ private struct QueryTabStrip: View {
 private struct QueryToolbar: ViewModifier {
   let workspace: QueryWorkspace
   let onSave: (QueryTab) -> Void
+  let onNew: () -> Void
+  @Environment(\.kitIdiom) private var idiom
 
   func body(content: Content) -> some View {
     content.kitToolbar(
-      workspace.selected.map { "\($0.title)" } ?? "Query", meta: [workspace.connection.profile.displayName], systemImage: "bolt",
+      workspace.selected.map(\.displayTitle) ?? "Query", meta: [workspace.connection.profile.displayName], systemImage: "bolt",
       hue: workspace.connection.profile.engine.hue, status: workspace.selected?.isRunning == true ? .working : .idle
     ) {
       tools
     }
   }
 
-  /// Format and Explain fold into "…" first, then Save; Run never folds.
+  /// Format and Explain fold into "…" first, then Save; Run never folds. On iPhone New Query is a tool too (the tab
+  /// strip, and its +, shows only with two queries open there).
   @ToolbarSlotBuilder private var tools: [ToolbarSlot] {
+    if idiom == .phone {
+      ToolbarSlot(priority: 0) {
+        ToolGroup(iconOnly: true) {
+          Button("New Query", systemImage: "plus", action: onNew)
+        }
+      } menu: {
+        Button("New Query", systemImage: "plus", action: onNew)
+      }
+    }
     if let tab = workspace.selected {
       let formats = workspace.connection.profile.engine.family == .sql || workspace.connection.profile.engine.family == .wideColumn
       ToolbarSlot(priority: 0) {
@@ -97,14 +113,19 @@ private struct QueryToolbar: ViewModifier {
           .kitMenuPreview("Shows how the database plans to run this query.")
       }
       ToolbarSlot(priority: 1) {
+        // A bookmark, not a tray: the tray read as download or import.
         ToolGroup(iconOnly: true) {
-          Button("Save…", systemImage: "square.and.arrow.down") { onSave(tab) }
+          Button("Save…", systemImage: "bookmark") { onSave(tab) }
         }
       } menu: {
-        Button("Save…", systemImage: "square.and.arrow.down") { onSave(tab) }
+        Button("Save…", systemImage: "bookmark") { onSave(tab) }
           .kitMenuPreview("Keeps this query under a name in the sidebar.")
       }
-      Button("Run", systemImage: "play.fill") { Task { await workspace.runSelected() } }
+      Button("Run", systemImage: "play.fill") {
+        // On iPhone the keyboard would cover the results.
+        if idiom == .phone { KitDevice.dismissKeyboard() }
+        Task { await workspace.runSelected() }
+      }
         .buttonStyle(.kitPrimary)
         .keyboardShortcut(.return, modifiers: .command)
         .disabled(tab.isRunning)
@@ -119,6 +140,7 @@ struct QueryTabView: View {
   let tab: QueryTab
   let workspace: QueryWorkspace
   let onExport: (ExportDocument) -> Void
+  @Environment(\.kitIdiom) private var idiom
 
   var body: some View {
     #if os(macOS)
@@ -129,7 +151,8 @@ struct QueryTabView: View {
       }
     #else
       VStack(spacing: 0) {
-        QueryTabEditor(tab: tab, workspace: workspace).frame(minHeight: 160, maxHeight: 300)
+        // On iPhone the results get the room: a query is a line or a few.
+        QueryTabEditor(tab: tab, workspace: workspace).frame(minHeight: 120, maxHeight: idiom == .phone ? 200 : 300)
         QueryTabResults(tab: tab, workspace: workspace, onExport: onExport)
       }
     #endif
@@ -141,14 +164,31 @@ private struct QueryTabEditor: View {
   @Bindable var tab: QueryTab
   let workspace: QueryWorkspace
 
+  @Environment(\.kitIdiom) private var idiom
+
   var body: some View {
     VStack(spacing: 0) {
       ContextBar(tab: tab, workspace: workspace)
-      CodeEditor(
-        text: $tab.text, language: workspace.connection.profile.engine.highlighting, completions: workspace.completions,
-        onRun: { Task { await workspace.runSelected() } })
+      editor
     }
     .kitPane(.content)
+  }
+
+  /// On iPhone and iPad the editor is a card, so it reads as the place to type (on the pane's own ground it was
+  /// invisible); on the Mac it fills its split pane.
+  @ViewBuilder private var editor: some View {
+    let editor = CodeEditor(
+      text: $tab.text, language: workspace.connection.profile.engine.highlighting, completions: workspace.completions,
+      onRun: { Task { await workspace.runSelected() } })
+    if idiom == .phone || idiom == .pad {
+      editor
+        .padding(.vertical, 4)
+        .kitSurface(.card)
+        .padding(.horizontal, KitMetrics.gutter)
+        .padding(.vertical, 6)
+    } else {
+      editor
+    }
   }
 }
 
@@ -160,54 +200,89 @@ private struct QueryTabResults: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      HStack(spacing: 10) {
-        KitSegmented(selection: $tab.output, options: QueryTab.Output.allCases.map { ($0.rawValue, $0) })
-        if tab.isRunning {
-          LiveIcon(systemImage: "play.fill", status: .working, size: 18)
-          Text("Running…").kitFont(.caption)
-        } else if let elapsed = tab.lastElapsed {
-          Text(statusText + " · " + formatDuration(elapsed)).kitFont(.caption)
+      // The status beside the tabs where it fits; on iPhone it goes on a line of its own under them (it wrapped a
+      // word a line between the tabs and Export).
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 10) {
+          KitSegmented(selection: $tab.output, options: QueryTab.Output.allCases.map { ($0.rawValue, $0) })
+          status
+          Spacer(minLength: 0)
+          export
         }
-        Spacer()
-        if let table = currentTable {
-          KitMenuButton("Export", systemImage: "square.and.arrow.up") {
-            Button("CSV…") { onExport(ExportDocument(text: Export.csv(fields: table.0, rows: table.1), type: .commaSeparatedText, name: tab.title + ".csv")) }
-              .kitMenuPreview("Saves the results as \(tab.title).csv. You pick where.")
-            Button("JSON…") { onExport(ExportDocument(text: Export.json(fields: table.0, rows: table.1), type: .json, name: tab.title + ".json")) }
-            Divider()
-            Button("Copy as CSV", systemImage: "doc.on.doc") { KitPasteboard.copy(Export.csv(fields: table.0, rows: table.1)) }
+        VStack(alignment: .leading, spacing: 6) {
+          HStack(spacing: 10) {
+            KitSegmented(selection: $tab.output, options: QueryTab.Output.allCases.map { ($0.rawValue, $0) })
+            Spacer(minLength: 0)
+            export
           }
-          .controlSize(.small)
+          status
         }
       }
       .padding(.horizontal, KitMetrics.gutter)
       .padding(.vertical, 6)
-      switch tab.output {
-      case .results:
-        if tab.resultOutputs.isEmpty {
-          EmptyState(systemImage: tab.error == nil ? "play" : "exclamationmark.triangle", title: tab.error.map { "\($0)" } ?? "Run a query to see results")
-        } else {
-          QueryResultsView(outputs: tab.resultOutputs, connection: workspace.connection)
-        }
-      case .messages:
-        ScrollView {
-          VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(tab.messages.enumerated()), id: \.offset) { _, line in
-              Text(line).kitFont(.mono).textSelection(.enabled)
-                .foregroundStyle(line == tab.error ? AnyShapeStyle(Hue.red.text) : AnyShapeStyle(.kitLabel))
-            }
+      output
+    }
+  }
+
+  @ViewBuilder private var status: some View {
+    if tab.isRunning {
+      HStack(spacing: 6) {
+        LiveIcon(systemImage: "play.fill", status: .working, size: 18)
+        Text("Running…").kitFont(.caption)
+      }
+      .fixedSize()
+    } else if let elapsed = tab.lastElapsed {
+      Text(statusText + " · " + formatDuration(elapsed)).kitFont(.caption).lineLimit(1).fixedSize()
+    }
+  }
+
+  @ViewBuilder private var export: some View {
+    if let table = currentTable {
+      KitMenuButton("Export", systemImage: "square.and.arrow.up") {
+        Button("CSV…") { onExport(ExportDocument(text: Export.csv(fields: table.0, rows: table.1), type: .commaSeparatedText, name: tab.title + ".csv")) }
+          .kitMenuPreview("Saves the results as \(tab.title).csv. You pick where.")
+        Button("JSON…") { onExport(ExportDocument(text: Export.json(fields: table.0, rows: table.1), type: .json, name: tab.title + ".json")) }
+        Divider()
+        Button("Copy as CSV", systemImage: "doc.on.doc") { KitPasteboard.copy(Export.csv(fields: table.0, rows: table.1)) }
+      }
+      .controlSize(.small)
+    }
+  }
+
+  @ViewBuilder private var output: some View {
+    switch tab.output {
+    case .results:
+      if tab.resultOutputs.isEmpty {
+        EmptyState(systemImage: tab.error == nil ? "play" : "exclamationmark.triangle", title: tab.error.map { "\($0)" } ?? "Run a query to see results")
+      } else {
+        QueryResultsView(outputs: tab.resultOutputs, connection: workspace.connection)
+      }
+    case .messages:
+      ScrollView {
+        VStack(alignment: .leading, spacing: 6) {
+          ForEach(Array(tab.messages.enumerated()), id: \.offset) { _, line in
+            Text(line).kitFont(.mono).textSelection(.enabled)
+              .foregroundStyle(line == tab.error ? AnyShapeStyle(Hue.red.text) : AnyShapeStyle(.kitLabel))
           }
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(12)
         }
-      case .plan:
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+      }
+    case .plan:
+      if let plan = tab.plan {
         ScrollView([.vertical, .horizontal]) {
-          Text(tab.plan ?? "Press Explain to see how the server will run this query.")
+          Text(plan)
             .kitFont(.mono)
             .textSelection(.enabled)
-            .foregroundStyle(tab.plan == nil ? AnyShapeStyle(.kitSecondary) : AnyShapeStyle(.kitLabel))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
+        }
+      } else {
+        // Explain is in the toolbar's "…" on iPhone, so the empty plan offers it.
+        EmptyState(systemImage: "list.bullet.indent", title: "No Plan", message: "See how the database plans to run this query.") {
+          Button("Explain") { Task { await workspace.explainSelected() } }
+            .buttonStyle(.kit)
+            .disabled(tab.isRunning)
         }
       }
     }
@@ -243,7 +318,17 @@ struct ContextBar: View {
     workspace.connection.children[LiveConnection.rootID]?.filter { [.database, .keyspace, .redisDatabase].contains($0.kind) } ?? []
   }
 
-  var body: some View {
+  /// Where it runs, when there's a choice or one was made: a SQLite file has one database, so "Runs in the default
+  /// database" said nothing there.
+  private var showsWhere: Bool {
+    !databases.isEmpty || tab.context.database != nil || tab.context.schema != nil
+  }
+
+  @ViewBuilder var body: some View {
+    if showsWhere || KitDevice.hasKeyboard { bar }
+  }
+
+  private var bar: some View {
     HStack(spacing: 8) {
       if !databases.isEmpty {
         KitMenuButton("Runs in \(tab.context.database ?? "the default database")", systemImage: "cylinder") {
@@ -258,7 +343,7 @@ struct ContextBar: View {
             options: [("Default", "")] + databases.map { ($0.title, $0.database ?? $0.title) })
         }
         .controlSize(.small)
-      } else {
+      } else if showsWhere {
         Text(tab.context.database.map { "Runs in \($0)" } ?? "Runs in the default database")
       }
       if let schema = tab.context.schema {

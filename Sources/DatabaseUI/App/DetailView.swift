@@ -35,6 +35,7 @@ public struct DetailView: View {
 
 /// Shown while a connection is selected but no table is: status, server, and what's inside.
 struct ConnectionOverview: View {
+  @Environment(\.kitIdiom) private var idiom
   let connection: LiveConnection
   @Bindable var window: WindowModel
   @Environment(DatabaseModel.self) private var app
@@ -61,7 +62,10 @@ struct ConnectionOverview: View {
           if connection.profile.engine == .redis {
             Text("Pick a database in the sidebar to see its keys.")
           } else {
-            Text("Pick a \(connection.profile.engine.collectionNoun.singular) in the sidebar to see its \(connection.profile.engine.itemNoun.plural).")
+            Text(
+              idiom == .phone
+                ? "Pick a \(connection.profile.engine.collectionNoun.singular) in the list to see its \(connection.profile.engine.itemNoun.plural)."
+                : "Pick a \(connection.profile.engine.collectionNoun.singular) in the sidebar to see its \(connection.profile.engine.itemNoun.plural).")
           }
         }
         .foregroundStyle(.kitSecondary)

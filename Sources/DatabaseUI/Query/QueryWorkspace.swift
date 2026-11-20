@@ -38,6 +38,18 @@ final class QueryTab: Identifiable {
 
   func markSaved() { isDirty = false }
 
+  /// The title to show: a saved query's name, else the query's first line ("SELECT * FROM products"), so unsaved
+  /// queries aren't all "Untitled".
+  var displayTitle: String {
+    guard savedID == nil else { return title }
+    let line = text.split(whereSeparator: \.isNewline)
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .first { !$0.isEmpty && !$0.hasPrefix("--") }
+    guard let line else { return title }
+    let words = line.hasSuffix(";") ? String(line.dropLast()) : line
+    return words.count > 40 ? String(words.prefix(39)) + "…" : words
+  }
+
   var messages: [String] {
     var lines: [String] = []
     for run in runs {

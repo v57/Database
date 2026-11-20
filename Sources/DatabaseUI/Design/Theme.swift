@@ -10,7 +10,7 @@ extension EngineKind {
     case .mysql: .teal
     case .mariadb: .brown
     case .sqlserver: .pink
-    case .sqlite: .gray
+    case .sqlite: .orange  // gray read as disabled (its tile, the query's bolt)
     case .duckdb: .yellow
     case .mongodb: .green
     case .redis: .red
