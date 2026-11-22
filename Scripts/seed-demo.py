@@ -9,6 +9,7 @@ Usage:
 --data-dir  also write connections for every engine there (for a DEBUG run with --data-dir)
 --servers   only fill these services, e.g. postgres,mongodb (Scripts/screenshot-demo.sh; mongodb-demo is its own
             MongoDB on 27018, which Catalog then uses)
+--sample-shop  Shop is the app's sample SQLite shop instead of Postgres (the iPhone and iPad scenes: Shop/orders)
 """
 
 import argparse
@@ -262,7 +263,7 @@ def write_files(folder):
     print(f"Files: {folder}")
 
 
-def write_connections(data_dir, files, mongo_port=27017):
+def write_connections(data_dir, files, mongo_port=27017, sample_shop=False):
     os.makedirs(data_dir, exist_ok=True)
     def profile(name, engine, port, user="", database="", path="", color="none", production=False, readonly=False, options=None):
         return {"id": str(uuid.uuid5(uuid.NAMESPACE_DNS, name)).upper(), "name": name, "engine": engine,
@@ -271,7 +272,10 @@ def write_connections(data_dir, files, mongo_port=27017):
                 "useTLS": False, "allowUntrustedCertificate": False, "savePassword": True,
                 "ssh": {"enabled": False, "host": "", "port": 22, "user": "", "auth": "key"}}
     profiles = [
-        profile("Shop", "postgres", 5432, "postgres", "shop", color="red", production=True),
+        # --sample-shop: the app's own sample shop (Welcome ▸ Open the Sample Database, made in the data folder when it
+        # opens) instead of Postgres, for the iPhone and iPad scenes, which need no server for it.
+        profile("Shop", "sqlite", 0, path=os.path.join(data_dir, "Samples", "Sample Shop.sqlite"), color="red")
+        if sample_shop else profile("Shop", "postgres", 5432, "postgres", "shop", color="red", production=True),
         profile("Analytics", "duckdb", 0, path=os.path.join(files, "analytics.duckdb"), color="yellow"),
         profile("Catalog", "mongodb", mongo_port, database="catalog", color="green"),
         profile("Sessions", "redis", 6379, color="orange"),
@@ -299,6 +303,7 @@ def main():
     parser.add_argument("--data-dir")
     parser.add_argument("--skip-servers", action="store_true")
     parser.add_argument("--servers", help="comma-separated docker-compose services to fill (default: all)")
+    parser.add_argument("--sample-shop", action="store_true", help="Shop is the app's sample SQLite shop, not Postgres")
     args = parser.parse_args()
     files = os.path.abspath(os.path.expanduser(args.files))
     seeds = {
@@ -319,7 +324,7 @@ def main():
     write_files(files)
     if args.data_dir:
         write_connections(os.path.abspath(os.path.expanduser(args.data_dir)), files,
-                          mongo_port=27018 if "mongodb-demo" in servers else 27017)
+                          mongo_port=27018 if "mongodb-demo" in servers else 27017, sample_shop=args.sample_shop)
 
 
 if __name__ == "__main__":

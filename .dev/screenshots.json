@@ -64,7 +64,7 @@
     {
       "id": "02-orders-iphone",
       "platforms": ["iphone"],
-      "arguments": ["--data-dir", "$DATA", "--select", "Shop/shop/orders"],
+      "arguments": ["--data-dir", "$DATA", "--select", "Shop/orders"],
       "caption": "Browse any table without writing SQL"
     },
     {
@@ -74,22 +74,22 @@
       "caption": "Documents as cards, JSON or a table"
     },
     {
-      "id": "04-keys-iphone",
+      "id": "04-query-iphone",
       "platforms": ["iphone"],
-      "arguments": ["--data-dir", "$DATA", "--select", "Sessions/Database 0"],
-      "caption": "Every Redis key with its type and expiry"
+      "arguments": ["--data-dir", "$DATA", "--select", "Shop", "--new-query", "SELECT c.city, count(*) AS orders, sum(o.total) AS revenue\nFROM orders o\nJOIN customers c ON c.id = o.customer_id\nGROUP BY c.city\nORDER BY revenue DESC;", "--run"],
+      "caption": "Write SQL with your results beside it"
     },
 
     {
       "id": "01-browse-ipad",
       "platforms": ["ipad"],
-      "arguments": ["--data-dir", "$DATA", "--hide-sidebar", "--select", "Shop/shop/orders", "--select-row", "1"],
+      "arguments": ["--data-dir", "$DATA", "--hide-sidebar", "--no-inspector", "--select", "Shop/orders", "--select-row", "1"],
       "caption": "Browse any table without writing SQL"
     },
     {
       "id": "02-documents-ipad",
       "platforms": ["ipad"],
-      "arguments": ["--data-dir", "$DATA", "--hide-sidebar", "--select", "Catalog/catalog/products", "--view", "cards", "--select-row", "0"],
+      "arguments": ["--data-dir", "$DATA", "--hide-sidebar", "--no-inspector", "--select", "Catalog/catalog/products", "--view", "cards", "--select-row", "0"],
       "caption": "Documents as cards, JSON or a table"
     },
     {
@@ -99,10 +99,10 @@
       "caption": "Build aggregation pipelines step by step"
     },
     {
-      "id": "04-keys-ipad",
+      "id": "04-filter-ipad",
       "platforms": ["ipad"],
-      "arguments": ["--data-dir", "$DATA", "--hide-sidebar", "--select", "Sessions/Database 0", "--select-key", "leaderboard:weekly"],
-      "caption": "Every Redis key with its type and expiry"
+      "arguments": ["--data-dir", "$DATA", "--hide-sidebar", "--no-inspector", "--select", "Shop/orders", "--filter", "total:greater:1000"],
+      "caption": "Filter any table without writing SQL"
     },
     {
       "id": "05-query-ipad",
