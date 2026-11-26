@@ -4,7 +4,7 @@
   "variables": { "DATA": "$ROOT/.build/screenshots-demo/data" },
   "watch": ["Database", "Sources", "Scripts/seed-demo.py", "Scripts/screenshot-demo.sh"],
   "mac": { "window": [1440, 900] },
-  "ios": { "devices": ["iPhone 18 Pro Max", "iPad Pro 13-inch (M5)"] },
+  "ios": { "devices": ["iPhone 18 Pro Max", "iPad Pro 13-inch (M5)", "iPhone Duo"] },
   "scenes": [
     {
       "id": "01-browse",
