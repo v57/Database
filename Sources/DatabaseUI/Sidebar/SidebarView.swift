@@ -1,16 +1,21 @@
 import ComponentKit
 import DatabaseKit
 import SwiftUI
+import UniformTypeIdentifiers
 import VaultUI
 
-/// The kit's sidebar: the window's account (hidden while Personal is the only one), the open connection as its own
-/// card (its databases, tables and queries), then every saved connection in the Connections card.
+/// The kit's sidebar: the window's account (hidden while Personal is the only one), what was opened last, the open
+/// connection as its own card (its databases, tables and queries), then every saved connection in the Connections
+/// card. Above the bottom bar's buttons (New Query, Open a File, Disconnect All), a card says what is going on.
 public struct SidebarView: View {
   @Bindable var window: WindowModel
   @Binding var columnVisibility: NavigationSplitViewVisibility
   @Environment(DatabaseModel.self) private var app
   @Environment(\.kitIdiom) private var idiom
   @State private var deleting: ConnectionProfile?
+  /// The tables, saved queries and connections opened last. More than the card shows: ids that no longer open
+  /// anything are passed over.
+  @State private var recents = KitRecents(key: "recentSidebarItems", limit: 12)
   /// Opens Settings from the sidebar's bottom bar: iPhone and iPad, which have no Settings window (D-021).
   private let settings: (() -> Void)?
 
@@ -44,8 +49,11 @@ public struct SidebarView: View {
     let current = current
     let others = profiles.filter { $0.id != current?.id }
     // The Mac's toggle hides the sidebar through the window's split view; iPad and iPhone need the binding.
-    SidebarFrame(window: window, columnVisibility: idiom.isTouch ? $columnVisibility : nil, settings: settings) {
+    SidebarFrame(
+      window: window, recents: recents, columnVisibility: idiom.isTouch ? $columnVisibility : nil, settings: settings
+    ) {
       VaultAccountPicker(meta: String(localized: "\(app.profiles.count) connections"))
+      RecentSection(recents: recents, window: window)
       // A long tree keeps the open connection's title in view; Connections waits at the bottom while it's below.
       if let current {
         CurrentConnectionSection(connection: current, window: window) { deleting = current.profile }
@@ -58,13 +66,11 @@ public struct SidebarView: View {
           ConnectionRow(connection: app.connection(for: profile.id), window: window) { deleting = profile }
         }
         if app.profiles.isEmpty {
-          Button("Add a Connection", systemImage: "plus") { window.showsNewConnection = true }
-            .buttonStyle(.kitPlain)
-            .padding(.vertical, 4)
-          // On iPhone the sidebar is the first screen, so the sample is offered here too.
-          Button("Open the Sample Database", systemImage: "cart") { window.openSample() }
-            .buttonStyle(.kitPlain)
-            .padding(.bottom, 4)
+          SectionEmptyActions("Your servers and database files, saved here.") {
+            Button("Add a Connection", systemImage: "plus") { window.showsNewConnection = true }
+            // On iPhone the sidebar is the first screen, so the sample is offered here too.
+            Button("Open the Sample Database", systemImage: "cart") { window.openSample() }
+          }
         } else if profiles.isEmpty {
           Text("No connections match “\(query)”.")
             .kitFont(.caption)
@@ -84,6 +90,7 @@ public struct SidebarView: View {
       if let deleting {
         window.leave(deleting.id)
         app.delete(deleting.id)
+        recents.keep { RecentEntry(id: $0)?.connection != deleting.id }
       }
       deleting = nil
     }
@@ -112,15 +119,19 @@ public struct SidebarView: View {
 /// each click in the tree. Here the rows come in built and stay the same value when only the selection changes.
 private struct SidebarFrame<Content: View>: View {
   @Bindable var window: WindowModel
+  let recents: KitRecents
   let columnVisibility: Binding<NavigationSplitViewVisibility>?
   let settings: (() -> Void)?
   let content: Content
+  @Environment(DatabaseModel.self) private var app
+  @State private var openingFile = false
 
   init(
-    window: WindowModel, columnVisibility: Binding<NavigationSplitViewVisibility>?, settings: (() -> Void)?,
-    @ViewBuilder content: () -> Content
+    window: WindowModel, recents: KitRecents, columnVisibility: Binding<NavigationSplitViewVisibility>?,
+    settings: (() -> Void)?, @ViewBuilder content: () -> Content
   ) {
     self.window = window
+    self.recents = recents
     self.columnVisibility = columnVisibility
     self.settings = settings
     self.content = content()
@@ -132,7 +143,29 @@ private struct SidebarFrame<Content: View>: View {
     KitSidebar(selection: selection, searchText: $window.searchText, columnVisibility: columnVisibility) {
       content
     } bottomBar: {
+      // What the connection's menu and the welcome offer, a click away while a table is open.
+      Button("New Query", systemImage: "terminal") { window.newQuery() }
+        .disabled(window.currentConnection?.isConnected != true)
+      Button("Open a File…", systemImage: "doc") { openingFile = true }
+      if app.live.values.contains(where: \.isConnected) {
+        Button("Disconnect All", systemImage: "eject") {
+          if let id = window.currentConnectionID { window.leave(id) }
+          Task { await app.disconnectAll() }
+        }
+      }
       if let settings { Button("Settings", systemImage: "gearshape", action: settings) }
+    }
+    .activity(window.sidebarActivity(in: app))
+    .fileImporter(
+      isPresented: $openingFile, allowedContentTypes: WindowModel.openableFileTypes, allowsMultipleSelection: true
+    ) { result in
+      if case .success(let urls) = result {
+        for url in urls { _ = url.startAccessingSecurityScopedResource() }
+        window.openFiles(urls, in: app)
+      }
+    }
+    .onChange(of: window.selection) { _, item in
+      if let item, let entry = RecentEntry(item) { recents.note(entry.id) }
     }
   }
 }

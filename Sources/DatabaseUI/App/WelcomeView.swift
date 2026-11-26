@@ -51,7 +51,9 @@ struct WelcomeView: View {
     }
     .listTitle(app.profiles.contains { $0.lastUsed != nil } ? "Recent" : "Connections")
     .kitPane(.content)
-    .fileImporter(isPresented: $openingFile, allowedContentTypes: fileTypes, allowsMultipleSelection: true) { result in
+    .fileImporter(
+      isPresented: $openingFile, allowedContentTypes: WindowModel.openableFileTypes, allowsMultipleSelection: true
+    ) { result in
       if case .success(let urls) = result {
         for url in urls { _ = url.startAccessingSecurityScopedResource() }
         _ = open(urls)
@@ -64,18 +66,11 @@ struct WelcomeView: View {
   }
 
   private func open(_ urls: [URL]) -> Bool {
-    var opened = false
-    for url in urls { if let profile = app.addFile(url) { window.connect(profile.id); opened = true } }
-    return opened
+    window.openFiles(urls, in: app)
   }
 
   /// What Open a File… takes here: DuckDB (and the Parquet and CSV it reads) isn't offered on iPhone and iPad (D-012).
   private static var fileKinds: LocalizedStringKey {
     EngineKind.available.contains(.duckdb) ? "SQLite, DuckDB, Parquet or CSV" : "An SQLite database file"
-  }
-
-  private var fileTypes: [UTType] {
-    let extensions = EngineKind.available.flatMap(\.fileExtensions)
-    return [.data] + extensions.compactMap { UTType(filenameExtension: $0) }
   }
 }
